@@ -1,0 +1,372 @@
+"""Authored end-user build fixtures: no network/compiler/game/AppImage execution."""
+import contextlib
+import ctypes
+import hashlib
+import importlib.util
+import io
+import json
+import os
+from pathlib import Path
+import signal
+import subprocess
+import sys
+import tempfile
+import time
+import unittest
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location('monado_build_linux_app', ROOT / 'tools/build_linux_app.py')
+build = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(build)
+
+
+def inventory(root):
+    return {str(path.relative_to(root)): path.read_bytes()
+            for path in root.rglob('*') if path.is_file() and not path.is_symlink()}
+
+
+def make_image(path, contents=b'authored never-executed image fixture'):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = bytearray(16)
+    header[:4] = b'\x7fELF'
+    header[8:11] = b'AI\x02'
+    path.write_bytes(header + contents)
+    path.chmod(0o755)
+    receipt = dict(schema=1, status='passed', sha256=hashlib.sha256(path.read_bytes()).hexdigest())
+    Path(str(path) + '.receipt.json').write_text(json.dumps(receipt))
+
+
+class LinuxBuildApp(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix='monado-build-app-')
+        self.addCleanup(temporary.cleanup)
+        self.base = Path(temporary.name).resolve()
+        self.root = self.base / 'source with spaces'
+        self.port = self.root / 'Monado_Linux'
+        self.port.mkdir(parents=True)
+        self.input = self.root / 'game_files'
+        (self.input / 'exefs').mkdir(parents=True)
+        (self.input / 'romfs').mkdir()
+        (self.input / 'exefs/authored-input-fixture.txt').write_text('no game data; never executed')
+        self.commands = []
+        self.fail_stage = None
+        patch = mock.patch.object(build, 'preflight')
+        patch.start(); self.addCleanup(patch.stop)
+
+    def runner(self, command, cwd, log):
+        self.commands.append((command, cwd, log))
+        log.write_text('AUTHORED NEVER-EXECUTED COMMAND RESULT\n')
+        if self.fail_stage and self.fail_stage in ' '.join(command).replace('\\', '/'):
+            return 17
+        if any(str(value).endswith('/tools/build_launcher_appimage.py') or
+               str(value).endswith('\\tools\\build_launcher_appimage.py') for value in command):
+            make_image(Path(command[command.index('--output') + 1]))
+        return 0
+
+    def run_build(self, identity='test-first'):
+        with contextlib.redirect_stdout(io.StringIO()):
+            return build.build(self.root, 3, runner=self.runner,
+                               locker=lambda port: contextlib.nullcontext(), identity=identity)
+
+    def test_plan_without_input_is_read_only_and_executes_nothing(self):
+        (self.input / 'exefs/authored-input-fixture.txt').unlink()
+        (self.input / 'exefs').rmdir(); (self.input / 'romfs').rmdir(); self.input.rmdir()
+        before = inventory(self.root)
+        with mock.patch.object(build, 'ROOT', self.root), mock.patch.object(build.subprocess, 'Popen', side_effect=AssertionError('executed')):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(build.main(['--plan']), 0)
+        document = json.loads(output.getvalue())
+        self.assertFalse(document['launches_game'])
+        self.assertFalse(document['launches_gui'])
+        self.assertEqual(document['mode'], 'plan')
+        self.assertEqual(before, inventory(self.root))
+        self.assertEqual(sorted(p.name for p in self.port.iterdir()), [])
+
+    def test_missing_input_stops_before_writes_or_downloads(self):
+        (self.input / 'romfs').rmdir()
+        before = inventory(self.root)
+        with self.assertRaisesRegex(build.BuildError, 'game_files/exefs'):
+            self.run_build()
+        self.assertEqual(self.commands, [])
+        self.assertEqual(before, inventory(self.root))
+
+    @unittest.skipUnless(os.name == 'posix', 'native Linux dirfd creation fixture')
+    def test_absent_input_creates_only_empty_layout_then_stops_without_commands(self):
+        (self.input / 'exefs/authored-input-fixture.txt').unlink()
+        (self.input / 'exefs').rmdir(); (self.input / 'romfs').rmdir(); self.input.rmdir()
+        with self.assertRaisesRegex(build.BuildError, 'Created empty game_files/exefs'):
+            self.run_build()
+        self.assertEqual(self.commands, [])
+        self.assertEqual(sorted(p.name for p in self.input.iterdir()), ['exefs', 'romfs'])
+        self.assertEqual(list((self.input / 'exefs').iterdir()), [])
+        self.assertEqual(list((self.input / 'romfs').iterdir()), [])
+        self.assertEqual(list(self.port.iterdir()), [])
+
+    def test_existing_link_with_missing_child_is_not_populated(self):
+        external = self.base / 'existing input missing romfs'
+        self.input.rename(external)
+        (external / 'romfs').rmdir()
+        try:
+            self.input.symlink_to(external, target_is_directory=True)
+        except OSError as error:
+            self.skipTest('host does not permit directory symlinks: ' + str(error))
+        before = inventory(external)
+        with self.assertRaisesRegex(build.BuildError, 'game_files/exefs'):
+            self.run_build()
+        self.assertFalse((external / 'romfs').exists())
+        self.assertEqual(before, inventory(external))
+        self.assertEqual(self.commands, [])
+
+    def test_dangling_input_link_is_preserved_and_no_target_created(self):
+        (self.input / 'exefs/authored-input-fixture.txt').unlink()
+        (self.input / 'exefs').rmdir(); (self.input / 'romfs').rmdir(); self.input.rmdir()
+        target = self.base / 'absent external input'
+        try:
+            self.input.symlink_to(target, target_is_directory=True)
+        except OSError as error:
+            self.skipTest('host does not permit directory symlinks: ' + str(error))
+        with self.assertRaisesRegex(build.BuildError, 'game_files/exefs'):
+            self.run_build()
+        self.assertTrue(self.input.is_symlink())
+        self.assertFalse(target.exists())
+        self.assertEqual(self.commands, [])
+
+    def test_input_symlink_is_resolved_and_is_not_modified(self):
+        external = self.base / 'external extracted input'
+        self.input.rename(external)
+        try:
+            self.input.symlink_to(external, target_is_directory=True)
+        except OSError as error:
+            self.skipTest('host does not permit directory symlinks: ' + str(error))
+        before = inventory(external)
+        receipt = self.run_build()
+        self.assertEqual(receipt['paths']['input'], str(external))
+        self.assertEqual(before, inventory(external))
+        self.assertTrue(self.input.is_symlink())
+
+    def test_input_inside_output_source_is_rejected(self):
+        external = self.port / 'misplaced-game-input'
+        self.input.rename(external)
+        try:
+            self.input.symlink_to(external, target_is_directory=True)
+        except OSError as error:
+            self.skipTest('host does not permit directory symlinks: ' + str(error))
+        with self.assertRaisesRegex(build.BuildError, 'disjoint'):
+            self.run_build()
+        self.assertEqual(self.commands, [])
+
+    def test_managed_output_symlink_is_rejected_without_outside_writes(self):
+        external = self.base / 'unrelated'
+        external.mkdir()
+        try:
+            (self.port / 'runs').symlink_to(external, target_is_directory=True)
+        except OSError as error:
+            self.skipTest('host does not permit directory symlinks: ' + str(error))
+        with self.assertRaisesRegex(build.BuildError, 'symlinks'):
+            self.run_build()
+        self.assertEqual(list(external.iterdir()), [])
+        self.assertEqual(self.commands, [])
+
+    def test_missing_host_tool_is_a_friendly_error_without_system_install(self):
+        with mock.patch.object(build.sys, 'platform', 'linux'), mock.patch.object(build.platform, 'machine', return_value='x86_64'), mock.patch.object(build.sys, 'version_info', (3, 14, 4)), mock.patch.object(build.shutil, 'which', side_effect=lambda name: None if name == 'mksquashfs' else '/authored/' + name):
+            # Call the original through the mock's wrapped module is impossible;
+            # read the function from a fresh isolated module instead.
+            other_spec = importlib.util.spec_from_file_location('monado_build_original_preflight', ROOT / 'tools/build_linux_app.py')
+            other = importlib.util.module_from_spec(other_spec); other_spec.loader.exec_module(other)
+            with self.assertRaisesRegex(other.BuildError, 'squashfs-tools'):
+                other.preflight()
+
+    def test_complete_pipeline_uses_fresh_paths_and_only_headless_checks(self):
+        before = inventory(self.input)
+        receipt = self.run_build()
+        self.assertEqual(receipt['status'], 'passed')
+        self.assertEqual(len(self.commands), 10)
+        self.assertTrue('check_dump.py' in self.commands[0][0][-2])
+        self.assertIn('--install', self.commands[1][0])
+        self.assertIn('--check', self.commands[2][0])
+        self.assertIn('--simd', self.commands[4][0])
+        self.assertIn('--generated', self.commands[5][0])
+        self.assertIn('--dry-run', self.commands[7][0])
+        self.assertEqual(self.commands[-1][0], [str(self.root / build.IMAGE), '--appimage-extract-and-run', '--dry-run'])
+        self.assertEqual(before, inventory(self.input))
+        self.assertFalse((self.port / 'play').exists())
+        self.assertTrue((self.root / build.IMAGE).is_file())
+        self.assertEqual(build.image_pair(self.root / build.IMAGE)['sha256'], receipt['appimage_sha256'])
+        self.assertTrue(all('--dlss' not in c and '--framegen' not in c for c, _, _ in self.commands))
+
+    def test_second_build_is_fresh_and_preserves_verified_previous_pair(self):
+        self.run_build()
+        old = (self.root / build.IMAGE).read_bytes()
+        make_image(self.root / build.IMAGE, b'previous authored launcher')
+        old = (self.root / build.IMAGE).read_bytes()
+        receipt = self.run_build('test-second')
+        backup = self.port / 'build/test-second-appimage/previous' / build.IMAGE
+        self.assertEqual(backup.read_bytes(), old)
+        self.assertEqual(receipt['status'], 'passed')
+        self.assertNotEqual(receipt['paths']['generated'], str(self.port / 'generated/test-first'))
+
+    def test_unknown_existing_appimage_is_preserved_before_any_commands(self):
+        path = self.root / build.IMAGE
+        path.write_text('unknown user file')
+        with self.assertRaisesRegex(build.BuildError, 'incomplete existing'):
+            self.run_build()
+        self.assertEqual(path.read_text(), 'unknown user file')
+        self.assertEqual(self.commands, [])
+
+    def test_changed_existing_appimage_is_not_overwritten(self):
+        path = self.root / build.IMAGE
+        make_image(path)
+        path.write_bytes(path.read_bytes() + b'changed')
+        before = inventory(self.root)
+        with self.assertRaisesRegex(build.BuildError, 'refusing to replace'):
+            self.run_build()
+        self.assertEqual(before, inventory(self.root))
+        self.assertEqual(self.commands, [])
+
+    def test_bad_input_checker_stops_before_dependencies_and_keeps_failure_log(self):
+        self.fail_stage = 'check_dump.py'
+        with self.assertRaisesRegex(build.BuildError, 'check-input failed'):
+            self.run_build()
+        self.assertEqual(len(self.commands), 1)
+        receipt = json.loads((self.port / 'runs/local-build/test-first/receipt.json').read_text())
+        self.assertEqual(receipt['status'], 'failed')
+        self.assertEqual(receipt['commands'][0]['exit'], 17)
+        self.assertFalse((self.root / build.IMAGE).exists())
+
+    def test_mid_build_failure_does_not_publish_or_touch_previous_image(self):
+        path = self.root / build.IMAGE
+        make_image(path, b'previous authored launcher')
+        before = path.read_bytes()
+        self.fail_stage = 'scripts/build_linux.py'
+        with self.assertRaisesRegex(build.BuildError, 'build-game failed'):
+            self.run_build()
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(len(self.commands), 6)
+        self.assertFalse(any('package-appimage' in str(log) for _, _, log in self.commands))
+
+    def test_final_appimage_failure_restores_previous_image_and_receipt(self):
+        path = self.root / build.IMAGE
+        make_image(path, b'previous authored launcher')
+        old_image = path.read_bytes()
+        old_receipt = Path(str(path) + '.receipt.json').read_bytes()
+        self.fail_stage = '--appimage-extract-and-run'
+        with self.assertRaisesRegex(build.BuildError, 'startup check failed'):
+            self.run_build()
+        self.assertEqual(path.read_bytes(), old_image)
+        self.assertEqual(Path(str(path) + '.receipt.json').read_bytes(), old_receipt)
+        self.assertTrue((self.port / 'build/test-first-appimage' / ('failed-' + build.IMAGE)).is_file())
+
+    def test_first_appimage_check_failure_does_not_leave_accepted_root_artifacts(self):
+        self.fail_stage = '--appimage-extract-and-run'
+        with self.assertRaisesRegex(build.BuildError, 'startup check failed'):
+            self.run_build()
+        self.assertFalse((self.root / build.IMAGE).exists())
+        self.assertFalse(Path(str(self.root / build.IMAGE) + '.receipt.json').exists())
+
+    def test_existing_generated_build_directory_is_never_reused(self):
+        path = self.port / 'generated/test-first'
+        path.mkdir(parents=True)
+        with self.assertRaisesRegex(build.BuildError, 'must be fresh'):
+            self.run_build()
+        self.assertEqual(self.commands, [])
+
+    def test_lock_is_nonblocking_and_scoped_to_this_port(self):
+        if os.name != 'posix':
+            self.skipTest('native POSIX advisory lock fixture')
+        with build.build_lock(self.port):
+            with self.assertRaisesRegex(build.BuildError, 'already running'):
+                with build.build_lock(self.port):
+                    self.fail('a second builder acquired the same lock')
+
+    def test_cancelled_stage_preserves_previous_appimage_and_records_cancelled(self):
+        path = self.root / build.IMAGE
+        make_image(path, b'previous authored launcher')
+        before = path.read_bytes()
+        with mock.patch.object(self, 'runner', side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                self.run_build()
+        self.assertEqual(path.read_bytes(), before)
+        receipt = json.loads((self.port / 'runs/local-build/test-first/receipt.json').read_text())
+        self.assertEqual(receipt['status'], 'cancelled')
+        self.assertEqual(receipt['commands'][-1]['status'], 'cancelled')
+
+    @unittest.skipUnless(sys.platform == 'linux', 'native Linux process ownership fixture')
+    def test_command_runner_logs_progress_and_does_not_inherit_loader_controls(self):
+        log = self.port / 'authored-command.log'
+        command = [sys.executable, '-I', '-c', 'import os; print("authored progress"); print("loader=" + str("LD_PRELOAD" in os.environ)); print("pythonpath=" + str("PYTHONPATH" in os.environ))']
+        with mock.patch.dict(os.environ, {'LD_PRELOAD': '/untrusted', 'PYTHONPATH': '/untrusted'}):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(build.execute(command, self.port, log), 0)
+        self.assertEqual(log.read_text(), 'authored progress\nloader=False\npythonpath=False\n')
+        self.assertIn('authored progress', output.getvalue())
+        self.assertEqual(build.descendants(), {})
+
+    def test_owned_signal_uses_pidfd_and_refuses_changed_kernel_identity(self):
+        owned = {101: ((101, 77), 100, 'S'), 102: ((102, 88), 101, 'S'), 103: ((103, 99), 101, 'Z')}
+        current = {101: ((101, 77), 100, 'S'), 102: ((102, 999), 100, 'S')}
+        with mock.patch.object(build.os, 'pidfd_open', create=True, return_value=44) as opened, mock.patch.object(build.os, 'close') as closed, mock.patch.object(build.signal, 'pidfd_send_signal', create=True) as sent, mock.patch.object(build, 'child_id', side_effect=lambda pid: current[pid]):
+            build.signal_owned(owned, 9)  # Authored number; Windows has no SIGKILL constant.
+        self.assertEqual(opened.call_count, 2)
+        self.assertEqual(closed.call_count, 2)
+        sent.assert_called_once_with(44, 9)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'native Linux process ownership fixture')
+    def test_command_refuses_existing_unrelated_child_without_signalling_it(self):
+        child = subprocess.Popen([sys.executable, '-I', '-c', 'import time; time.sleep(60)'])
+        try:
+            with self.assertRaisesRegex(build.BuildError, 'unrelated existing children'):
+                build.execute([sys.executable, '-I', '-c', 'pass'], self.port, self.port / 'unused-command.log')
+            self.assertIsNone(child.poll())
+        finally:
+            child.terminate(); child.wait(timeout=5)
+
+    @unittest.skipUnless(sys.platform == 'linux', 'native Linux subreaper and setsid fixture')
+    def test_cancel_reaps_escaped_grandchild_and_restores_prior_subreaper_state(self):
+        libc = ctypes.CDLL(None, use_errno=True)
+        original = ctypes.c_int()
+        self.assertEqual(libc.prctl(37, ctypes.byref(original), 0, 0, 0), 0)
+        handler = signal.getsignal(signal.SIGINT)
+        grandchild_code = ('import os,signal,sys,time; from pathlib import Path; '
+                           'signal.signal(signal.SIGINT,signal.SIG_IGN); '
+                           'Path(sys.argv[1]).write_text(str(os.getpid())); time.sleep(60)')
+        stage_code = '''import json,os,signal,subprocess,sys,time
+from pathlib import Path
+signal.signal(signal.SIGINT,signal.SIG_IGN)
+grandchild=subprocess.Popen([sys.executable,'-I','-c',sys.argv[3],sys.argv[2]],start_new_session=True)
+while not Path(sys.argv[2]).exists(): time.sleep(0.005)
+Path(sys.argv[1]).write_text(json.dumps(dict(stage=os.getpid(),grandchild=grandchild.pid,stage_group=os.getpgrp(),grandchild_group=os.getpgid(grandchild.pid))))
+print('authored escaped worker ready',flush=True)
+os.kill(os.getppid(),signal.SIGINT)
+time.sleep(60)
+'''
+        try:
+            for previous in (0, 1):
+                with self.subTest(previous_subreaper=previous):
+                    self.assertEqual(libc.prctl(36, previous, 0, 0, 0), 0)
+                    identities = self.port / f'authored-workers-{previous}.json'
+                    ready = self.port / f'authored-ready-{previous}.txt'
+                    command = [sys.executable, '-I', '-c', stage_code, str(identities), str(ready), grandchild_code]
+                    started = time.monotonic()
+                    with contextlib.redirect_stdout(io.StringIO()):
+                        with self.assertRaises(KeyboardInterrupt):
+                            build.execute(command, self.port, self.port / f'authored-command-{previous}.log', cancel_grace=0.05, cleanup_timeout=5)
+                    self.assertLess(time.monotonic() - started, 5)
+                    record = json.loads(identities.read_text())
+                    self.assertNotEqual(record['stage_group'], os.getpgrp())
+                    self.assertNotEqual(record['stage_group'], record['grandchild_group'])
+                    for pid in (record['stage'], record['grandchild']):
+                        self.assertIsNone(build.child_id(pid))
+                        with self.assertRaises(ChildProcessError):
+                            os.waitpid(pid, os.WNOHANG)
+                    self.assertEqual(build.descendants(), {})
+                    actual = ctypes.c_int()
+                    self.assertEqual(libc.prctl(37, ctypes.byref(actual), 0, 0, 0), 0)
+                    self.assertEqual(actual.value, previous)
+                    self.assertIs(signal.getsignal(signal.SIGINT), handler)
+        finally:
+            self.assertEqual(libc.prctl(36, original.value, 0, 0, 0), 0)
+
+
+if __name__ == '__main__':
+    unittest.main()

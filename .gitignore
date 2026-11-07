@@ -61,3 +61,9 @@ xcde.ini
 .codex/
 .agents/
 .aws/
+
+# Locally generated launcher images; release assets remain source-only.
+*.[Aa][Pp][Pp][Ii][Mm][Aa][Gg][Ee]
+*.[Aa][Pp][Pp][Ii][Mm][Aa][Gg][Ee].receipt.json
+*.[Aa][Pp][Pp][Dd][Ii][Rr]/
+*.squashfs

@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "project": "Monado II",
+  "architecture": "x86_64",
+  "runtime": {
+    "repository": "AppImage/type2-runtime",
+    "commit": "fedfad51acc2860b2916a1eef32ba4a500ff31ef",
+    "release_id": 417724209,
+    "asset_id": 657374641,
+    "url": "https://api.github.com/repos/AppImage/type2-runtime/releases/assets/657374641",
+    "bytes": 944632,
+    "sha256": "617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46"
+  },
+  "scope": "Only the official hash-checked AppImage runtime is downloaded. No game content or vendor SDK is fetched. The runtime is cached locally and never included in the source release."
+}

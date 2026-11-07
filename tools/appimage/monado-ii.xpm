@@ -1,0 +1,25 @@
+/* XPM */
+/* Original Monado II contributor artwork, MIT licensed. */
+static const char *monado_ii_icon[] = {
+"16 16 4 1",
+". c #101C2C",
+"R c #B5153F",
+"C c #66CBE2",
+"W c #F1F4F7",
+"................",
+"..RRRRRRRRRRRR..",
+".RCCCCCCCCCCCCR.",
+".RC..........CR.",
+".RC.WWWW.WWWWCR.",
+".RC..WW...WW.CR.",
+".RC..WW...WW.CR.",
+".RC..WW...WW.CR.",
+".RC..WW...WW.CR.",
+".RC..WW...WW.CR.",
+".RC..WW...WW.CR.",
+".RC.WWWW.WWWWCR.",
+".RC..........CR.",
+".RCCCCCCCCCCCCR.",
+"..RRRRRRRRRRRR..",
+"................"
+};

@@ -33,6 +33,16 @@ in this source distribution. Original authored shader source and licensed SMAA
 lookup data are distinct from translated game shaders. No game-download or key
 acquisition service is provided.
 
+The optional local launcher AppImage builder downloads the exact hash-locked
+official AppImage type2 runtime. Its source is MIT-licensed, with statically linked
+dependencies under their respective terms. Preserved runtime/musl/libfuse/
+squashfuse/zstd/zlib/mimalloc notices are in `tools/appimage/` and accompany each
+locally generated image. The generic Roman numeral XPM is authored Monado II code
+art under the project MIT license. Images contain the locally compiled launcher,
+driver and notices; game executables and system/vendor library bundles stay out.
+The generated image is a local workspace launcher, not a reviewed public binary
+distribution or a substitute for the dependency notices of the external build.
+
 Xenoblade Chronicles is a Nintendo trademark. Game content belongs to its rights
 holders. Monado II is independent and unaffiliated; its source license grants no
 rights to game content or other third-party intellectual property.

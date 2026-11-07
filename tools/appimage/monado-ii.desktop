@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Monado II
+Comment=Configure and launch your locally built Monado II game
+Exec=AppRun
+Icon=monado-ii
+Terminal=false
+Categories=Game;

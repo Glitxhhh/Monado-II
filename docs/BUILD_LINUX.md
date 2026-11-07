@@ -1,48 +1,95 @@
-# Local Linux build
+# Build and play on Linux
 
-Supply only your own legally dumped DE2.0.0 input from your own legally obtained
-Switch and game. No files, keys, acquisition links or dumping instructions are
-provided. Place already-extracted input in root `game_files/exefs` and
-`game_files/romfs`; keep it read-only. All commands start at the Monado II root.
+Download and extract the **Linux source/setup kit** from
+[Releases](https://github.com/brendonbusker/Monado-II/releases). Open a terminal in
+the extracted folder. The supported baseline is **Linux x86-64 with CPython 3.14**,
+bash, pkg-config, dpkg-deb, binutils/readelf and squashfs-tools (`mksquashfs` and
+`unsquashfs`). A compatible Vulkan driver and host libraries are also required.
+The builder reports missing prerequisites; it never runs sudo or changes system
+packages/drivers. This is not yet a distribution-independent build.
 
-The recorded development route requires **Linux x86-64 / CPython3.14**, bash,
-`pkg-config`, `dpkg-deb`, `readelf`, Vulkan support and compatible host transitive libraries. It
-uses a project-local pinned Ubuntu sysroot, not system package installation. The
-wheel lock is specific to this platform/Python and intentionally rejects others.
-Read the scripts and dependency notices before explicitly fetching build tools.
+## 1. Put your own game files beside the build command
 
-```sh
-# Explicitly creates a port-local venv/tool wrappers and installs locked wheels.
-python3.14 -B tools/setup_linux_tools.py --port Monado_Linux --install
-# Read-only verification of the local interpreter/packages, Zig and GNU wrappers.
-python3.14 -B tools/setup_linux_tools.py --port Monado_Linux --check
-cd Monado_Linux
-# Fetch/verify/extract pinned development dependencies locally; no system install.
-.venv/bin/python -B scripts/setup_linux_graphics.py
-.venv/bin/python -B tools/extract/check_dump.py ../game_files
-.venv/bin/python -B tools/gen_all.py --exefs ../game_files/exefs --out generated/local --simd c
-.venv/bin/python -B scripts/build_linux.py --generated generated/local --output build/local-game --jobs 6
-.venv/bin/python -B scripts/build_launcher_linux.py --output build/local-launcher --jobs 4
-.venv/bin/python -B scripts/launcher_linux.py --launcher-executable build/local-launcher/monado-launcher --game-executable build/local-game/xcde-linux --dry-run
+Use your own legally dumped **Definitive Edition 2.0.0** files from your own legally
+obtained Switch and game. Only already-extracted folders are accepted. No game
+files, keys, links or dumping instructions are provided.
+
+```text
+Monado-II/
+├── Build_Monado_II.sh
+├── Play_Monado_II.sh
+├── game_files/
+│   ├── exefs/
+│   └── romfs/
+└── Monado_Linux/
 ```
 
-Build outputs must be fresh; select a new directory when rebuilding. The dry-run
-checks inputs, build receipts, dependencies and isolated runtime paths without
-opening the game. When ready to test manually, run the same launcher command
-without `--dry-run`. The original dated developer defaults are not release builds;
-always pass your newly built paths. No automatic Play is part of this recipe.
+If `game_files` does not exist, running the build command creates this empty input
+layout and stops with placement instructions before downloading tools. Put your
+files there, then run the same command again. Existing input is never populated,
+moved or overwritten by the builder. Game input is not a cache or save location.
 
-The tool bootstrap supports this exact CPython/platform wheel baseline. Without
-`--install` or `--check`, it prints a plan and writes nothing. Installation uses
-hash-checked binary wheels inside `Monado_Linux/.venv` and creates compiler wrappers
-and a receipt under `Monado_Linux/.deps`; it does not install system packages or
-replace unrelated existing compiler wrappers. The public launcher embeds licensed
-fonts and uses its solid theme without the excluded local scenic artwork/icon.
+Already keep your files elsewhere? Before the first build, link the existing folder
+instead of moving or duplicating it:
 
-The baseline build above omits optional DLSS/FG vendor components. Their source
-setup/lock scripts are present for explicit development use, but proprietary SDK
-binaries/models and generated provider libraries are not shipped. A plain baseline
-build exposes honest supported graphics choices. See [status](PLATFORM_STATUS.md)
-before interpreting test coverage. Missing host libraries should be resolved by
-the user for their distribution, without treating the Ubuntu sysroot as a portable
-runtime bundle. Clean-machine installation remains a tracked validation task.
+```sh
+ln -sT "/absolute/path/to/your/game_files" game_files
+```
+
+The linked folder must contain both `exefs` and `romfs`. This creates only a link in
+the kit; it does not move the original files. Do not copy development builds,
+virtual environments, caches or saves into the new kit.
+
+## 2. Run one build command
+
+```sh
+./Build_Monado_II.sh
+```
+
+The first complete build downloads hash-locked Python/compiler tools, pinned
+graphics development packages and the checked official AppImage runtime into this
+workspace. It checks the game version, generates game code locally, builds the
+game and native launcher, then creates **`Monado-II-x86_64.AppImage`** at the kit
+root. Progress, logs and a receipt identify each stage; the command stops at the
+first failure. It never starts the launcher or presses Play.
+
+To inspect the proposed steps without creating files or downloading anything:
+
+```sh
+./Build_Monado_II.sh --plan
+```
+
+Builds use fresh output directories. Repeating the command preserves previous
+builds and saves; an existing root AppImage is replaced only when its previous
+receipt and contents verify, with a retained previous copy. An interrupted or
+failed build is not reported as successful. A retry may recompile game code;
+downloaded verified dependencies can be reused. Do not rename or delete build
+outputs while building or playing.
+
+## 3. Open the launcher
+
+```sh
+./Play_Monado_II.sh
+```
+
+This runs the generated launcher AppImage using its extraction mode, so FUSE is
+not required. On desktops with working FUSE, the AppImage can also be opened
+directly after allowing executable files in the file manager. Settings and Play
+remain ordinary launcher actions. Configuration, logs, caches and saves stay in
+`Monado_Linux/play/launcher`, outside `game_files`.
+
+**Keep the complete extracted folder.** This is a workspace launcher AppImage,
+not a standalone game bundle: its native launcher payload uses the checked local
+game build, scripts, Python environment and graphics libraries beside it. Moving
+the folder invalidates absolute build receipts; rebuild in the new location.
+The image contains no game input, generated game executable/code, caches or saves.
+Do not upload local generated outputs as a project release.
+
+This baseline omits the optional DLSS and experimental frame-generation SDKs.
+Their separate setup/build scripts remain available to developers; proprietary SDK
+binaries/models are not shipped. See [platform status](PLATFORM_STATUS.md) and
+[remaining work](../TODO.md) for features and validation limits.
+
+If a stage fails, use the log path printed by the builder. A successful local build
+and AppImage check do not establish full-game or other-GPU compatibility. The
+project will not provide game files or tell you where to obtain them.

@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.1.1-source-preview — November 7, 2026
+
+- Repair fresh source builds on hosts without `ensurepip`: bootstrap pip from its
+  exact official locked wheel inside the workspace, with useful failure messages.
+- Restore the omitted licensed bcdec header required by keyboard button prompts;
+  add a source-kit relative-header closure check for both ports.
+
+- Add a one-command Linux local build: `./Build_Monado_II.sh` checks prerequisites
+  and input, installs locked workspace tools/dependencies, generates game code and
+  builds the game, launcher and a local **Monado-II-x86_64.AppImage**.
+- Create an empty `game_files/exefs` and `game_files/romfs` layout on the first
+  explicit build if absent, then stop for the player's own extracted input.
+  Existing folders or links are never filled or overwritten; external input can
+  remain in place through a symlink.
+- Add stage progress/logs/receipts, fresh outputs and protection of previous
+  launcher images/builds and saves when rebuilding.
+- The AppImage contains the native launcher and uses its sibling build workspace.
+  Existing game/input/state/lease/receipt checks remain in effect; the bundled GUI
+  must exactly match the verified original build. No game-derived data is included.
+- Add `./Play_Monado_II.sh` to open the generated image without requiring FUSE.
+  Opening the launcher and pressing Play remain user actions.
+- Replace the long Linux command sequence with setup/build/play instructions,
+  prerequisite guidance, external-input linking and honest workspace requirements.
+  Optional DLSS/FG setup remains separate; Windows backports remain pending.
+- Keep all generated AppImages, staging directories and filesystem payloads out
+  of tracked source/releases. This download remains a source/setup kit; the
+  launcher AppImage and game executable are generated locally.
+
 ## 0.1.0-source-preview — November 7, 2026
 
 First public Monado II source preview, continuing **TheMonadoGuy / Monado

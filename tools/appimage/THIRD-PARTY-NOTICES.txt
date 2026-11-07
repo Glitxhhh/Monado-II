@@ -1,0 +1,37 @@
+Monado II launcher AppImage notices
+
+This image contains only the authored native launcher, its small workspace
+driver, desktop metadata, original II icon and license notices. It contains no
+game input, generated game code, game executable, game shaders/caches, saves,
+private SDK, development sysroot or copied system library. It needs its adjacent
+Monado_Linux workspace, existing local dependency setup and locally built game.
+The source kit distributes no AppImage/runtime executable; users generate the
+image locally. Do not publish a local image without reviewing all its contents.
+
+AppImage/type2-runtime, source revision:
+https://github.com/AppImage/type2-runtime/tree/fedfad51acc2860b2916a1eef32ba4a500ff31ef
+Copyright (c) 2004-23 probonopd, MIT license. Full notice is included.
+The exact runtime executable identity is recorded in appimage-runtime.lock.json.
+
+Its source license identifies statically linked musl, libfuse, squashfuse, zstd
+and zlib. The pinned build also links mimalloc. Full license texts accompany
+this notice: musl (MIT/BSD notices), libfuse (LGPL 2.1), squashfuse (BSD), zstd
+(BSD), zlib and mimalloc (MIT). Runtime source/build recipes are available at
+the revision above. libfuse is patched there; its source is version 3.15.0,
+squashfuse is 0.5.2. Alpine package dependency versions are not fully pinned by
+upstream; the included musl1.2.5/zstd1.5.6/zlib1.3.1/mimalloc2.1.7 license texts
+preserve their applicable terms, without asserting those exact runtime versions.
+Sources of the preserved notices:
+https://raw.githubusercontent.com/libfuse/libfuse/fuse-3.15.0/LGPL2.txt
+https://raw.githubusercontent.com/vasi/squashfuse/0.5.2/LICENSE
+https://git.musl-libc.org/cgit/musl/plain/COPYRIGHT?h=v1.2.5
+https://raw.githubusercontent.com/facebook/zstd/v1.5.6/LICENSE
+https://raw.githubusercontent.com/madler/zlib/v1.3.1/LICENSE
+https://raw.githubusercontent.com/microsoft/mimalloc/v2.1.7/LICENSE
+
+The launcher embeds Dear ImGui and DejaVu fonts under their respective notices;
+the image preserves those notices and root Monado/LASRecomp credits. SDL and
+other runtime dependencies remain external and retain their original licenses.
+
+The LGPL text retains its terms with form-feed page separators normalized to
+newlines so all distributed notices remain ordinary UTF-8 source text.

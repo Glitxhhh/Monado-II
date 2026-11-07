@@ -29,6 +29,7 @@ FORBIDDEN_NAMES = {
     'project_memory.md', 'monado_linux_handoff.md', 'game_input_ready.md',
 }
 FORBIDDEN_EXT = {
+    '.appimage', '.squashfs',
     '.nsp', '.xci', '.nca', '.nsz', '.xcz', '.nso', '.nro', '.bfttf', '.bfotf',
     '.exe', '.dll', '.so', '.dylib', '.o', '.obj', '.a', '.lib', '.pdb', '.pyc',
     '.spv', '.spvasm', '.cso', '.dxil', '.bin', '.pack', '.idx', '.sav', '.save',
@@ -67,6 +68,8 @@ def path_problem(name):
             or part.split('.')[0].lower() in WINDOWS_DEVICES) for part in parts):
         return 'nonportable/unsafe path component'
     low = [part.lower() for part in parts]
+    if any(part.endswith('.appdir') for part in low):
+        return 'generated AppImage staging directory'
     if any(part in FORBIDDEN_DIRS or re.match(r'^save_[0-9]+(?:$|[._])', part) for part in low):
         return 'private/input/generated/runtime directory'
     if '.git' in low or low[-1] in FORBIDDEN_NAMES:

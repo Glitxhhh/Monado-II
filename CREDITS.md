@@ -15,6 +15,10 @@
 - **Dependency authors** — Dear ImGui, SMAA, AMD FidelityFX, NVIDIA Streamline/NGX,
   DejaVu, SDL, Vulkan tooling, LLVM/Zig, FFmpeg, Opus and other components retain
   their own credit and licenses. See [NOTICE](NOTICE.md).
+- **AppImage contributors** — the optional local launcher image uses the pinned
+  [AppImage type2 runtime](https://github.com/AppImage/type2-runtime). Its notices
+  and statically linked dependency licenses accompany the local image; no runtime
+  binary is committed in this source repository.
 
 The original Monado documentation states that it used extensive Claude/Claude
 Code assistance under human direction. Monado II also uses AI-assisted development

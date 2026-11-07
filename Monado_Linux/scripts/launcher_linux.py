@@ -16,6 +16,7 @@ import signal
 import stat
 import subprocess
 import sys
+import hashlib
 
 import run_linux
 
@@ -139,6 +140,39 @@ def clean_environment(library_path):
     return environment
 
 
+# [XCDE] LINUX-025: preserve normal build checks for a bundled GUI copy.
+def verified_packaged_launcher(path, expected_sha256):
+    """Only substitute a byte-identical copy of an already verified GUI build.
+
+    The game, source workspace, sysroot, state and leases still use their normal
+    receipt checks. This permits the GUI payload in a read-only AppImage mount
+    without admitting arbitrary executables to run_linux.plan's build roots.
+    """
+    path = ordinary_path(Path(path))
+    before = path.lstat()
+    if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or
+            not 64 <= before.st_size <= 64 * 1024 * 1024 or not os.access(path, os.X_OK)):
+        raise ValueError('packaged launcher must be an ordinary executable GUI copy')
+    flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK
+    fd = os.open(path, flags)
+    with os.fdopen(fd, 'rb') as stream:
+        opened = os.fstat(stream.fileno())
+        header = stream.read(64)
+        stream.seek(0)
+        identity = hashlib.file_digest(stream, 'sha256').hexdigest()
+        finished = os.fstat(stream.fileno())
+    after = path.lstat()
+    def snapshot(info):
+        return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+                info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    if not snapshot(before) == snapshot(opened) == snapshot(finished) == snapshot(after):
+        raise ValueError('packaged launcher changed while being verified')
+    if (header[:6] != b'\x7fELF\x02\x01' or int.from_bytes(header[18:20], 'little') != 62
+            or identity != expected_sha256):
+        raise ValueError('packaged launcher differs from the verified native GUI build')
+    return path
+
+
 def prepare(args):
     launcher = run_linux.plan(args.launcher_executable, args.state_root)
     game = run_linux.plan(args.game_executable, args.state_root)
@@ -158,6 +192,9 @@ def prepare(args):
     controls = test_controls(args.test_child_env, state)
     argv = [launcher['argv'][0], '--project-root', str(ROOT), '--input-root', game['input'],
             '--game-executable', game['argv'][0], '--state-root', str(state)]
+    packaged = getattr(args, 'packaged_launcher', None)
+    if packaged is not None:
+        argv[0] = str(verified_packaged_launcher(packaged, launcher['binary_sha256']))
     if args.shot:
         argv += ['--shot', str(state_file(args.shot, state)),
                  '--shot-tab', str(args.shot_tab if args.shot_tab is not None else 0),
@@ -293,6 +330,8 @@ def arguments(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--launcher-executable', type=Path, default=ROOT / 'build/linux-20261107-023-experimental-gui/monado-launcher')
     parser.add_argument('--game-executable', type=Path, default=ROOT / 'build/linux-20261107-023-experimental/xcde-linux')
+    parser.add_argument('--packaged-launcher', type=Path,
+                        help='byte-identical AppImage GUI copy; original build receipts remain required')
     parser.add_argument('--state-root', type=Path, default=ROOT / 'play/launcher')
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--shot', type=Path)

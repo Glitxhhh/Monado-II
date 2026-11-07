@@ -1,2 +1,6 @@
 # Keep reviewed manifest bytes identical on Linux and Windows clones.
 * -text
+
+# Preserve the original licensed bcdec header byte-for-byte, including whitespace.
+/Monado_Linux/third_party/bcdec/bcdec.h -whitespace
+/Monado_Windows/third_party/bcdec/bcdec.h -whitespace

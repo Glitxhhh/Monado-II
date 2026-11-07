@@ -13,14 +13,27 @@ import json
 import os
 from pathlib import Path
 import platform
+import stat
 import subprocess
 import sys
 import tempfile
+import urllib.parse
+import urllib.request
 
 
 PACKAGES = {'pip': '25.3', 'capstone': '5.0.7', 'unicorn': '2.1.4',
             'lz4': '4.4.5', 'ziglang': '0.14.1'}
 LOCK_SHA256 = 'f7ba58c8332d5956f87ec187e932771a05fe85abcc3d27cdb45afe1037ccfcc6'
+# Exact official PyPI25.3 metadata; SHA also appears in requirements-linux.lock.
+PIP_WHEEL = {'filename': 'pip-25.3-py3-none-any.whl', 'bytes': 1778622,
+             'sha256': '9655943313a94722b7774661c21049070f6bbb0a1516bf02f7c8d5d9201514cd',
+             'url': 'https://files.pythonhosted.org/packages/44/3c/d717024885424591d5376220b5e836c2d5293ce2011523c9de23ff7bf068/pip-25.3-py3-none-any.whl'}
+BOOTSTRAP_PIP = '''import sys
+sys.path.insert(0, sys.argv[1])
+from pip._internal.cli.main import main
+raise SystemExit(main(['--isolated', 'install', '--no-index', '--no-deps', '--no-cache-dir',
+    '--no-input', '--disable-pip-version-check', '--ignore-installed', sys.argv[1]]))
+'''
 WRAPPER = '''#!/usr/bin/env bash
 # [XCDE] LINUX-002: isolated Zig/Clang driver for the Linux host ABI.
 set -euo pipefail
@@ -81,6 +94,10 @@ def checked_port(value):
     receipt = port / '.deps/metadata/linux-tools.json'
     if receipt.is_symlink() or (receipt.exists() and not receipt.is_file()):
         raise ValueError('local setup receipt must be an ordinary file')
+    cached = port / '.deps/setup-tmp' / PIP_WHEEL['filename']
+    if cached.is_symlink() or (cached.exists() and
+            (not stat.S_ISREG(cached.stat().st_mode) or cached.stat().st_nlink != 1)):
+        raise ValueError('cached pip bootstrap wheel must be an ordinary single-link file')
     return port
 
 
@@ -90,7 +107,9 @@ def plan(port):
                 lock_sha256=LOCK_SHA256,
                 creates_only=['.venv', '.deps/bin/clang-cc', '.deps/bin/clang-cxx',
                               '.deps/setup-tmp', '.deps/metadata/linux-tools.json'],
-                network='none in plan/check; --install explicitly uses PyPI hash-locked binary wheels',
+                pip_bootstrap=dict(PIP_WHEEL, cache='.deps/setup-tmp/' + PIP_WHEEL['filename'],
+                                   mode='venv --without-pip; bootstrap only when pip is absent'),
+                network='none in plan/check; --install uses exact official pip wheel if needed, then PyPI hash-locked binary wheels',
                 compiler_target='x86_64-linux-gnu',
                 compiler_caches=['.deps/cache/zig-local', '.deps/cache/zig-global'])
 
@@ -104,7 +123,9 @@ def run(argv, port, *, install=False, runner=None):
     result = operation(list(map(str, argv)), cwd=str(port), env=environment,
                        capture_output=True, text=True, timeout=600 if install else 60)
     if result.returncode:
-        raise RuntimeError('tool setup command failed: ' + str(argv[0]) + '\n' + result.stderr[-4000:])
+        raise RuntimeError('tool setup command failed: ' + str(argv[0]) +
+                           '\nstdout:\n' + (result.stdout or '')[-4000:] +
+                           '\nstderr:\n' + (result.stderr or '')[-4000:])
     return result.stdout
 
 
@@ -139,18 +160,94 @@ def check(port, *, runner=None):
                 scope='read-only environment/version/wrapper verification; no compile, game or network')
 
 
+class NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, message, headers, newurl):
+        raise ValueError('pip bootstrap URL must not redirect')
+
+
+def verified_pip_cache(path):
+    """Read only an unchanged ordinary cache file, with Linux nofollow opens."""
+    before = path.lstat()
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+        raise ValueError('cached pip bootstrap wheel must be an ordinary single-link file')
+    flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_CLOEXEC', 0) | getattr(os, 'O_BINARY', 0)
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, 'rb') as stream:
+        opened = os.fstat(stream.fileno())
+        if not stat.S_ISREG(opened.st_mode) or opened.st_nlink != 1:
+            raise ValueError('cached pip bootstrap descriptor must be an ordinary single-link file')
+        data = stream.read(PIP_WHEEL['bytes'] + 1)
+        finished = os.fstat(stream.fileno())
+    after = path.lstat()
+    snapshot = lambda info: (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+                             info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    identity = lambda info: (info.st_dev, info.st_ino, stat.S_IFMT(info.st_mode), info.st_size)
+    if snapshot(before) != snapshot(after) or snapshot(opened) != snapshot(finished) or identity(before) != identity(opened):
+        raise ValueError('cached pip bootstrap wheel changed while reading')
+    if len(data) != PIP_WHEEL['bytes'] or hashlib.sha256(data).hexdigest() != PIP_WHEEL['sha256']:
+        raise ValueError('cached pip bootstrap wheel hash/size mismatch; preserve and inspect it')
+    return path
+
+
+def pip_wheel(port, *, opener=None):
+    """Fetch bounded exact bytes; never execute an unchecked download or a link."""
+    checked_port(port)
+    target = port / '.deps/setup-tmp' / PIP_WHEEL['filename']
+    if target.exists():
+        return verified_pip_cache(target)
+    url = urllib.parse.urlsplit(PIP_WHEEL['url'])
+    if (url.scheme != 'https' or url.hostname != 'files.pythonhosted.org' or url.port is not None
+            or url.username is not None or url.password is not None or url.query or url.fragment
+            or not url.path.startswith('/packages/') or url.path.rsplit('/', 1)[-1] != PIP_WHEEL['filename']):
+        raise ValueError('unexpected pip bootstrap origin')
+    open_url = opener or urllib.request.build_opener(NoRedirect()).open
+    request = urllib.request.Request(PIP_WHEEL['url'], headers={'User-Agent': 'Monado-II-local-tools'})
+    with open_url(request, timeout=30) as response:
+        if response.geturl() != PIP_WHEEL['url']:
+            raise ValueError('pip bootstrap response changed URL')
+        data = response.read(PIP_WHEEL['bytes'] + 1)
+    if len(data) != PIP_WHEEL['bytes'] or hashlib.sha256(data).hexdigest() != PIP_WHEEL['sha256']:
+        raise ValueError('downloaded pip bootstrap wheel hash/size mismatch')
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=target.parent, prefix='.pip-bootstrap-', suffix='.partial', delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+        checked_port(port)
+        if target.exists():
+            raise ValueError('pip bootstrap cache appeared during download; preserve and inspect it')
+        # Creating a hard link refuses an existing destination atomically. The
+        # private temporary is then removed before the cache is consumed.
+        os.link(temporary, target)
+        temporary.unlink()
+        verified_pip_cache(target)
+    finally:
+        if temporary is not None and temporary.exists():
+            temporary.unlink()
+    return target
+
+
 def install(port, *, runner=None):
     # checked_port rejects unknown existing wrappers before any installation.
     port = checked_port(port)
     venv = port / '.venv'
+    info = None
     if venv.exists():
-        probe_venv(port, require_packages=False, runner=runner)
+        info = probe_venv(port, require_packages=False, runner=runner)
     for relative in ('.deps', '.deps/bin', '.deps/metadata', '.deps/setup-tmp'):
         (port / relative).mkdir(mode=0o700, parents=True, exist_ok=True)
     if not venv.exists():
-        run([sys.executable, '-I', '-B', '-m', 'venv', venv], port, install=True, runner=runner)
-        probe_venv(port, require_packages=False, runner=runner)
+        run([sys.executable, '-I', '-B', '-m', 'venv', '--without-pip', venv], port, install=True, runner=runner)
+        info = probe_venv(port, require_packages=False, runner=runner)
     python = venv / 'bin/python'
+    if info['packages'].get('pip') is None:
+        wheel = pip_wheel(port)
+        run([python, '-I', '-B', '-c', BOOTSTRAP_PIP, wheel], port, install=True, runner=runner)
+        info = probe_venv(port, require_packages=False, runner=runner)
+        if info['packages'].get('pip') != PACKAGES['pip']:
+            raise ValueError('verified pip bootstrap did not install pip into the port-local virtual environment')
     run([python, '-I', '-B', '-m', 'pip', '--isolated', 'install', '--require-hashes',
          '--only-binary=:all:', '--no-deps', '--no-cache-dir', '--no-input', '--disable-pip-version-check',
          '--index-url', 'https://pypi.org/simple', '-r', port / 'requirements-linux.lock'],

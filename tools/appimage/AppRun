@@ -1,0 +1,16 @@
+#!/bin/sh
+# Monado II workspace launcher; game content always remains outside this image.
+set -eu
+if [ -z "${APPIMAGE:-}" ]; then
+    printf '%s\n' 'Launch the Monado II AppImage, rather than its internal AppRun.' >&2
+    exit 1
+fi
+monado_image_dir=$(CDPATH= cd -- "$(dirname -- "$APPIMAGE")" && pwd -P)
+monado_app_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+monado_python="$monado_image_dir/Monado_Linux/.venv/bin/python"
+if [ ! -x "$monado_python" ]; then
+    printf '%s\n' 'Keep this AppImage beside its Monado_Linux folder. Run Build_Monado_II.sh first.' >&2
+    exit 1
+fi
+unset PYTHONPATH PYTHONHOME LD_PRELOAD LD_LIBRARY_PATH
+exec "$monado_python" -I -B "$monado_app_dir/usr/lib/monado-ii/driver.py" "$@"

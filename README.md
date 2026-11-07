@@ -44,6 +44,14 @@ further gameplay/UI validation.
 
 ## Source releases and local builds
 
+On Linux, put your own extracted input in `game_files/exefs` and `game_files/romfs`
+beside the downloaded kit, then run **`./Build_Monado_II.sh`**. It builds locally and
+generates **`Monado-II-x86_64.AppImage`** for the launcher. Open it with
+**`./Play_Monado_II.sh`**, which also works without FUSE. Keep the workspace beside
+the image; game code, libraries and state remain outside its launcher payload.
+See the [Linux instructions](docs/BUILD_LINUX.md) for prerequisites and an input
+symlink option that leaves existing game files in place.
+
 Initial releases are separate **Linux source/setup `.tar.gz`** and **Windows
 source/setup `.zip`** kits. They are **not precompiled playable game downloads**.
 You build the game locally from your own verified dump. No compiled game binary,

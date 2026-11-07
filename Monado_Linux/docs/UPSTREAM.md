@@ -215,3 +215,16 @@ glitches after user testing. Behavior, defaults, Windows labels and renderer are
 unchanged. Checked entry and UI test defaults select the fresh023 pair; obsolete
 local outputs were removed after archiving their metadata. No external code copied.
 [Cleanup and validation record](../../docs/PLATFORM_STATUS.md).
+
+
+## November 7, 2026 — LINUX-025 public Linux onboarding
+
+The reviewed public export overrides `scripts/launcher_linux.py` with a narrow
+verified-copy option for the launcher AppImage: original GUI/game receipt, state,
+input, namespace and lease checks remain; only the native GUI executable path is
+substituted after byte-identical ELF validation. Existing private development
+launcher/build defaults are preserved. Root build/Play commands and local-only
+AppImage packager/driver make the public source kit easier to build. Game-derived
+code/binaries and all runtime state stay out of the image and source releases.
+Focused authored and isolated clean-build evidence is in the project Linux record;
+full gameplay and broad distribution compatibility are separate validation gates.

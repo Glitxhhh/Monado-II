@@ -5,11 +5,12 @@ wordmark, generic Roman numeral motif and embedded licensed DejaVu fonts. Scenic
 development artwork and the local sword icon are not distributed. Startup is
 1267×804 logical pixels; the window remains resizable with a640×480 minimum.
 
-Build locally using the [Linux guide](../../../docs/BUILD_LINUX.md), then invoke
-`scripts/launcher_linux.py` with explicit paths to your newly built launcher/game.
-Its `--dry-run` checks receipts/resources/input without opening a window or writing
-normal runtime state. Removing `--dry-run` opens the launcher for manual testing;
-Play is a separate user action. The dated developer defaults are not shipped builds.
+From the kit root, run `./Build_Monado_II.sh` after placing your own extracted
+input in `game_files/exefs` and `game_files/romfs`. Then `./Play_Monado_II.sh` opens
+the generated launcher AppImage using the verified sibling workspace, without
+requiring FUSE. See the [Linux guide](../../../docs/BUILD_LINUX.md). The image
+contains only the launcher and must stay beside its local builds/dependencies.
+Build/packaging checks never open a game or visible launcher; Play is manual.
 
 Supported settings are saved under the private Linux play profile, with game files
 kept read-only. Shader preparation is optional, with progress/Stop/explicit retry.

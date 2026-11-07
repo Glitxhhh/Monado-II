@@ -1,5 +1,6 @@
 """Authored bootstrap/resource fixtures; no network, compiler, game or user state."""
 import contextlib
+import hashlib
 import importlib.util
 import io
 import json
@@ -55,6 +56,14 @@ class LinuxPublicSetup(unittest.TestCase):
         patch.start(); self.addCleanup(patch.stop)
         self.commands = []
         self.packages = dict(setup.PACKAGES)
+        self.real_pip_wheel = setup.pip_wheel
+        patch = mock.patch.object(setup, 'pip_wheel', side_effect=self.fake_pip_wheel)
+        self.pip_download = patch.start(); self.addCleanup(patch.stop)
+
+    def fake_pip_wheel(self, port):
+        path = port / '.deps/setup-tmp' / setup.PIP_WHEEL['filename']
+        path.write_bytes(b'AUTHORED NEVER EXECUTED BOOTSTRAP WHEEL FIXTURE')
+        return path
 
     def venv(self):
         directory = self.port / '.venv'
@@ -76,10 +85,16 @@ class LinuxPublicSetup(unittest.TestCase):
         self.assertNotIn('LD_PRELOAD', kwargs['env'])
         self.assertNotIn('PYTHONHOME', kwargs['env'])
         if '-m' in argv and argv[argv.index('-m') + 1] == 'venv':
+            if '--without-pip' not in argv:
+                return types.SimpleNamespace(returncode=1, stdout='ensurepip is unavailable; venv --without-pip required', stderr='')
             self.venv(); output = ''
+            self.packages = {name: None for name in setup.PACKAGES}
         elif '-m' in argv and argv[argv.index('-m') + 1] == 'pip':
             output = 'AUTHORED PINNED INSTALL RESULT\n'
             self.packages = dict(setup.PACKAGES)
+        elif setup.BOOTSTRAP_PIP in argv:
+            self.packages['pip'] = setup.PACKAGES['pip']
+            output = 'AUTHORED PIP WHEEL INSTALLED INTO PORT VENV\n'
         elif '-c' in argv:
             output = json.dumps(dict(self.host, prefix=str(self.port / '.venv'),
                                      base_prefix='/usr', packages=self.packages))
@@ -120,6 +135,13 @@ class LinuxPublicSetup(unittest.TestCase):
             self.assertIn(flag, installs[0])
         self.assertEqual(installs[0][0], str(self.port / '.venv/bin/python'))
         self.assertEqual(installs[0][-1], str(self.port / 'requirements-linux.lock'))
+        venv = [argv for argv, _ in self.commands if 'venv' in argv]
+        self.assertIn('--without-pip', venv[0])
+        bootstraps = [argv for argv, _ in self.commands if setup.BOOTSTRAP_PIP in argv]
+        self.assertEqual(len(bootstraps), 1)
+        self.assertEqual(bootstraps[0][0], str(self.port / '.venv/bin/python'))
+        for flag in ('--no-index', '--no-deps', '--no-cache-dir', '--ignore-installed', '--disable-pip-version-check'):
+            self.assertIn(flag, setup.BOOTSTRAP_PIP)
         self.assertEqual(sorted(path.name for path in self.port.iterdir()), ['.deps', '.venv', 'requirements-linux.lock'])
         saved = json.loads((self.port / '.deps/metadata/linux-tools.json').read_text())
         self.assertEqual(saved, result)
@@ -212,6 +234,119 @@ class LinuxPublicSetup(unittest.TestCase):
             setup.install(self.port, runner=self.runner)
         self.assertFalse(list(elsewhere.iterdir()))
         self.assertFalse(self.commands)
+
+    def test_existing_valid_venv_without_pip_is_repaired_without_recreation(self):
+        self.venv(); self.wrappers()
+        self.packages['pip'] = None
+        source = (self.port / '.venv/bin/python').read_bytes()
+        result = setup.install(self.port, runner=self.runner)
+        self.assertEqual(result['status'], 'passed')
+        self.assertFalse(any('venv' in argv for argv, _ in self.commands))
+        self.assertEqual((self.port / '.venv/bin/python').read_bytes(), source)
+        self.assertEqual(sum(setup.BOOTSTRAP_PIP in argv for argv, _ in self.commands), 1)
+
+    def test_existing_pip_avoids_bootstrap_download_and_check_stays_offline(self):
+        self.venv(); self.wrappers()
+        setup.install(self.port, runner=self.runner)
+        self.pip_download.assert_not_called()
+        self.assertFalse(any(setup.BOOTSTRAP_PIP in argv for argv, _ in self.commands))
+        before = inventory(self.port)
+        setup.check(self.port, runner=self.runner)
+        self.assertEqual(before, inventory(self.port))
+        self.pip_download.assert_not_called()
+
+    def test_foreign_venv_prefix_is_refused_before_install_or_download(self):
+        self.venv()
+        def foreign(argv, **kwargs):
+            result = self.runner(argv, **kwargs)
+            if setup.PROBE in argv:
+                info = json.loads(result.stdout); info['prefix'] = str(self.root / 'unrelated')
+                result.stdout = json.dumps(info)
+            return result
+        before = inventory(self.port)
+        with self.assertRaisesRegex(ValueError, 'not using this port-local'):
+            setup.install(self.port, runner=foreign)
+        self.assertEqual(before, inventory(self.port))
+        self.pip_download.assert_not_called()
+        self.assertFalse(any('pip' in argv or setup.BOOTSTRAP_PIP in argv for argv, _ in self.commands))
+
+    def test_bootstrap_must_really_install_pip_not_only_import_it_from_wheel(self):
+        self.venv(); self.packages['pip'] = None
+        def no_install(argv, **kwargs):
+            if setup.BOOTSTRAP_PIP in argv:
+                return types.SimpleNamespace(returncode=0, stdout='wheel visible but not installed', stderr='')
+            return self.runner(argv, **kwargs)
+        with self.assertRaisesRegex(ValueError, 'did not install pip into'):
+            setup.install(self.port, runner=no_install)
+        self.assertFalse(any('pip' in argv for argv, _ in self.commands))
+
+    def test_failed_command_reports_stdout_when_stderr_is_empty(self):
+        def failed(argv, **kwargs):
+            return types.SimpleNamespace(returncode=1, stdout='ensurepip explanation on stdout', stderr='')
+        with self.assertRaisesRegex(RuntimeError, 'ensurepip explanation on stdout'):
+            setup.run(['authored-never-executed'], self.port, runner=failed)
+
+    def wheel_fixture(self, data=b'AUTHORED VERIFIED WHEEL DOWNLOAD FIXTURE'):
+        (self.port / '.deps/setup-tmp').mkdir(parents=True)
+        identity = dict(setup.PIP_WHEEL, bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+        response = io.BytesIO(data)
+        response.geturl = lambda: identity['url']
+        return identity, response
+
+    def test_bootstrap_download_is_bounded_hashed_and_cached_only_locally(self):
+        identity, response = self.wheel_fixture()
+        requested = []
+        def fetch(request, timeout):
+            requested.append((request.full_url, timeout)); return response
+        with mock.patch.object(setup, 'PIP_WHEEL', identity):
+            wheel = self.real_pip_wheel(self.port, opener=fetch)
+            self.assertEqual(wheel.read_bytes(), b'AUTHORED VERIFIED WHEEL DOWNLOAD FIXTURE')
+            self.assertEqual(wheel.parent, self.port / '.deps/setup-tmp')
+            with mock.patch.object(setup.urllib.request, 'build_opener', side_effect=AssertionError('cached wheel fetched again')):
+                self.assertEqual(self.real_pip_wheel(self.port), wheel)
+        self.assertEqual(requested, [(identity['url'], 30)])
+        self.assertEqual(list(wheel.parent.glob('*.partial')), [])
+
+    def test_bad_download_is_refused_without_publishing_a_wheel(self):
+        identity, response = self.wheel_fixture()
+        response = io.BytesIO(b'X' * (identity['bytes'] + 500))
+        response.geturl = lambda: identity['url']
+        with mock.patch.object(setup, 'PIP_WHEEL', identity):
+            with self.assertRaisesRegex(ValueError, 'hash/size mismatch'):
+                self.real_pip_wheel(self.port, opener=lambda *args, **kwargs: response)
+        self.assertEqual(list((self.port / '.deps/setup-tmp').iterdir()), [])
+
+    def test_cache_symlink_is_rejected_without_reading_or_writing_target(self):
+        identity, _ = self.wheel_fixture()
+        target = self.root / 'protected-authored-fixture'
+        target.write_text('preserve')
+        wheel = self.port / '.deps/setup-tmp' / identity['filename']
+        try:
+            wheel.symlink_to(target)
+        except OSError:
+            self.skipTest('host disallows symlink fixtures')
+        with self.assertRaisesRegex(ValueError, 'ordinary single-link'):
+            self.real_pip_wheel(self.port, opener=lambda *args, **kwargs: self.fail('downloaded'))
+        self.assertEqual(target.read_text(), 'preserve')
+
+    def test_bad_cached_hash_is_preserved_without_download_or_execution(self):
+        identity, _ = self.wheel_fixture()
+        wheel = self.port / '.deps/setup-tmp' / identity['filename']
+        wheel.write_text('preserve bad cached bytes')
+        with mock.patch.object(setup, 'PIP_WHEEL', identity):
+            with self.assertRaisesRegex(ValueError, 'cached pip bootstrap wheel hash/size mismatch'):
+                self.real_pip_wheel(self.port, opener=lambda *args, **kwargs: self.fail('downloaded'))
+        self.assertEqual(wheel.read_text(), 'preserve bad cached bytes')
+
+    def test_unexpected_or_redirected_origin_is_refused(self):
+        identity, response = self.wheel_fixture()
+        with mock.patch.object(setup, 'PIP_WHEEL', dict(identity, url='https://example.invalid/pip.whl')):
+            with self.assertRaisesRegex(ValueError, 'unexpected pip bootstrap origin'):
+                self.real_pip_wheel(self.port, opener=lambda *args, **kwargs: self.fail('contacted unexpected origin'))
+        response.geturl = lambda: 'https://example.invalid/redirected'
+        with mock.patch.object(setup, 'PIP_WHEEL', identity):
+            with self.assertRaisesRegex(ValueError, 'changed URL'):
+                self.real_pip_wheel(self.port, opener=lambda *args, **kwargs: response)
 
 
 @unittest.skipIf(resource is None, 'Linux source resources required')

@@ -40,6 +40,11 @@ Linux FG presentation. No Windows backport is implied by publication preparation
 
 ## Releases and onboarding
 
+- [x] Add a one-command Linux local build and generated launcher AppImage that
+  keeps game data outside its payload and preserves checked workspace state.
+- [ ] Validate the workspace launcher AppImage on more distributions/desktops;
+  it currently requires the complete local build folder and its absolute receipts.
+
 - [ ] Run real clean-machine Linux and Windows local-build checks.
 - [ ] Test public source/setup kits on both platforms; Windows remains unvalidated
   by this fork until those checks are recorded.

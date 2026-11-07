@@ -147,6 +147,15 @@ class PublicationGuardTests(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertIsNotNone(guard.path_problem(name))
 
+    def test_local_appimage_payloads_cannot_enter_reviewed_source(self):
+        for name in ('Monado-II.AppImage', 'other.APPIMAGE', 'payload.squashfs',
+                     'Launcher.AppDir/usr/bin/gui', 'nested/thing.appdir/README.md'):
+            with self.subTest(name=name):
+                self.assertIsNotNone(guard.path_problem(name))
+        empty = self.root / 'Launcher.AppDir'
+        empty.mkdir()
+        self.assertTrue(guard.verify_tree(self.root))
+
     def test_program_container_and_shader_magic_are_rejected_when_renamed(self):
         examples = (b'NSO' + b'0 AUTHORED MAGIC FIXTURE', b'\x7fELF' + b'fixture',
                     b'M' + b'Z fixture', b'XC' + b'VC fixture', bytes((3, 2, 35, 7)) + b'fixture')
