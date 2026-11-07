@@ -67,7 +67,7 @@ def validate_image(appdir):
     for path in appdir.rglob('*'):
         info = path.lstat()
         if stat.S_ISDIR(info.st_mode):
-            directories.add(str(path.relative_to(appdir)))
+            directories.add(path.relative_to(appdir).as_posix())
             continue
         name = path.relative_to(appdir).as_posix()
         actual.add(name)

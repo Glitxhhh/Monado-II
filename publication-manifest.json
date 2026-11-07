@@ -3328,8 +3328,8 @@
       "bytes": 2313
     },
     "tools/appimage/driver.py": {
-      "sha256": "692697269ab63dd1bfdd50e8980dc74c00ccdf5b44bf470f73e9cdda15334f4d",
-      "bytes": 6495
+      "sha256": "f78061b47487796b6410b1ee63904b5edde99adabf82dcc2dfe2e876ca1d4379",
+      "bytes": 6501
     },
     "tools/appimage/libfuse-LGPL-2.1.txt": {
       "sha256": "dbc8eab1421212bf7b392ea00619f6b8286df50b702d21f6e7382805828a1cef",
