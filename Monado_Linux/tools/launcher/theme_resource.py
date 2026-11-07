@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""[XCDE] Monado II: embed licensed UI fonts with optional local artwork.
+"""[XCDE] Monado II: embed licensed UI fonts and reviewed launcher artwork.
 
 No game data is consumed. Output is build-local C data, not tracked source;
 the returned manifest binds both canonical asset bytes and generated includes.
@@ -58,8 +58,8 @@ def generate(assets, output):
     # Validate every canonical input before publishing any generated include.
     sources, includes = {}, {}
     for target, entries in GROUPS.items():
-        # Publication omits franchise-themed local artwork. Fonts remain
-        # embedded, and an explicitly supplied ordinary local image is optional.
+        # The public source kit includes the exact reviewed generated artwork.
+        # Font-only component fixtures can still omit the image.
         if target == 'launcher_art.inc':
             artwork = assets / entries[0][0]
             if not artwork.exists() and not artwork.is_symlink():

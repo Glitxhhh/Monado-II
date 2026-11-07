@@ -28,6 +28,9 @@ import uuid
 ROOT = Path(__file__).resolve().parents[1]
 IMAGE = 'Monado-II-x86_64.AppImage'
 REQUIRED_TOOLS = ('bash', 'pkg-config', 'dpkg-deb', 'readelf', 'mksquashfs', 'unsquashfs')
+DLSS_REQUIRED_TOOLS = ('nm',)
+BWRAP = Path('/usr/bin/bwrap')
+GNU_CXX_RUNTIME = Path('/usr/lib/x86_64-linux-gnu/libstdc++.so.6')
 
 
 class BuildError(RuntimeError):
@@ -91,7 +94,7 @@ def image_pair(path):
     return document
 
 
-def layout(root, jobs, *, require_input=True, identity=None):
+def layout(root, jobs, *, require_input=True, identity=None, dlss=True):
     root = ordinary(root, directory=True)
     port = ordinary(root / 'Monado_Linux', directory=True)
     for name in ('build', 'generated', 'runs', '.deps'):
@@ -132,8 +135,13 @@ def layout(root, jobs, *, require_input=True, identity=None):
         ('install-tools', [sys.executable, '-I', '-B', root / 'tools/setup_linux_tools.py', '--port', port, '--install']),
         ('check-tools', [sys.executable, '-I', '-B', root / 'tools/setup_linux_tools.py', '--port', port, '--check']),
         ('graphics-dependencies', [python, '-B', port / 'scripts/setup_linux_graphics.py']),
+    ]
+    if dlss:
+        commands.append(('native-dlss-dependency', [python, '-B', port / 'scripts/setup_linux_dlss.py']))
+    commands += [
         ('generate-game', [python, '-B', port / 'tools/gen_all.py', '--exefs', source / 'exefs', '--out', paths['generated'], '--simd', 'c']),
-        ('build-game', [python, '-B', port / 'scripts/build_linux.py', '--generated', paths['generated'], '--output', paths['game'].parent, '--jobs', jobs]),
+        ('build-game', [python, '-B', port / 'scripts/build_linux.py', '--generated', paths['generated'], '--output', paths['game'].parent, '--jobs', jobs,
+                        *(['--dlss'] if dlss else [])]),
         ('build-launcher', [python, '-B', port / 'scripts/build_launcher_linux.py', '--output', paths['launcher'].parent, '--jobs', jobs]),
         ('check-launcher', [python, '-B', port / 'scripts/launcher_linux.py', '--launcher-executable', paths['launcher'], '--game-executable', paths['game'], '--state-root', paths['state'], '--dry-run']),
         ('package-appimage', [sys.executable, '-I', '-B', root / 'tools/build_launcher_appimage.py', '--launcher-executable', paths['launcher'], '--game-executable', paths['game'], '--output', paths['image']]),
@@ -141,13 +149,21 @@ def layout(root, jobs, *, require_input=True, identity=None):
     return paths, [(name, list(map(str, command))) for name, command in commands]
 
 
-def preflight():
+def preflight(*, dlss=True):
     if sys.platform != 'linux' or platform.machine() != 'x86_64' or sys.version_info[:2] != (3, 14):
         raise BuildError('Build_Monado_II.sh requires Linux x86-64 and Python 3.14')
-    missing = [name for name in REQUIRED_TOOLS if shutil.which(name) is None]
+    required = REQUIRED_TOOLS + (DLSS_REQUIRED_TOOLS if dlss else ())
+    missing = [name for name in required if shutil.which(name) is None]
     if missing:
         raise BuildError('Missing host build tools: ' + ', '.join(missing) + '. Install these with your distribution; '\
                          'mksquashfs/unsquashfs are supplied by squashfs-tools. This script never uses sudo.')
+    if dlss and (not BWRAP.is_file() or not os.access(BWRAP, os.X_OK)):
+        raise BuildError('DLSS/DLAA builds require /usr/bin/bwrap from bubblewrap for the existing private '
+                         'runtime namespace. Install bubblewrap, or explicitly use --without-dlss. '
+                         'No system packages are installed by this script.')
+    if dlss and (not GNU_CXX_RUNTIME.is_file() or not os.access(GNU_CXX_RUNTIME, os.R_OK)):
+        raise BuildError('DLSS/DLAA builds require the GNU C++ runtime at ' + str(GNU_CXX_RUNTIME) +
+                         '. Install the compatible runtime, or explicitly use --without-dlss.')
 
 
 def prepare_input_layout(root):
@@ -413,10 +429,10 @@ def restore(paths, backup, had_previous):
         image_pair(target)
 
 
-def build(root=ROOT, jobs=4, *, runner=execute, locker=build_lock, identity=None):
-    preflight()
+def build(root=ROOT, jobs=4, *, runner=execute, locker=build_lock, identity=None, dlss=True):
+    preflight(dlss=dlss)
     prepare_input_layout(root)
-    paths, commands = layout(root, jobs, identity=identity)
+    paths, commands = layout(root, jobs, identity=identity, dlss=dlss)
     with locker(paths['port']):
         # Recheck after obtaining the lease; another completed build may now be
         # present, but its known pair will be preserved rather than overwritten.
@@ -425,9 +441,12 @@ def build(root=ROOT, jobs=4, *, runner=execute, locker=build_lock, identity=None
         receipt_path = paths['run'] / 'receipt.json'
         receipt = dict(schema=1, status='running', scope='local game build and launcher-only AppImage; no game/UI execution',
                        started_utc=datetime.now(timezone.utc).isoformat(), jobs=jobs,
+                       dlss_enabled=dlss,
                        paths={name: str(path) for name, path in paths.items()}, commands=[])
         write_json(receipt_path, receipt)
-        print('Downloads: locked Python/compiler and Ubuntu development packages, plus the pinned AppImage runtime.\n'
+        print('Downloads: locked Python/compiler and Ubuntu development packages, plus the pinned AppImage runtime.'
+              + (' The default DLSS/DLAA build also downloads the pinned official NVIDIA SDK into this workspace.' if dlss else
+                 ' DLSS/DLAA support is explicitly omitted (--without-dlss).') + '\n'
               'Game files are never downloaded. Existing input and saves are preserved.\n'
               'Fresh build logs: ' + str(paths['run']), flush=True)
         backup = None
@@ -445,7 +464,7 @@ def build(root=ROOT, jobs=4, *, runner=execute, locker=build_lock, identity=None
                 if code:
                     raise BuildError(f'{name} failed (exit {code}). Log: {log}')
             backup = publish(paths)
-            log = paths['run'] / '10-check-appimage.log'
+            log = paths['run'] / f'{len(commands) + 1:02d}-check-appimage.log'
             command = [str(paths['published']), '--appimage-extract-and-run', '--dry-run']
             entry = dict(name='check-appimage', argv=command, cwd=str(paths['root']), log=str(log), status='running')
             receipt['commands'].append(entry)
@@ -476,15 +495,18 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--jobs', type=int, choices=range(1, 7), default=4, help='parallel compiler jobs (1–6)')
     parser.add_argument('--plan', action='store_true', help='print the local build steps without downloads or writes')
+    parser.add_argument('--without-dlss', action='store_true',
+                        help='explicitly omit the native NVIDIA DLSS/DLAA provider and SDK download')
     args = parser.parse_args(argv)
     try:
         if args.plan:
-            paths, commands = layout(ROOT, args.jobs, require_input=False)
+            paths, commands = layout(ROOT, args.jobs, require_input=False, dlss=not args.without_dlss)
             print(json.dumps(dict(mode='plan', paths={name: str(path) for name, path in paths.items()},
                                   commands=[dict(name=name, argv=command) for name, command in commands],
+                                  dlss_enabled=not args.without_dlss,
                                   launches_game=False, launches_gui=False, network='none in plan; explicit build fetches locked dependencies'), indent=2))
         else:
-            build(jobs=args.jobs)
+            build(jobs=args.jobs, dlss=not args.without_dlss)
     except KeyboardInterrupt:
         print('Build cancelled; completed local work and previous AppImage preserved. See the build receipt/logs.', file=sys.stderr)
         return 130

@@ -28,10 +28,31 @@ binary bundles. Selecting a future binary dependency bundle requires a separate
 license/provenance review and corresponding notices/source obligations.
 
 No game input, recompiled game code/binary, game-derived shader/cache, Nintendo
-font, key, firmware, save, third-party mod or unverified local artwork/icon belongs
+font, key, firmware, save, third-party mod or unreviewed local artwork/icon belongs
 in this source distribution. Original authored shader source and licensed SMAA
 lookup data are distinct from translated game shaders. No game-download or key
 acquisition service is provided.
+
+The reviewed Linux launcher illustration `gaur_plain.png` is the original
+standalone image generated in the maintainer's Codex session on November 5, 2026
+with OpenAI image generation, using the maintainer's generated UI concept as a
+reference. No game input, screenshot, texture, shader or extracted game asset was
+used. The restored file is the byte-identical original 1536×1024 RGB PNG,
+2,621,747 bytes, SHA256
+`4a863642bba750089667e10727cf72353875a7baf80a0903911e47d897d8fd0a`.
+It is embedded in the native Linux launcher. Full provenance is recorded in
+[ARTWORK_PROVENANCE.md](Monado_Linux/tools/launcher/assets/ARTWORK_PROVENANCE.md).
+Inclusion makes no claim of exclusive copyright over AI-generated imagery or a
+license from Nintendo/Monolith Soft for their designs or trademarks. The project
+MIT license grants no such rights. Only this exact reviewed illustration is
+admitted; the separate local sword icon and other unreviewed imagery are excluded.
+
+The standard Linux local build fetches the pinned official NVIDIA SDK and builds
+the native DLSS Super Resolution / DLAA provider. NVIDIA's separate SDK terms
+apply; SDK binaries/models remain outside source kits and launcher images.
+`--without-dlss` explicitly omits it. Setup failures are not treated as successful
+DLSS builds, and existing runtime capability, namespace and network checks remain
+required.
 
 The optional local launcher AppImage builder downloads the exact hash-locked
 official AppImage type2 runtime. Its source is MIT-licensed, with statically linked

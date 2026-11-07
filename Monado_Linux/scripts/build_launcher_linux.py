@@ -140,7 +140,7 @@ class LauncherBuilder(Builder):
                       '-Ithird_party/imgui', '-Ithird_party/imgui/backends',
                       '-I' + str(self.output / 'inc'), '-DMONADO_LAUNCHER_RESOURCES=1', *cflags]
         # [XCDE] Monado II publication builds always embed licensed fonts;
-        # omitted local scenic artwork uses the native solid theme fallback.
+        # font-only component fixtures retain the native solid theme fallback.
         if resources.get('features', {}).get('artwork', False):
             self.flags.append('-DMONADO_LAUNCHER_ARTWORK=1')
         self.libs = [*libs, '-lm', '-ldl', '-pthread', '-Wl,--gc-sections',

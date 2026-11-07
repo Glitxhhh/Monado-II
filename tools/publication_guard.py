@@ -15,6 +15,11 @@ import stat
 MAX_FILE = 8 * 1024 * 1024
 MANIFEST = 'publication-manifest.json'
 POLICY = 'publication-policy.json'
+# [XCDE] LINUX-026: one reviewed generated illustration, not a general image grant.
+ARTWORK_PATH = 'Monado_Linux/tools/launcher/assets/gaur_plain.png'
+ARTWORK_SHA256 = '4a863642bba750089667e10727cf72353875a7baf80a0903911e47d897d8fd0a'
+ARTWORK_BYTES = 2621747
+ARTWORK_WIDTH, ARTWORK_HEIGHT = 1536, 1024
 FORBIDDEN_DIRS = {
     'game_files', 'exefs', 'romfs', 'targets', 'extracted', 'generated', 'dump',
     'build', 'cache', 'caches', 'runs', 'accepted', 'save', 'saves', 'backup',
@@ -72,9 +77,11 @@ def path_problem(name):
         return 'generated AppImage staging directory'
     if any(part in FORBIDDEN_DIRS or re.match(r'^save_[0-9]+(?:$|[._])', part) for part in low):
         return 'private/input/generated/runtime directory'
-    if '.git' in low or low[-1] in FORBIDDEN_NAMES:
+    reviewed_artwork = name == ARTWORK_PATH
+    if '.git' in low or (low[-1] in FORBIDDEN_NAMES and not reviewed_artwork):
         return 'private/unsafe file'
-    if PurePosixPath(name).suffix.lower() in FORBIDDEN_EXT or re.search(r'\.so(?:\.\d+)+$', name.lower()):
+    if ((PurePosixPath(name).suffix.lower() in FORBIDDEN_EXT and not reviewed_artwork)
+            or re.search(r'\.so(?:\.\d+)+$', name.lower())):
         return 'binary/input/asset/archive extension'
     return None
 
@@ -82,6 +89,17 @@ def path_problem(name):
 def content_problem(name, data, licensed_media=None):
     if len(data) > MAX_FILE:
         return 'file exceeds reviewed source limit'
+    if name == ARTWORK_PATH:
+        if (licensed_media or {}).get(name) != ARTWORK_SHA256:
+            return 'artwork missing exact reviewed licensed-media identity'
+        if len(data) != ARTWORK_BYTES or digest(data) != ARTWORK_SHA256:
+            return 'artwork differs from the fixed reviewed identity'
+        if (data[:16] != b'\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR'
+                or int.from_bytes(data[16:20], 'big') != ARTWORK_WIDTH
+                or int.from_bytes(data[20:24], 'big') != ARTWORK_HEIGHT
+                or data[24:29] != bytes((8, 2, 0, 0, 0))):
+            return 'invalid reviewed RGB PNG artwork header/dimensions'
+        return None
     if name.lower().endswith(('.ttf', '.otf')):
         expected = (licensed_media or {}).get(name)
         if not isinstance(expected, str) or digest(data) != expected:
@@ -189,9 +207,12 @@ def verify_tree(root):
         return ['invalid publication policy']
     violations, actual_names = [], set()
     for name, identity in licensed.items():
-        if (path_problem(name) or not name.lower().endswith(('.ttf', '.otf'))
+        if (path_problem(name)
+                or not (name.lower().endswith(('.ttf', '.otf')) or name == ARTWORK_PATH)
                 or not isinstance(identity, str) or not HASH.fullmatch(identity)):
             return ['invalid licensed-media policy entry']
+        if name == ARTWORK_PATH and identity != ARTWORK_SHA256:
+            return ['invalid fixed artwork policy identity']
     for name, expected in document['files'].items():
         if (path_problem(name) or name == MANIFEST or not isinstance(expected, dict)
                 or not isinstance(expected.get('sha256'), str) or not HASH.fullmatch(expected['sha256'])

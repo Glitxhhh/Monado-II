@@ -1,18 +1,33 @@
 """Authored scanner fixtures only; no game input, credentials or runtime data."""
 from pathlib import Path
+import contextlib
 import hashlib
 import importlib
 import json
 import os
 import stat
+import struct
 import sys
+import tarfile
 import tempfile
 from types import SimpleNamespace
 import unittest
 from unittest import mock
+import zlib
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
 guard = importlib.import_module('publication_guard')
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def authored_rgb_png():
+    """A real one-pixel PNG created from authored bytes, never game data."""
+    def chunk(kind, data):
+        return (struct.pack('>I', len(data)) + kind + data +
+                struct.pack('>I', zlib.crc32(kind + data)))
+    header = struct.pack('>IIBBBBB', 1, 1, 8, 2, 0, 0, 0)
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', header) +
+            chunk(b'IDAT', zlib.compress(b'\x00\x11\x22\x33')) + chunk(b'IEND', b''))
 
 
 class PublicationGuardTests(unittest.TestCase):
@@ -226,6 +241,116 @@ class PublicationGuardTests(unittest.TestCase):
                 self.policy['licensed_media'] = {name: identity}
                 self.refresh()
                 self.assertTrue(guard.verify_tree(self.root))
+
+    def artwork_fixture(self):
+        data = authored_rgb_png()
+        self.files[guard.ARTWORK_PATH] = data
+        identity = hashlib.sha256(data).hexdigest()
+        self.policy['licensed_media'][guard.ARTWORK_PATH] = identity
+        self.refresh()
+        return data, identity
+
+    @contextlib.contextmanager
+    def authored_artwork_policy(self, data=None, identity=None):
+        # Only this isolated synthetic fixture changes the immutable production
+        # pin. Tests using the actual shipped illustration do not patch the pin.
+        data = data if data is not None else authored_rgb_png()
+        identity = identity or hashlib.sha256(data).hexdigest()
+        with mock.patch.object(guard, 'ARTWORK_SHA256', identity), \
+                mock.patch.object(guard, 'ARTWORK_BYTES', len(data)), \
+                mock.patch.object(guard, 'ARTWORK_WIDTH', 1), \
+                mock.patch.object(guard, 'ARTWORK_HEIGHT', 1):
+            yield
+
+    def test_actual_reviewed_artwork_has_immutable_identity_and_header(self):
+        source = ROOT / guard.ARTWORK_PATH
+        if not (ROOT / 'Monado_Linux').is_dir():
+            self.skipTest('Linux illustration is absent from the Windows-only source kit')
+        self.assertTrue(source.is_file(), 'the reviewed Linux illustration must be shipped')
+        data = source.read_bytes()
+        self.assertEqual(len(data), 2621747)
+        self.assertEqual(hashlib.sha256(data).hexdigest(),
+                         '4a863642bba750089667e10727cf72353875a7baf80a0903911e47d897d8fd0a')
+        self.assertIsNone(guard.path_problem(guard.ARTWORK_PATH))
+        self.assertIsNone(guard.content_problem(guard.ARTWORK_PATH, data,
+                         {guard.ARTWORK_PATH: guard.ARTWORK_SHA256}))
+        self.assertIsNotNone(guard.content_problem(guard.ARTWORK_PATH, data))
+
+    def test_reviewed_artwork_requires_fixed_policy_and_matching_file(self):
+        data, identity = self.artwork_fixture()
+        with self.authored_artwork_policy(data):
+            self.assertEqual(guard.verify_tree(self.root), [])
+            self.policy['licensed_media'].clear()
+            self.refresh()
+            self.assertTrue(guard.verify_tree(self.root))
+            self.policy['licensed_media'][guard.ARTWORK_PATH] = '0' * 64
+            self.refresh()
+            self.assertTrue(guard.verify_tree(self.root))
+            self.policy['licensed_media'][guard.ARTWORK_PATH] = identity
+            self.refresh()
+            self.assertEqual(guard.verify_tree(self.root), [])
+
+    def test_artwork_rehashing_manifest_and_policy_cannot_admit_mutated_content(self):
+        data, identity = self.artwork_fixture()
+        changed = data[:-1] + bytes((data[-1] ^ 1,))
+        with self.authored_artwork_policy(data):
+            self.files[guard.ARTWORK_PATH] = changed
+            self.refresh()  # A new manifest hash cannot override the fixed pin.
+            self.assertTrue(guard.verify_tree(self.root))
+            self.policy['licensed_media'][guard.ARTWORK_PATH] = hashlib.sha256(changed).hexdigest()
+            self.refresh()  # Nor can a newly supplied policy hash override it.
+            self.assertTrue(guard.verify_tree(self.root))
+            self.assertIsNotNone(guard.content_problem(guard.ARTWORK_PATH, changed,
+                                 {guard.ARTWORK_PATH: identity}))
+
+    def test_artwork_header_dimensions_format_and_size_are_independently_checked(self):
+        good = authored_rgb_png()
+        malformed = [good[:16] + struct.pack('>I', 2) + good[20:],
+                     good[:20] + struct.pack('>I', 2) + good[24:],
+                     good[:25] + b'\x06' + good[26:],
+                     b'NOTPNG!!' + good[8:]]
+        for data in malformed:
+            identity = hashlib.sha256(data).hexdigest()
+            with self.subTest(header=data[:29]), self.authored_artwork_policy(data):
+                self.assertIsNotNone(guard.content_problem(guard.ARTWORK_PATH, data,
+                                     {guard.ARTWORK_PATH: identity}))
+        with self.authored_artwork_policy(good):
+            self.assertIsNotNone(guard.content_problem(guard.ARTWORK_PATH, good + b'x',
+                                 {guard.ARTWORK_PATH: hashlib.sha256(good).hexdigest()}))
+
+    def test_artwork_exception_does_not_allow_renamed_or_unreviewed_images(self):
+        names = ('gaur_plain.png', 'Monado_Windows/tools/launcher/assets/gaur_plain.png',
+                 'Monado_Linux/tools/launcher/assets/gaur_plain.PNG',
+                 'Monado_Linux/tools/launcher/assets/other.png',
+                 'Monado_Linux/tools/launcher/assets/../assets/gaur_plain.png',
+                 'game_files/gaur_plain.png', 'icon.png', 'art.svg')
+        data = authored_rgb_png()
+        identity = hashlib.sha256(data).hexdigest()
+        with self.authored_artwork_policy(data):
+            for name in names:
+                with self.subTest(name=name):
+                    self.assertIsNotNone(guard.path_problem(name))
+                    self.policy['licensed_media'] = {name: identity}
+                    self.refresh()
+                    self.assertTrue(guard.verify_tree(self.root))
+
+    def test_artwork_survives_guarded_archive_and_mutated_copy_is_refused(self):
+        # Exercise the actual source/stage/readback policy path with authored
+        # fixture pixels, not just the content helper in isolation.
+        release = importlib.import_module('package_source_release')
+        data, identity = self.artwork_fixture()
+        with self.authored_artwork_policy(data):
+            result = release.package(self.root, 'linux', 'authored-art-test', self.base / 'release')
+            archive = self.base / 'release' / result['archive']
+            with tarfile.open(archive) as packed:
+                name = next(name for name in packed.getnames() if name.endswith('/' + guard.ARTWORK_PATH))
+                self.assertEqual(packed.extractfile(name).read(), data)
+            self.files[guard.ARTWORK_PATH] = data[:-1] + bytes((data[-1] ^ 1,))
+            self.refresh()
+            rejected = self.base / 'rejected-release'
+            with self.assertRaises(release.ReleaseError):
+                release.package(self.root, 'linux', 'rejected-art-test', rejected)
+            self.assertFalse(rejected.exists())
 
     def test_policy_schema_bool_is_rejected(self):
         self.policy['schema'] = True

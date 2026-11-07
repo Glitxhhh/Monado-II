@@ -12,6 +12,11 @@
   upstream revision `136f679`. Its original copyright notice remains intact.
 - **Monado II contributors** — native Linux integration, timing/menu/footstep
   corrections, diagnostics/testing, source publication tooling and ongoing work.
+- **Launcher illustration** — generated with OpenAI image generation under the
+  maintainer's direction. The exact restored asset is documented in
+  [artwork provenance](Monado_Linux/tools/launcher/assets/ARTWORK_PROVENANCE.md).
+  This is not an exclusive copyright claim over generated imagery or an
+  endorsement by OpenAI, Nintendo or Monolith Soft.
 - **Dependency authors** — Dear ImGui, SMAA, AMD FidelityFX, NVIDIA Streamline/NGX,
   DejaVu, SDL, Vulkan tooling, LLVM/Zig, FFmpeg, Opus and other components retain
   their own credit and licenses. See [NOTICE](NOTICE.md).

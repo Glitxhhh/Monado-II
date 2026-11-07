@@ -41,9 +41,11 @@ qualification. See [platform status](docs/PLATFORM_STATUS.md).
 
 The strict public source snapshot uses plain TTF/OTF/TTC font input. It does not
 ship Nintendo fonts or include proprietary-font deobfuscation. The public launcher
-uses a neutral Monado II wordmark/theme; the development artwork and local sword
-icon are excluded pending redistribution review. These public-only changes need
-further gameplay/UI validation.
+uses the Monado II wordmark/theme and the original generated landscape artwork
+on the left. Its exact asset and origin are documented in the
+[artwork provenance](Monado_Linux/tools/launcher/assets/ARTWORK_PROVENANCE.md).
+The separate local sword icon remains excluded. Broader gameplay/UI validation
+remains incomplete.
 
 ## Source releases and local builds
 
@@ -55,10 +57,18 @@ the image; game code, libraries and state remain outside its launcher payload.
 See the [Linux instructions](docs/BUILD_LINUX.md) for prerequisites and an input
 symlink option that leaves existing game files in place.
 
-Initial releases are separate **Linux source/setup `.tar.gz`** and **Windows
+The normal Linux build includes native **DLSS Super Resolution / DLAA** support
+for compatible NVIDIA hardware. It fetches the pinned official NVIDIA SDK locally;
+SDK binaries/models are not included in source kits or the launcher image.
+Use `./Build_Monado_II.sh --without-dlss` to explicitly omit that provider.
+Frame generation remains a separate optional experimental build feature.
+
+Releases provide separate **Linux source/setup `.tar.gz`** and **Windows
 source/setup `.zip`** kits. They are **not precompiled playable game downloads**.
 You build the game locally from your own verified dump. No compiled game binary,
 private vendor SDK binary, game-derived cache or user data is distributed.
+Version 0.1.2 uses the regular release channel; the platform and coverage limits
+above still apply.
 
 - [Linux build instructions](docs/BUILD_LINUX.md)
 - [Windows build instructions](docs/BUILD_WINDOWS.md)

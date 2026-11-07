@@ -194,7 +194,12 @@ def prepare(args):
             '--game-executable', game['argv'][0], '--state-root', str(state)]
     packaged = getattr(args, 'packaged_launcher', None)
     if packaged is not None:
-        argv[0] = str(verified_packaged_launcher(packaged, launcher['binary_sha256']))
+        copied_gui = verified_packaged_launcher(packaged, launcher['binary_sha256'])
+        # [XCDE] LINUX-026: the DLSS namespace overlays private /tmp, hiding an
+        # AppImage's extracted payload. Keep the byte-identical, normally verified
+        # workspace GUI for this mode; all image-copy checks still run above.
+        if not game_receipt.get('dlss_enabled', False):
+            argv[0] = str(copied_gui)
     if args.shot:
         argv += ['--shot', str(state_file(args.shot, state)),
                  '--shot-tab', str(args.shot_tab if args.shot_tab is not None else 0),

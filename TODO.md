@@ -36,12 +36,15 @@ Linux FG presentation. No Windows backport is implied by publication preparation
 - [ ] Validate disposable save/reload/journal recovery and failure durability.
 - [ ] Expand high-FPS follower/damping/cutscene coverage and FP exception semantics.
 - [ ] Test AMD/Intel/other hardware and remaining diagnostics/input behavior.
-- [ ] Validate the public-only plain-font and artwork-free launcher changes in game.
+- [ ] Validate the public plain-font, restored-artwork and DLSS paths across more
+  gameplay scenarios, drivers and hardware.
 
 ## Releases and onboarding
 
 - [x] Add a one-command Linux local build and generated launcher AppImage that
   keeps game data outside its payload and preserves checked workspace state.
+- [x] Restore the exact generated launcher illustration with provenance and
+  default DLSS/DLAA support, with an explicit `--without-dlss` build option.
 - [ ] Validate the workspace launcher AppImage on more distributions/desktops;
   it currently requires the complete local build folder and its absolute receipts.
 
@@ -50,5 +53,6 @@ Linux FG presentation. No Windows backport is implied by publication preparation
   by this fork until those checks are recorded.
 - [ ] Review future authored-launcher/installer binaries and dependency notices
   separately. Never publish a game-derived executable or cache.
-- [ ] Review any proposed artwork/icon rights before adding it to source/releases.
-- [ ] Provide a safe, user-friendly local build flow without bundling game content.
+- [ ] Review further proposed artwork/icons before adding them to source/releases;
+  only the exact illustration recorded in the provenance is currently admitted.
+- [x] Provide a safe, user-friendly local build flow without bundling game content.

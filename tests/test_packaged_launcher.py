@@ -1,7 +1,8 @@
-"""Authored ELF-marker and launcher-plan fixtures; never execute an ELF or game.
+"""Authored ELF-marker/plan fixtures, plus a no-GUI native namespace component.
 
 The target wrapper imports fcntl and implements Linux process/state isolation.
 Windows skips this whole module's test class instead of faking those APIs.
+The native component executes only a private copy of the installed true utility.
 """
 import copy
 import hashlib
@@ -9,7 +10,9 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -265,7 +268,7 @@ class PackagedLauncherTests(unittest.TestCase):
                     launcher.prepare(args)
                 packaged.assert_not_called()
 
-    def test_dlss_namespace_uses_substituted_gui_and_original_state_fields(self):
+    def test_dlss_namespace_uses_verified_workspace_gui_and_original_state_fields(self):
         args = self.plan_fixture(dlss=True)
         args.packaged_launcher = self.packaged
         seen = []
@@ -277,13 +280,15 @@ class PackagedLauncherTests(unittest.TestCase):
         with mock.patch.object(launcher.run_linux, 'plan', side_effect=[self.gui_plan, self.game_plan]), \
                 mock.patch.object(launcher.run_linux, 'private_tmp_alias', return_value=False), \
                 mock.patch.object(launcher.run_linux, 'dlss_namespace', side_effect=namespace) as wrapped, \
+                mock.patch.object(launcher, 'verified_packaged_launcher', wraps=launcher.verified_packaged_launcher) as verified, \
                 mock.patch.object(launcher, 'clean_environment', return_value={'AUTHORED': 'environment'}), \
                 mock.patch.object(launcher.run_linux, 'private_runtime_environment',
                                   return_value={'AUTHORED': 'isolated'}) as runtime:
             result = launcher.prepare(args)
         wrapped.assert_called_once()
         self.assertEqual(seen, [(result['argv'], self.state, False)])
-        self.assertEqual(seen[0][0][0], str(self.packaged))
+        self.assertEqual(seen[0][0][0], str(self.original_gui))
+        verified.assert_called_once_with(self.packaged, self.identity)
         self.assertEqual(result['execution_argv'], ['authored-bwrap-fixture', *result['argv']])
         self.assertEqual(result['state'], str(self.state))
         self.assertEqual(result['input'], str(self.input))
@@ -302,10 +307,24 @@ class PackagedLauncherTests(unittest.TestCase):
                                   return_value={'AUTHORED': 'inherited'}) as runtime:
             result = launcher.prepare(args)
         wrapped.assert_not_called()
-        self.assertEqual(result['argv'][0], str(self.packaged))
+        self.assertEqual(result['argv'][0], str(self.original_gui))
         self.assertEqual(result['namespace'], {'kind': 'inherited-private-dlss', 'private_tmp_alias': True})
         self.assertNotIn('execution_argv', result)
         self.assertFalse(runtime.call_args.kwargs['planned_namespace'])
+        self.assertFalse(self.state.exists())
+
+    def test_dlss_still_rejects_a_changed_packaged_copy_before_namespace(self):
+        args = self.plan_fixture(dlss=True)
+        args.packaged_launcher = self.packaged
+        self.write_payload(self.packaged, self.bytes + b'changed untrusted payload')
+        for inherited in (False, True):
+            with self.subTest(inherited=inherited), \
+                    mock.patch.object(launcher.run_linux, 'plan', side_effect=[self.gui_plan, self.game_plan]), \
+                    mock.patch.object(launcher.run_linux, 'private_tmp_alias', return_value=inherited), \
+                    mock.patch.object(launcher.run_linux, 'dlss_namespace') as namespace:
+                with self.assertRaisesRegex(ValueError, 'differs from the verified native GUI build'):
+                    launcher.prepare(args)
+                namespace.assert_not_called()
         self.assertFalse(self.state.exists())
 
     def test_packaged_command_retains_the_original_inherited_session_lease(self):
@@ -332,6 +351,62 @@ class PackagedLauncherTests(unittest.TestCase):
         child.wait.assert_called_once_with()
         closed.assert_not_called()
         self.assertFalse(self.state.exists())
+
+
+@unittest.skipUnless(SUPPORTED, 'native Linux bwrap/user-namespace component; no Windows emulation')
+class DlssPackagedNamespaceTests(unittest.TestCase):
+    def test_workspace_executable_survives_private_tmp_but_packaged_tmp_copy_does_not(self):
+        if not native_plan.BWRAP.is_file() or not os.access(native_plan.BWRAP, os.X_OK):
+            self.skipTest('installed bwrap is unavailable')
+        # Keep the synthetic source/build outside /tmp so the intentional state
+        # bind does not hide the original executable along with the image mount.
+        parent = (ROOT / 'Monado_Linux').resolve()
+        if parent.is_relative_to(Path('/tmp').resolve()):
+            self.skipTest('native namespace fixture requires its workspace outside /tmp')
+        with tempfile.TemporaryDirectory(prefix='.dlss-namespace-fixture-', dir=parent) as directory, \
+                tempfile.TemporaryDirectory(prefix='monado-packaged-tmp-') as temporary:
+            workspace = Path(directory).resolve() / 'Monado_Linux'
+            original = workspace / 'build/fixture/bin/true'
+            state = workspace / 'play/isolated'
+            packaged = Path(temporary).resolve() / 'usr/bin/monado-launcher'
+            original.parent.mkdir(parents=True)
+            packaged.parent.mkdir(parents=True)
+            utility = Path('/usr/bin/true').resolve(strict=True)
+            shutil.copyfile(utility, original)
+            shutil.copyfile(utility, packaged)
+            original.chmod(0o755)
+            packaged.chmod(0o755)
+            digest = hashlib.sha256(original.read_bytes()).hexdigest()
+            self.assertEqual(launcher.verified_packaged_launcher(packaged, digest), packaged)
+            self.assertNotEqual(original.stat().st_ino, packaged.stat().st_ino)
+            environment = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8'}
+
+            with mock.patch.object(native_plan, 'ROOT', workspace):
+                command, namespace = native_plan.dlss_namespace([str(original)], state, pid_namespace=False)
+                native_plan.prepare_namespace_state({'state': str(state), 'namespace': namespace})
+                result = subprocess.run(command, capture_output=True, text=True,
+                                        timeout=15, env=environment)
+                if result.returncode:
+                    denied = ('operation not permitted', 'permission denied', 'no permissions',
+                              'user namespace', 'not supported', 'cannot create namespace')
+                    if any(message in result.stderr.lower() for message in denied):
+                        self.skipTest('bwrap/user namespaces unavailable in this execution sandbox: ' + result.stderr.strip())
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn('--unshare-net', command)
+                self.assertEqual(command[command.index('--') + 1:], [str(original)])
+                self.assertIn('--bind', command)
+                # Negative control: the byte-identical /tmp payload really is
+                # hidden by the same unchanged state namespace arrangement.
+                hidden_command, _ = native_plan.dlss_namespace([str(packaged)], state, pid_namespace=False)
+                hidden = subprocess.run(hidden_command, capture_output=True, text=True,
+                                        timeout=15, env=environment)
+                self.assertNotEqual(hidden.returncode, 0)
+                self.assertTrue('no such file' in hidden.stderr.lower() or
+                                'not found' in hidden.stderr.lower(), hidden.stderr)
+                self.assertEqual(hashlib.sha256(original.read_bytes()).hexdigest(), digest)
+                self.assertEqual(hashlib.sha256(packaged.read_bytes()).hexdigest(), digest)
+                self.assertEqual(sorted(p.name for p in state.iterdir()),
+                                 ['.X11-unix', 'runtime'] if namespace['x11_socket_bind'] else ['runtime'])
 
 
 if __name__ == '__main__':

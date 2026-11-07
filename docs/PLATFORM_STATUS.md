@@ -12,6 +12,10 @@ Maintainer gameplay reached opening cutscenes, battles and first Shulk control;
 high-FPS menus/repeat and reported footstep chatter were corrected. Optional shader
 preparation was manually accepted. Native DLSS/DLAA had positive manual feedback;
 synthetic output tests do not establish every game's temporal scenario.
+The one-command Linux build includes the native DLSS/DLAA provider by default;
+`--without-dlss` explicitly omits it. Selection still requires compatible NVIDIA
+hardware/drivers and the existing runtime capability checks. Build prerequisites
+are listed in the [Linux guide](BUILD_LINUX.md).
 **Frame generation is experimental, slow/glitchy in reported gameplay and should
 normally remain off.** Linux FSR3 Super Resolution is unavailable.
 
@@ -20,8 +24,11 @@ whole-game playability on NVIDIA RTX, including Future Connected. This fork has
 not independently built or run that Windows source. The Linux improvements listed
 in [TODO](../TODO.md) have not been backported.
 
-The public source snapshot conservatively omits uncertain scenic/icon imagery and
-proprietary-font decoding. It supports plain user/system TTF/OTF/TTC font input;
-public-only source changes require further integrated testing. No game/visible UI
-run is claimed for publication preparation. Full-game, save-recovery, long-session,
-other-GPU and clean-machine coverage remain incomplete.
+The public launcher restores the exact original generated landscape artwork;
+[provenance](../Monado_Linux/tools/launcher/assets/ARTWORK_PROVENANCE.md) records
+its origin and limitations. It is not a game screenshot or extracted asset. The
+separate unreviewed sword icon and proprietary-font decoding remain excluded.
+Plain user/system TTF/OTF/TTC font input is supported. Public-only changes require
+further integrated testing. Full-game, save-recovery, long-session, other-GPU and
+clean-machine coverage remain incomplete. A regular 0.1.2 release does not imply
+Windows game-build or full-game qualification.

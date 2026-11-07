@@ -64,10 +64,10 @@ class LinuxBuildApp(unittest.TestCase):
             make_image(Path(command[command.index('--output') + 1]))
         return 0
 
-    def run_build(self, identity='test-first'):
+    def run_build(self, identity='test-first', *, dlss=True):
         with contextlib.redirect_stdout(io.StringIO()):
             return build.build(self.root, 3, runner=self.runner,
-                               locker=lambda port: contextlib.nullcontext(), identity=identity)
+                               locker=lambda port: contextlib.nullcontext(), identity=identity, dlss=dlss)
 
     def test_plan_without_input_is_read_only_and_executes_nothing(self):
         (self.input / 'exefs/authored-input-fixture.txt').unlink()
@@ -80,6 +80,10 @@ class LinuxBuildApp(unittest.TestCase):
         self.assertFalse(document['launches_game'])
         self.assertFalse(document['launches_gui'])
         self.assertEqual(document['mode'], 'plan')
+        self.assertTrue(document['dlss_enabled'])
+        stages = {stage['name']: stage['argv'] for stage in document['commands']}
+        self.assertIn('native-dlss-dependency', stages)
+        self.assertIn('--dlss', stages['build-game'])
         self.assertEqual(before, inventory(self.root))
         self.assertEqual(sorted(p.name for p in self.port.iterdir()), [])
 
@@ -177,23 +181,116 @@ class LinuxBuildApp(unittest.TestCase):
             with self.assertRaisesRegex(other.BuildError, 'squashfs-tools'):
                 other.preflight()
 
+    def test_dlss_preflight_requires_fixed_namespace_helper_but_optout_does_not(self):
+        other_spec = importlib.util.spec_from_file_location('monado_build_dlss_preflight', ROOT / 'tools/build_linux_app.py')
+        other = importlib.util.module_from_spec(other_spec); other_spec.loader.exec_module(other)
+        with mock.patch.object(other.sys, 'platform', 'linux'), \
+                mock.patch.object(other.platform, 'machine', return_value='x86_64'), \
+                mock.patch.object(other.sys, 'version_info', (3, 14, 4)), \
+                mock.patch.object(other.shutil, 'which', side_effect=lambda name: '/authored/' + name), \
+                mock.patch.object(other, 'BWRAP', self.base / 'missing-bwrap'), \
+                mock.patch.object(other, 'GNU_CXX_RUNTIME', self.base / 'missing-libstdc++.so.6'):
+            with self.assertRaisesRegex(other.BuildError, 'bubblewrap.*without-dlss'):
+                other.preflight()
+            other.preflight(dlss=False)
+
+    def test_dlss_preflight_checks_gnu_runtime_before_any_build(self):
+        other_spec = importlib.util.spec_from_file_location('monado_build_gnu_preflight', ROOT / 'tools/build_linux_app.py')
+        other = importlib.util.module_from_spec(other_spec); other_spec.loader.exec_module(other)
+        helper = self.base / 'authored-bwrap-placeholder'
+        helper.write_text('never executed')
+        with mock.patch.object(other.sys, 'platform', 'linux'), \
+                mock.patch.object(other.platform, 'machine', return_value='x86_64'), \
+                mock.patch.object(other.sys, 'version_info', (3, 14, 4)), \
+                mock.patch.object(other.shutil, 'which', side_effect=lambda name: '/authored/' + name), \
+                mock.patch.object(other.os, 'access', return_value=True), \
+                mock.patch.object(other, 'BWRAP', helper), \
+                mock.patch.object(other, 'GNU_CXX_RUNTIME', self.base / 'missing-libstdc++.so.6'):
+            with self.assertRaisesRegex(other.BuildError, 'GNU C\\+\\+ runtime'):
+                other.preflight()
+
+    def test_dlss_preflight_requires_nm_and_optout_does_not(self):
+        other_spec = importlib.util.spec_from_file_location('monado_build_nm_preflight', ROOT / 'tools/build_linux_app.py')
+        other = importlib.util.module_from_spec(other_spec); other_spec.loader.exec_module(other)
+        with mock.patch.object(other.sys, 'platform', 'linux'), \
+                mock.patch.object(other.platform, 'machine', return_value='x86_64'), \
+                mock.patch.object(other.sys, 'version_info', (3, 14, 4)), \
+                mock.patch.object(other.shutil, 'which', side_effect=lambda name: None if name == 'nm' else '/authored/' + name):
+            with self.assertRaisesRegex(other.BuildError, 'Missing host build tools: nm'):
+                other.preflight()
+            other.preflight(dlss=False)
+
+    def test_dlss_preflight_refuses_unreadable_gnu_runtime(self):
+        other_spec = importlib.util.spec_from_file_location('monado_build_unreadable_gnu_preflight', ROOT / 'tools/build_linux_app.py')
+        other = importlib.util.module_from_spec(other_spec); other_spec.loader.exec_module(other)
+        helper = self.base / 'authored-bwrap-placeholder'
+        runtime = self.base / 'authored-libstdc++-placeholder'
+        helper.write_text('never executed'); runtime.write_text('never loaded')
+        with mock.patch.object(other.sys, 'platform', 'linux'), \
+                mock.patch.object(other.platform, 'machine', return_value='x86_64'), \
+                mock.patch.object(other.sys, 'version_info', (3, 14, 4)), \
+                mock.patch.object(other.shutil, 'which', side_effect=lambda name: '/authored/' + name), \
+                mock.patch.object(other.os, 'access', side_effect=lambda path, mode: path == helper and mode == os.X_OK), \
+                mock.patch.object(other, 'BWRAP', helper), \
+                mock.patch.object(other, 'GNU_CXX_RUNTIME', runtime):
+            with self.assertRaisesRegex(other.BuildError, 'GNU C\\+\\+ runtime'):
+                other.preflight()
+
     def test_complete_pipeline_uses_fresh_paths_and_only_headless_checks(self):
         before = inventory(self.input)
         receipt = self.run_build()
         self.assertEqual(receipt['status'], 'passed')
-        self.assertEqual(len(self.commands), 10)
+        self.assertEqual(len(self.commands), len(receipt['commands']))
+        stages = {entry['name']: command for entry, (command, _, _) in zip(receipt['commands'], self.commands)}
         self.assertTrue('check_dump.py' in self.commands[0][0][-2])
         self.assertIn('--install', self.commands[1][0])
         self.assertIn('--check', self.commands[2][0])
-        self.assertIn('--simd', self.commands[4][0])
-        self.assertIn('--generated', self.commands[5][0])
-        self.assertIn('--dry-run', self.commands[7][0])
+        self.assertIn('--simd', stages['generate-game'])
+        self.assertIn('--generated', stages['build-game'])
+        self.assertIn('--dlss', stages['build-game'])
+        self.assertTrue(stages['native-dlss-dependency'][-1].endswith('/scripts/setup_linux_dlss.py') or
+                        stages['native-dlss-dependency'][-1].endswith('\\scripts\\setup_linux_dlss.py'))
+        names = [entry['name'] for entry in receipt['commands']]
+        self.assertLess(names.index('check-input'), names.index('native-dlss-dependency'))
+        self.assertLess(names.index('native-dlss-dependency'), names.index('generate-game'))
+        self.assertLess(names.index('native-dlss-dependency'), names.index('build-game'))
+        self.assertIn('--dry-run', stages['check-launcher'])
         self.assertEqual(self.commands[-1][0], [str(self.root / build.IMAGE), '--appimage-extract-and-run', '--dry-run'])
         self.assertEqual(before, inventory(self.input))
         self.assertFalse((self.port / 'play').exists())
         self.assertTrue((self.root / build.IMAGE).is_file())
         self.assertEqual(build.image_pair(self.root / build.IMAGE)['sha256'], receipt['appimage_sha256'])
-        self.assertTrue(all('--dlss' not in c and '--framegen' not in c for c, _, _ in self.commands))
+        self.assertTrue(receipt['dlss_enabled'])
+        self.assertTrue(all('--framegen' not in c for c, _, _ in self.commands))
+        self.assertEqual(Path(receipt['commands'][-1]['log']).name,
+                         f'{len(receipt["commands"]):02d}-check-appimage.log')
+
+    def test_without_dlss_explicitly_omits_sdk_and_build_flag(self):
+        receipt = self.run_build(dlss=False)
+        stages = {entry['name']: command for entry, (command, _, _) in zip(receipt['commands'], self.commands)}
+        self.assertFalse(receipt['dlss_enabled'])
+        self.assertNotIn('native-dlss-dependency', stages)
+        self.assertNotIn('--dlss', stages['build-game'])
+        self.assertTrue(all('--framegen' not in c for c, _, _ in self.commands))
+        self.assertEqual(Path(receipt['commands'][-1]['log']).name,
+                         f'{len(receipt["commands"]):02d}-check-appimage.log')
+
+    def test_without_dlss_plan_is_read_only_and_has_no_sdk_stage(self):
+        before = inventory(self.root)
+        with mock.patch.object(build, 'ROOT', self.root), mock.patch.object(build.subprocess, 'Popen', side_effect=AssertionError('executed')):
+            with contextlib.redirect_stdout(io.StringIO()) as output:
+                self.assertEqual(build.main(['--plan', '--without-dlss']), 0)
+        plan = json.loads(output.getvalue())
+        stages = {entry['name']: entry['argv'] for entry in plan['commands']}
+        self.assertFalse(plan['dlss_enabled'])
+        self.assertNotIn('native-dlss-dependency', stages)
+        self.assertNotIn('--dlss', stages['build-game'])
+        self.assertEqual(inventory(self.root), before)
+
+    def test_without_dlss_cli_is_passed_to_the_builder(self):
+        with mock.patch.object(build, 'build') as run:
+            self.assertEqual(build.main(['--without-dlss', '--jobs', '2']), 0)
+        run.assert_called_once_with(jobs=2, dlss=False)
 
     def test_second_build_is_fresh_and_preserves_verified_previous_pair(self):
         self.run_build()
@@ -242,8 +339,28 @@ class LinuxBuildApp(unittest.TestCase):
         with self.assertRaisesRegex(build.BuildError, 'build-game failed'):
             self.run_build()
         self.assertEqual(path.read_bytes(), before)
-        self.assertEqual(len(self.commands), 6)
+        receipt = json.loads((self.port / 'runs/local-build/test-first/receipt.json').read_text())
+        receipt_names = [entry['name'] for entry in receipt['commands']]
+        self.assertEqual(receipt_names[-1], 'build-game')
+        self.assertIn('native-dlss-dependency', receipt_names)
         self.assertFalse(any('package-appimage' in str(log) for _, _, log in self.commands))
+
+    def test_failed_dlss_setup_stops_before_generation_and_preserves_previous_image(self):
+        path = self.root / build.IMAGE
+        make_image(path, b'previous authored launcher')
+        before = path.read_bytes()
+        input_before = inventory(self.input)
+        self.fail_stage = 'scripts/setup_linux_dlss.py'
+        with self.assertRaisesRegex(build.BuildError, 'native-dlss-dependency failed'):
+            self.run_build()
+        receipt = json.loads((self.port / 'runs/local-build/test-first/receipt.json').read_text())
+        names = [entry['name'] for entry in receipt['commands']]
+        self.assertEqual(receipt['status'], 'failed')
+        self.assertEqual(names[-1], 'native-dlss-dependency')
+        self.assertNotIn('generate-game', names)
+        self.assertNotIn('build-game', names)
+        self.assertEqual(path.read_bytes(), before)
+        self.assertEqual(inventory(self.input), input_before)
 
     def test_final_appimage_failure_restores_previous_image_and_receipt(self):
         path = self.root / build.IMAGE

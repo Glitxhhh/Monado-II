@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.2 — November 7, 2026
+
+- Restore the original generated landscape artwork to the launcher's left panel,
+  with the exact asset recorded in
+  [provenance](Monado_Linux/tools/launcher/assets/ARTWORK_PROVENANCE.md). No game
+  screenshot or extracted game input was used; the separate local sword icon
+  remains excluded.
+- Include native **DLSS Super Resolution / DLAA** in the one-command Linux build
+  by default. Fetch the pinned official NVIDIA SDK locally and pass the existing
+  native-provider build option. `--without-dlss` explicitly omits it; setup
+  failures stop the build instead of silently removing the feature.
+- Check DLSS prerequisites up front: bubblewrap at `/usr/bin/bwrap`, `nm`, and
+  the readable GNU C++ runtime. Preserve runtime GPU capability, state isolation,
+  namespace and network checks.
+- Keep the verified workspace GUI accessible when the AppImage launcher enters
+  the DLSS private `/tmp` namespace. Retain embedded-GUI identity verification and
+  the original build/input/state checks.
+- Publish regular Linux and Windows source/setup releases. Players still provide
+  their own legally dumped input and generate game code locally; no game binary
+  or private SDK is shipped. Windows game-build and full-game coverage remain
+  incomplete. Frame generation remains separate, optional and experimental.
+
 ## 0.1.1-source-preview — November 7, 2026
 
 - Repair fresh source builds on hosts without `ensurepip`: bootstrap pip from its
