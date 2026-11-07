@@ -12,8 +12,8 @@
       "bytes": 1582
     },
     ".github/workflows/source-release.yml": {
-      "sha256": "cfdfd602808b8d6c00d35f05364ce22abbd377e92446daa4e03b3abb496eb44b",
-      "bytes": 2555
+      "sha256": "2a6b00aa6a337e6359370b645f6f2d97e099879b7802f4fc23637ec062c0d453",
+      "bytes": 2645
     },
     ".gitignore": {
       "sha256": "83c05b177ec8c80cdbbb64d7a35589645c3b32ccb64a8b025b56aed61b52b8a2",
@@ -3256,8 +3256,8 @@
       "bytes": 1620
     },
     "docs/RELEASING.md": {
-      "sha256": "d2bd464eaf393f5d02aac6a4054a37bd16818b9d3b50e0d13064025d7106c0f1",
-      "bytes": 2060
+      "sha256": "8748e541a032721654373087860f5236319f56f935105fe7d1b3a510204a6891",
+      "bytes": 2348
     },
     "publication-policy.json": {
       "sha256": "b9ea68fdff30a3cb7f0a8cf62983053f116f441818b74b19741d8d06057fea60",

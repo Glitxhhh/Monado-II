@@ -9,9 +9,12 @@ caches, seeds, keys, firmware, saves, mods or private SDK binaries are distribut
 From a reviewed clean public checkout:
 
 ```sh
-python -B tools/publication_guard.py .
-python -B tools/package_source_release.py --source . --platform linux --version 0.1.0-source-preview --output ../monado-ii-linux-release
-python -B tools/package_source_release.py --source . --platform windows --version 0.1.0-source-preview --output ../monado-ii-windows-release
+# The strict packager requires canonical paths, without '..' or symlink aliases.
+MONADO_RELEASE_SOURCE="$(pwd -P)"
+MONADO_RELEASE_PARENT="$(dirname "$MONADO_RELEASE_SOURCE")"
+python -B tools/publication_guard.py "$MONADO_RELEASE_SOURCE"
+python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform linux --version 0.1.0-source-preview --output "$MONADO_RELEASE_PARENT/monado-ii-linux-release"
+python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform windows --version 0.1.0-source-preview --output "$MONADO_RELEASE_PARENT/monado-ii-windows-release"
 ```
 
 Outputs must be fresh. The packager verifies the exact publication manifest and

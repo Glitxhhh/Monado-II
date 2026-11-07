@@ -55,17 +55,17 @@ jobs:
       - name: Package and read back the source-only archive
         run: >-
           python -B tools/package_source_release.py
-          --source .
+          --source "$GITHUB_WORKSPACE"
           --platform "$MONADO_RELEASE_PLATFORM"
           --version "$MONADO_RELEASE_VERSION"
-          --output "../release-${MONADO_RELEASE_PLATFORM}"
+          --output "$RUNNER_TEMP/monado-ii-release-${MONADO_RELEASE_PLATFORM}"
       - name: Upload only the reviewed source archive and checksum
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: monado-ii-${{ matrix.platform }}-source
           path: |
-            ../release-${{ matrix.platform }}/monado-ii-*-${{ matrix.platform }}-source.${{ matrix.archive_extension }}
-            ../release-${{ matrix.platform }}/SHA256SUMS
+            ${{ runner.temp }}/monado-ii-release-${{ matrix.platform }}/monado-ii-*-${{ matrix.platform }}-source.${{ matrix.archive_extension }}
+            ${{ runner.temp }}/monado-ii-release-${{ matrix.platform }}/SHA256SUMS
           if-no-files-found: error
           compression-level: 0
           include-hidden-files: false
