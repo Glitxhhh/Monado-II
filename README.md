@@ -6,6 +6,8 @@ contributors**, built on **Peiikai's LASRecomp**. The name acknowledges both the
 original project and the game. This fork adds native Linux work and continues
 maintenance; it is independent of Nintendo and Monolith Soft.
 
+<img width="1273" height="853" alt="image" src="https://github.com/user-attachments/assets/8634138d-0a59-411a-9a59-3b374ea65385" />
+
 ## You must supply your own legally dumped game
 
 **No game files are included in this repository or its releases.** To play, you
