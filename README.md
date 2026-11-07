@@ -52,6 +52,7 @@ private vendor SDK binary, game-derived cache or user data is distributed.
 - [Linux build instructions](docs/BUILD_LINUX.md)
 - [Windows build instructions](docs/BUILD_WINDOWS.md)
 - [Release contents and verification](docs/RELEASING.md)
+- [Changelog and differences from upstream](CHANGELOG.md)
 
 The source tree keeps `Monado_Linux/` and `Monado_Windows/` separate. Use one
 read-only game-input location, with independent per-port generated files, builds,

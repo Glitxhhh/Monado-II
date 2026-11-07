@@ -19,7 +19,7 @@ class PublicationGuardTests(unittest.TestCase):
     def setUp(self):
         self.temporary = tempfile.TemporaryDirectory(prefix='monado-publication-guard-')
         self.addCleanup(self.temporary.cleanup)
-        self.base = Path(self.temporary.name)
+        self.base = Path(self.temporary.name).resolve()
         self.root = self.base / 'source'
         self.root.mkdir()
         self.files = {
@@ -359,8 +359,10 @@ class PublicationGuardTests(unittest.TestCase):
         original_open = guard.os.open
 
         def replaced(path, flags):
-            descriptor = original_open(path, flags)
-            target.rename(self.root / 'previous-readme')
+            # Rename before opening: Windows CRT descriptors can deny rename.
+            previous = self.root / 'previous-readme'
+            target.rename(previous)
+            descriptor = original_open(previous, flags)
             target.write_text('authored replacement')
             return descriptor
 

@@ -46,7 +46,7 @@ class LinuxPublicSetup(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix='monado-public-setup-')
         self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
+        self.root = Path(temporary.name).resolve()
         self.port = self.root / 'port with spaces'
         self.port.mkdir()
         shutil.copyfile(LINUX / 'requirements-linux.lock', self.port / 'requirements-linux.lock')
@@ -219,7 +219,7 @@ class OptionalPublicArtwork(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix='monado-public-art-')
         self.addCleanup(temporary.cleanup)
-        self.root = Path(temporary.name)
+        self.root = Path(temporary.name).resolve()
         self.assets = self.root / 'assets'
         (self.assets / 'fonts').mkdir(parents=True)
         for name, symbol in resource.GROUPS['launcher_fonts.inc']:
