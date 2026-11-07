@@ -277,6 +277,73 @@ class PublicationGuardTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 guard.read_regular(target)
 
+    def reader_metadata(self, **changes):
+        actual = (self.root / 'README.md').lstat()
+        fields = {name: getattr(actual, name) for name in
+                  ('st_dev', 'st_ino', 'st_mode', 'st_size', 'st_mtime_ns', 'st_ctime_ns')}
+        fields['st_birthtime_ns'] = 1234000000
+        return SimpleNamespace(**{**fields, **changes})
+
+    def test_regular_reader_allows_stable_windows_stat_fstat_api_differences(self):
+        target = self.root / 'README.md'
+        expected = target.read_bytes()
+        pathname = self.reader_metadata(st_mode=stat.S_IFREG | 0o755, st_ctime_ns=1234000000)
+        descriptor = self.reader_metadata(st_mode=stat.S_IFREG | 0o644, st_ctime_ns=1235000000)
+        with mock.patch.object(Path, 'lstat', side_effect=(pathname, pathname)), \
+                mock.patch.object(guard.os, 'fstat', side_effect=(descriptor, descriptor)):
+            self.assertEqual(guard.read_regular(target), expected)
+
+    def test_regular_reader_rejects_cross_api_object_and_time_mismatch(self):
+        target = self.root / 'README.md'
+        pathname = self.reader_metadata()
+        for field, value in (('st_dev', pathname.st_dev + 1),
+                             ('st_ino', pathname.st_ino + 1),
+                             ('st_mode', stat.S_IFLNK | 0o644),
+                             ('st_size', pathname.st_size + 1),
+                             ('st_mtime_ns', pathname.st_mtime_ns + 1),
+                             ('st_birthtime_ns', pathname.st_birthtime_ns + 1)):
+            with self.subTest(field=field), \
+                    mock.patch.object(Path, 'lstat', return_value=pathname), \
+                    mock.patch.object(guard.os, 'fstat', return_value=self.reader_metadata(**{field: value})):
+                with self.assertRaises(ValueError):
+                    guard.read_regular(target)
+
+    def test_regular_reader_rejects_same_api_metadata_mutation(self):
+        target = self.root / 'README.md'
+        pathname = self.reader_metadata(st_mode=stat.S_IFREG | 0o755, st_ctime_ns=1234000000)
+        descriptor = self.reader_metadata(st_mode=stat.S_IFREG | 0o644, st_ctime_ns=1235000000)
+        for api in ('path', 'descriptor'):
+            original = pathname if api == 'path' else descriptor
+            for field in ('st_dev', 'st_ino', 'st_mode', 'st_size', 'st_mtime_ns',
+                          'st_ctime_ns', 'st_birthtime_ns'):
+                changed = SimpleNamespace(**{**vars(original), field: getattr(original, field) + 1})
+                path_values = (pathname, changed) if api == 'path' else (pathname, pathname)
+                fd_values = (descriptor, changed) if api == 'descriptor' else (descriptor, descriptor)
+                with self.subTest(api=api, field=field), \
+                        mock.patch.object(Path, 'lstat', side_effect=path_values), \
+                        mock.patch.object(guard.os, 'fstat', side_effect=fd_values):
+                    with self.assertRaises(ValueError):
+                        guard.read_regular(target)
+
+    def test_regular_reader_requests_binary_mode_and_preserves_control_bytes(self):
+        target = self.root / 'README.md'
+        expected = b'authored\r\nbyte fixture\x1a\x00\xff\r\n'
+        target.write_bytes(expected)
+        original_open = guard.os.open
+        native_binary = getattr(guard.os, 'O_BINARY', 0)
+        marker = 1 << 29
+        seen = []
+
+        def opened(path, flags):
+            seen.append(flags)
+            return original_open(path, (flags & ~marker) | native_binary)
+
+        with mock.patch.object(guard.os, 'O_BINARY', marker, create=True), \
+                mock.patch.object(guard.os, 'open', side_effect=opened):
+            self.assertEqual(guard.read_regular(target), expected)
+        self.assertEqual(len(seen), 1)
+        self.assertTrue(seen[0] & marker)
+
     def test_regular_reader_detects_fstat_change(self):
         target = self.root / 'README.md'
         actual = target.stat()

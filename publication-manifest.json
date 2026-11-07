@@ -3268,8 +3268,8 @@
       "bytes": 11354
     },
     "tests/test_publication_guard.py": {
-      "sha256": "a69cc31dc343ff2a2dc35c354735c31c0ef0ef0c00535e39023f04295c6d36ef",
-      "bytes": 15065
+      "sha256": "3eec4c58959edd2e83655182fe70f2b7a76d17f9e2062566c265be3d1abd797d",
+      "bytes": 18900
     },
     "tests/test_source_releases.py": {
       "sha256": "ce71e9a58f7157fa4c8d3f7f5d19db4cc553fdbf1242f648cef615d9c5c69d48",
@@ -3280,8 +3280,8 @@
       "bytes": 17264
     },
     "tools/publication_guard.py": {
-      "sha256": "a7e06ed95fd919ba3bbd0007f53093097e0e776ce81a48c050a9fcd816ec8315",
-      "bytes": 12798
+      "sha256": "23ecd194aee099003d1dcf90888bf88c92d41048c23cf97c104aea94dce9d3dc",
+      "bytes": 13707
     },
     "tools/setup_linux_tools.py": {
       "sha256": "eecdf6b21f00fe0c3f7ccdb7264eabba9cdb83e45e44e55335289065c0e510ee",

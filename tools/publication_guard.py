@@ -114,17 +114,34 @@ def read_regular(path):
     info = path.lstat()
     if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_FILE:
         raise ValueError('nonordinary or oversized source file')
-    fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_NONBLOCK', 0))
+    fd = os.open(path, os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) |
+                 getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_BINARY', 0))
     with os.fdopen(fd, 'rb') as stream:
         actual = os.fstat(stream.fileno())
-        def identity(value):
+        def snapshot(value):
             return (value.st_dev, value.st_ino, value.st_mode, value.st_size,
-                    value.st_mtime_ns, value.st_ctime_ns)
-        if not stat.S_ISREG(actual.st_mode) or identity(actual) != identity(info):
+                    value.st_mtime_ns, value.st_ctime_ns,
+                    getattr(value, 'st_birthtime_ns', None))
+
+        def same_object(left, right):
+            # Windows pathname stat and descriptor fstat can report different
+            # executable bits and ctime meanings (CPython issue157671). Compare
+            # common identity here; keep full snapshots within each API below.
+            def identity(value):
+                return (value.st_dev, value.st_ino, stat.S_IFMT(value.st_mode),
+                        value.st_size, value.st_mtime_ns)
+            left_birth = getattr(left, 'st_birthtime_ns', None)
+            right_birth = getattr(right, 'st_birthtime_ns', None)
+            return (identity(left) == identity(right) and
+                    (left_birth is None or right_birth is None or left_birth == right_birth))
+
+        if not stat.S_ISREG(actual.st_mode) or not same_object(actual, info):
             raise ValueError('source file identity changed')
         data = stream.read(MAX_FILE + 1)
         after = os.fstat(stream.fileno())
-    if (identity(after) != identity(actual) or identity(path.lstat()) != identity(after)
+    final_path = path.lstat()
+    if (snapshot(after) != snapshot(actual) or snapshot(final_path) != snapshot(info)
+            or not same_object(final_path, after)
             or len(data) != actual.st_size or len(data) > MAX_FILE or path.resolve() != path):
         raise ValueError('source file changed while reading')
     return data
