@@ -69,7 +69,7 @@ def validate_image(appdir):
         if stat.S_ISDIR(info.st_mode):
             directories.add(str(path.relative_to(appdir)))
             continue
-        name = str(path.relative_to(appdir))
+        name = path.relative_to(appdir).as_posix()
         actual.add(name)
         data = regular(path)
         if name == manifest_name:
