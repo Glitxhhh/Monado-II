@@ -1,0 +1,24 @@
+# kind<TAB>name (or prefix*)<TAB>class<TAB>note. Classes: real | simplified | stub. Read by tools/hle_audit.py.
+# Only entries that were checked belong here; everything else is reported as "unreviewed".
+svc	0x01	real	SetHeapSize: a heap region capped at HEAP_MAX (3.25 GB)
+svc	0x04	simplified	MapMemory copies instead of remapping (on Horizon the source becomes unmapped)
+svc	0x05	simplified	UnmapMemory copies back
+svc	0x0b	real	SleepThread in 50 ms slices so a reboot can interrupt it
+svc	0x18	real	WaitSynchronization on the emulated kernel's events / threads / sessions
+svc	0x1a	real	ArbitrateLock with Horizon semantics (owner | waiters bit)
+svc	0x1b	real	ArbitrateUnlock: hands ownership to the highest-priority waiter (T067)
+svc	0x1c	real	WaitProcessWideKey; a timeout doesn't take the mutex back (T031, T067); key set before the release
+svc	0x1d	real	SignalProcessWideKey
+svc	0x1e	simplified	GetSystemTick: the host clock scaled to 19.2 MHz; virtual in deterministic mode
+svc	0x29	simplified	GetInfo: fixed memory-map values and a random seed
+svc	0x34	real	WaitForAddress (compare-and-swap decrement)
+svc	0x35	real	SignalToAddress (compare-and-swap increment / modify)
+service	audout:u	real	PCM16 through SDL3; WAV dump validated against a reference recording (T059)
+service	audren:u	simplified	CPU mixer inherited from LASRecomp; the game (Wwise) only queries and closes it
+service	hwopus	real	decoder with libopus; the game uses DecodeInterleaved (cmd 8)
+service	time:*	simplified	the host clock and time zone; fixed in deterministic mode
+service	acc:u0	stub	a dummy user profile
+service	pctl*	stub	parental controls always off
+service	aoc:u	stub	no additional content
+service	sm:	real	GetServiceHandle over the service registry; unknown ones go to a registered trap service
+func	nv::*	stub	graphics driver initialisation: the backend is NVN on Vulkan

@@ -1,0 +1,260 @@
+# ma0101 event 0101e1 (EVT_sev 238, 0 s)
+story 14
+warp 1 1 -188 -1 -15 0
+event 0101e1 0
+# ma0101 event 0101e2 (EVT_sev 239, 0 s)
+story 14
+warp 1 1 -188 -1 -15 0
+event 0101e2 0
+# ma0101 event 0101e3 (EVT_sev 240, 0 s)
+story 14
+warp 1 1 -188 -1 -15 0
+event 0101e3 0
+# ma0101 event 0101e4 (EVT_sev 241, 0 s)
+story 14
+warp 1 1 -188 -1 -15 0
+event 0101e4 0
+# ma0101 event 0101e5 (EVT_sev 242, 0 s)
+story 14
+warp 1 1 -188 -1 -15 0
+event 0101e5 0
+# ma0101 event 0101e6 (EVT_sev 243, 0 s)
+story 14
+warp 1 1 -188 -1 -15 0
+event 0101e6 0
+# ma0101 event 0101e7 (EVT_sev 244, 0 s)
+story 14
+warp 1 1 -188 -1 -15 0
+event 0101e7 0
+# ma0201 event 0201e1 (EVT_sev 245, 0 s)
+story 44
+warp 2 1 38 -1 -1 0
+event 0201e1 0
+# ma0201 event 0201e2 (EVT_sev 246, 0 s)
+story 44
+warp 2 1 38 -1 -1 0
+event 0201e2 0
+# ma0201 event 0201e3 (EVT_sev 247, 0 s)
+story 44
+warp 2 1 38 -1 -1 0
+event 0201e3 0
+# ma0301 event 0301e1 (EVT_sev 248, 0 s)
+story 60
+warp 3 1 -37 -2 22 0
+event 0301e1 0
+# ma0301 event 0301e2 (EVT_sev 249, 0 s)
+story 60
+warp 3 1 -37 -2 22 0
+event 0301e2 0
+# ma0301 event 0301e3 (EVT_sev 250, 0 s)
+story 60
+warp 3 1 -37 -2 22 0
+event 0301e3 0
+# ma0301 event 0301e4 (EVT_sev 251, 0 s)
+story 60
+warp 3 1 -37 -2 22 0
+event 0301e4 0
+# ma0301 event 0301e5 (EVT_sev 252, 0 s)
+story 60
+warp 3 1 -37 -2 22 0
+event 0301e5 0
+# ma0401 event 0401e1 (EVT_sev 253, 0 s)
+story 380
+warp 4 1 -330 -1 42 0
+event 0401e1 0
+# ma0401 event 0401e2 (EVT_sev 254, 0 s)
+story 85
+warp 4 1 -330 -1 42 0
+event 0401e2 0
+# ma0401 event 0401e3 (EVT_sev 255, 0 s)
+story 380
+warp 4 1 -330 -1 42 0
+event 0401e3 0
+# ma0401 event 0401e4 (EVT_sev 256, 0 s)
+story 85
+warp 4 1 -330 -1 42 0
+event 0401e4 0
+# ma0401 event 0401e5 (EVT_sev 257, 0 s)
+story 85
+warp 4 1 -330 -1 42 0
+event 0401e5 0
+# ma0402 event 0402e1 (EVT_sev 258, 0 s)
+story 86
+warp 4 2 238 0 -233 0
+event 0402e1 0
+# ma0402 event 0402e2 (EVT_sev 259, 0 s)
+story 86
+warp 4 2 238 0 -233 0
+event 0402e2 0
+# ma0501 event 0501e1 (EVT_sev 260, 0 s)
+story 105
+warp 5 1 -24 0 -121 0
+event 0501e1 0
+# ma0501 event 0501e2 (EVT_sev 261, 0 s)
+story 129
+warp 5 1 -24 0 -121 0
+event 0501e2 0
+# ma0501 event 0501e3 (EVT_sev 262, 0 s)
+story 105
+warp 5 1 -24 0 -121 0
+event 0501e3 0
+# ma0601 event 0601e1 (EVT_sev 263, 0 s)
+story 129
+warp 6 1 -805 27 -411 0
+event 0601e1 0
+# ma0601 event 0601e2 (EVT_sev 264, 0 s)
+story 129
+warp 6 1 -805 27 -411 0
+event 0601e2 0
+# ma0601 event 0601e3 (EVT_sev 265, 0 s)
+story 129
+warp 6 1 -805 27 -411 0
+event 0601e3 0
+# ma0701 event 0701e1 (EVT_sev 266, 0 s)
+story 133
+warp 7 1 -1 -14 -130 0
+event 0701e1 0
+# ma0701 event 0701e2 (EVT_sev 267, 0 s)
+story 133
+warp 7 1 -1 -14 -130 0
+event 0701e2 0
+# ma0701 event 0701e3 (EVT_sev 268, 0 s)
+story 133
+warp 7 1 -1 -14 -130 0
+event 0701e3 0
+# ma0701 event 0701e4 (EVT_sev 269, 0 s)
+story 133
+warp 7 1 -1 -14 -130 0
+event 0701e4 0
+# ma0701 event 0701e5 (EVT_sev 270, 0 s)
+story 133
+warp 7 1 -1 -14 -130 0
+event 0701e5 0
+# ma0901 event 0901e1 (EVT_sev 271, 0 s)
+story 177
+warp 9 1 -17 -3 0 0
+event 0901e1 0
+# ma0901 event 0901e2 (EVT_sev 272, 0 s)
+story 177
+warp 9 1 -17 -3 0 0
+event 0901e2 0
+# ma1001 event 1001e1 (EVT_sev 273, 0 s)
+story 150
+warp 10 1 -14 1 -1585 0
+event 1001e1 0
+# ma1001 event 1001e2 (EVT_sev 274, 0 s)
+story 150
+warp 10 1 -14 1 -1585 0
+event 1001e2 0
+# ma1001 event 1001e3 (EVT_sev 275, 0 s)
+story 150
+warp 10 1 -14 1 -1585 0
+event 1001e3 0
+# ma1101 event 1101e1 (EVT_sev 276, 0 s)
+story 160
+warp 11 1 -251 0 0 0
+event 1101e1 0
+# ma1101 event 1101e2 (EVT_sev 277, 0 s)
+story 160
+warp 11 1 -251 0 0 0
+event 1101e2 0
+# ma1101 event 1101e3 (EVT_sev 278, 0 s)
+story 160
+warp 11 1 -251 0 0 0
+event 1101e3 0
+# ma1101 event 1101e4 (EVT_sev 279, 0 s)
+story 160
+warp 11 1 -251 0 0 0
+event 1101e4 0
+# ma1101 event 1101e5 (EVT_sev 280, 0 s)
+story 160
+warp 11 1 -251 0 0 0
+event 1101e5 0
+# ma1202 event 1202e1 (EVT_sev 281, 0 s)
+story 388
+warp 12 2 118 -27 0 0
+event 1202e1 0
+# ma1202 event 1202e2 (EVT_sev 282, 0 s)
+story 388
+warp 12 2 118 -27 0 0
+event 1202e2 0
+# ma1202 event 1202e3 (EVT_sev 283, 0 s)
+story 388
+warp 12 2 118 -27 0 0
+event 1202e3 0
+# ma1301 event 1301e1 (EVT_sev 284, 0 s)
+story 232
+warp 13 1 46 2 55 0
+event 1301e1 0
+# ma1301 event 1301e2 (EVT_sev 285, 0 s)
+story 232
+warp 13 1 46 2 55 0
+event 1301e2 0
+# ma1301 event 1301e3 (EVT_sev 286, 0 s)
+story 232
+warp 13 1 46 2 55 0
+event 1301e3 0
+# ma0401 event 1401e1 (EVT_sev 287, 0 s)
+story 85
+warp 4 1 -330 -1 42 0
+event 1401e1 0
+# ma1001 event 1401e2 (EVT_sev 288, 0 s)
+story 150
+warp 10 1 -14 1 -1585 0
+event 1401e2 0
+# ma1601 event 1401e3 (EVT_sev 289, 0 s)
+story 0
+warp 16 1 -112 -2 -41 0
+event 1401e3 0
+# ma0401 event 1501e1 (EVT_sev 290, 0 s)
+story 85
+warp 4 1 -330 -1 42 0
+event 1501e1 0
+# ma0101 event 1501e2 (EVT_sev 291, 0 s)
+story 150
+warp 1 1 -188 -1 -15 0
+event 1501e2 0
+# ma1601 event 1601e1 (EVT_sev 292, 0 s)
+story 292
+warp 16 1 -112 -2 -41 0
+event 1601e1 0
+# ma1601 event 1601e2 (EVT_sev 293, 0 s)
+story 292
+warp 16 1 -112 -2 -41 0
+event 1601e2 0
+# ma1601 event 1601e3 (EVT_sev 294, 0 s)
+story 292
+warp 16 1 -112 -2 -41 0
+event 1601e3 0
+# ma1601 event 1601e4 (EVT_sev 295, 0 s)
+story 292
+warp 16 1 -112 -2 -41 0
+event 1601e4 0
+# ma1601 event 1601e5 (EVT_sev 296, 0 s)
+story 292
+warp 16 1 -112 -2 -41 0
+event 1601e5 0
+# ma1601 event 1701e1 (EVT_sev 297, 0 s)
+story 292
+warp 16 1 -112 -2 -41 0
+event 1701e1 0
+# ma0101 event 1701e2 (EVT_sev 298, 0 s)
+story 14
+warp 1 1 -188 -1 -15 0
+event 1701e2 0
+# ma0701 event 1901e1 (EVT_sev 299, 0 s)
+story 133
+warp 7 1 -1 -14 -130 0
+event 1901e1 0
+# ma1101 event 1901e2 (EVT_sev 300, 0 s)
+story 160
+warp 11 1 -251 0 0 0
+event 1901e2 0
+# ma2101 event 2101e1 (EVT_sev 301, 0 s)
+story 384
+warp 21 1 -43 -11 194 0
+event 2101e1 0
+# ma2101 event 2101e2 (EVT_sev 302, 0 s)
+story 384
+warp 21 1 -43 -11 194 0
+event 2101e2 0

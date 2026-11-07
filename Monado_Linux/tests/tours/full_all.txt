@@ -1,0 +1,4143 @@
+# ma0101 landmark 1
+warp 1 1 -188 -1 -15 0
+look 60
+# ma0101 landmark 2
+warp 1 1 -655 21 -350 0
+look 60
+# ma0101 landmark 3
+warp 1 1 -333 -1 76 0
+look 60
+# ma0101 landmark 4
+warp 1 1 -235 -1 75 0
+look 60
+# ma0101 landmark 5
+warp 1 1 3 -1 -20 0
+look 60
+# ma0101 landmark 6
+warp 1 1 -13 -1 -120 0
+look 60
+# ma0101 landmark 7
+warp 1 1 -99 -1 197 0
+look 60
+# ma0101 landmark 8
+warp 1 1 -284 57 394 0
+look 60
+# ma0101 landmark 9
+warp 1 1 -830 112 -20 0
+look 60
+# ma0101 landmark 10
+warp 1 1 -827 187 -323 0
+look 60
+# ma0101 location 12
+warp 1 1 -12 -9 -227 0
+look 60
+# ma0101 location 15
+warp 1 1 -411 -38 -270 0
+look 60
+# ma0101 location 16
+warp 1 1 419 -38 -296 0
+look 60
+# ma0101 location 17
+warp 1 1 -58 -38 485 0
+look 60
+# ma0101 location 18
+warp 1 1 -687 24 227 0
+look 60
+# ma0101 location 19
+warp 1 1 -483 -38 302 0
+look 60
+# ma0101 location 20
+warp 1 1 426 -28 60 0
+look 60
+# ma0101 location 21
+warp 1 1 254 -28 341 0
+look 60
+# ma0101 enemies 1
+warp 1 1 -172 1 260 0
+look 60
+# ma0101 enemies 5
+warp 1 1 -844 182 -266 0
+look 60
+# ma0101 enemies 7
+warp 1 1 -2903 -8 732 0
+look 60
+# ma0101 enemies 10
+warp 1 1 -3600 -8 756 0
+look 60
+# ma0101 enemies 12
+warp 1 1 -3505 -8 723 0
+look 60
+# ma0101 enemies 13
+warp 1 1 -360 -19 -99 0
+look 60
+# ma0101 enemies 17
+warp 1 1 505 -18 -4 0
+look 60
+# ma0101 enemies 19
+warp 1 1 656 -14 -246 0
+look 60
+# ma0101 enemies 20
+warp 1 1 286 -19 -413 0
+look 60
+# ma0101 enemies 23
+warp 1 1 -682 -21 46 0
+look 60
+# ma0101 enemies 25
+warp 1 1 -6250 44 1510 0
+look 60
+# ma0101 enemies 26
+warp 1 1 50 -18 130 0
+look 60
+# ma0101 enemies 27
+warp 1 1 -447 -1 274 0
+look 60
+# ma0101 enemies 30
+warp 1 1 -669 24 -266 0
+look 60
+# ma0101 enemies 32
+warp 1 1 -633 35 -120 0
+look 60
+# ma0101 enemies 35
+warp 1 1 -589 34 13 0
+look 60
+# ma0101 enemies 82
+warp 1 1 -526 -20 -118 0
+look 60
+# ma0101 enemies 90
+warp 1 1 -473 -21 -159 0
+look 60
+# ma0101 enemies 119
+warp 1 1 -318 34 343 0
+look 60
+# ma0101 enemies 132
+warp 1 1 -482 -8 206 0
+look 60
+# ma0101 enemies 143
+warp 1 1 514 -18 293 0
+look 60
+# ma0101 enemies 151
+warp 1 1 -637 60 343 0
+look 60
+# ma0101 enemies 167
+warp 1 1 -755 96 151 0
+look 60
+# ma0101 enemies 168
+warp 1 1 -762 107 101 0
+look 60
+# ma0101 enemies 174
+warp 1 1 478 -20 41 0
+look 60
+# ma0101 enemies 178
+warp 1 1 604 -15 -139 0
+look 60
+# ma0101 enemies 187
+warp 1 1 596 -14 -171 0
+look 60
+# ma0101 enemies 194
+warp 1 1 434 -18 188 0
+look 60
+# ma0101 enemies 202
+warp 1 1 330 -22 315 0
+look 60
+# ma0101 enemies 209
+warp 1 1 281 -23 278 0
+look 60
+# ma0101 enemies 216
+warp 1 1 328 -21 -402 0
+look 60
+# ma0101 enemies 273
+warp 1 1 -137 1 25 0
+look 60
+# ma0101 enemies 284
+warp 1 1 -124 -8 -342 0
+look 60
+# ma0101 enemies 288
+warp 1 1 178 -8 -57 0
+look 60
+# ma0101 enemies 337
+warp 1 1 6 1 -186 0
+look 60
+# ma0101 collectible 12
+warp 1 1 -392 -19 -413 0
+look 60
+# ma0101 collectible 32
+warp 1 1 -379 -17 463 0
+look 60
+# ma0101 collectible 33
+warp 1 1 -455 -3 451 0
+look 60
+# ma0101 collectible 52
+warp 1 1 -1 58 627 0
+look 60
+# ma0101 collectible 55
+warp 1 1 5 -23 580 0
+look 60
+# ma0101 collectible 64
+warp 1 1 180 -24 48 0
+look 60
+# ma0101 collectible 65
+warp 1 1 290 -24 501 0
+look 60
+# ma0101 collectible 66
+warp 1 1 -209 -24 534 0
+look 60
+# ma0101 collectible 67
+warp 1 1 -133 -24 385 0
+look 60
+# ma0101 collectible 72
+warp 1 1 120 -24 395 0
+look 60
+# ma0201 landmark 23
+warp 2 1 38 -1 -1 0
+look 60
+# ma0201 landmark 24
+warp 2 1 -157 7 -197 0
+look 60
+# ma0201 landmark 25
+warp 2 1 -12 20 -311 0
+look 60
+# ma0201 landmark 27
+warp 2 1 -384 37 58 0
+look 60
+# ma0201 landmark 28
+warp 2 1 -430 146 -123 0
+look 60
+# ma0201 location 31
+warp 2 1 -122 -9 -54 0
+look 60
+# ma0201 location 32
+warp 2 1 -150 2 -227 0
+look 60
+# ma0201 location 37
+warp 2 1 -668 107 -105 0
+look 60
+# ma0201 location 38
+warp 2 1 -540 37 -179 0
+look 60
+# ma0201 location 41
+warp 2 1 -477 39 177 0
+look 60
+# ma0201 location 45
+warp 2 1 -281 18 -352 0
+look 60
+# ma0201 enemies 3
+warp 2 1 -466 93 -57 0
+look 60
+# ma0201 enemies 18
+warp 2 1 -250 45 -100 0
+look 60
+# ma0201 enemies 19
+warp 2 1 -2507 435 -859 0
+look 60
+# ma0201 enemies 24
+warp 2 1 -375 69 -436 0
+look 60
+# ma0201 enemies 42
+warp 2 1 -82 -1 16 0
+look 60
+# ma0201 enemies 124
+warp 2 1 -5511 545 -1772 0
+look 60
+# ma0201 enemies 125
+warp 2 1 -529 79 -393 0
+look 60
+# ma0201 collectible 23
+warp 2 1 -383 40 -183 0
+look 60
+# ma0301 landmark 46
+warp 3 1 -37 -2 22 0
+look 60
+# ma0301 landmark 47
+warp 3 1 335 44 91 0
+look 60
+# ma0301 landmark 48
+warp 3 1 1066 125 -53 0
+look 60
+# ma0301 landmark 49
+warp 3 1 1135 125 552 0
+look 60
+# ma0301 landmark 50
+warp 3 1 1877 160 430 0
+look 60
+# ma0301 landmark 51
+warp 3 1 2074 160 233 0
+look 60
+# ma0301 landmark 52
+warp 3 1 2801 222 -42 0
+look 60
+# ma0301 landmark 53
+warp 3 1 2466 212 -414 0
+look 60
+# ma0301 landmark 54
+warp 3 1 3103 253 514 0
+look 60
+# ma0301 landmark 55
+warp 3 1 2013 214 -44 0
+look 60
+# ma0301 landmark 56
+warp 3 1 3207 383 -105 0
+look 60
+# ma0301 location 52
+warp 3 1 2856 208 -31 0
+look 60
+# ma0301 location 57
+warp 3 1 471 32 168 0
+look 60
+# ma0301 location 58
+warp 3 1 853 72 -138 0
+look 60
+# ma0301 location 59
+warp 3 1 740 117 552 0
+look 60
+# ma0301 location 60
+warp 3 1 753 107 -418 0
+look 60
+# ma0301 location 61
+warp 3 1 1387 150 -38 0
+look 60
+# ma0301 location 63
+warp 3 1 2002 180 -333 0
+look 60
+# ma0301 location 64
+warp 3 1 2928 153 -477 0
+look 60
+# ma0301 location 65
+warp 3 1 3175 222 244 0
+look 60
+# ma0301 location 66
+warp 3 1 2578 182 244 0
+look 60
+# ma0301 location 67
+warp 3 1 2151 72 634 0
+look 60
+# ma0301 location 68
+warp 3 1 2430 212 2 0
+look 60
+# ma0301 location 69
+warp 3 1 1365 102 325 0
+look 60
+# ma0301 location 70
+warp 3 1 1395 102 -324 0
+look 60
+# ma0301 enemies 3
+warp 3 1 8220 836 -734 0
+look 60
+# ma0301 enemies 4
+warp 3 1 28803 2484 -412 0
+look 60
+# ma0301 enemies 8
+warp 3 1 28655 2255 -393 0
+look 60
+# ma0301 enemies 9
+warp 3 1 28760 2253 -292 0
+look 60
+# ma0301 enemies 10
+warp 3 1 28744 2259 -455 0
+look 60
+# ma0301 enemies 12
+warp 3 1 28848 2485 -281 0
+look 60
+# ma0301 enemies 13
+warp 3 1 686 90 88 0
+look 60
+# ma0301 enemies 14
+warp 3 1 709 123 -362 0
+look 60
+# ma0301 enemies 15
+warp 3 1 1335 127 -30 0
+look 60
+# ma0301 enemies 16
+warp 3 1 1493 129 192 0
+look 60
+# ma0301 enemies 17
+warp 3 1 1938 96 142 0
+look 60
+# ma0301 enemies 19
+warp 3 1 2029 214 74 0
+look 60
+# ma0301 enemies 20
+warp 3 1 3032 234 257 0
+look 60
+# ma0301 enemies 21
+warp 3 1 2908 170 154 0
+look 60
+# ma0301 enemies 22
+warp 3 1 2774 249 -348 0
+look 60
+# ma0301 enemies 23
+warp 3 1 360 73 447 0
+look 60
+# ma0301 enemies 24
+warp 3 1 563 76 46 0
+look 60
+# ma0301 enemies 25
+warp 3 1 2750 141 -592 0
+look 60
+# ma0301 enemies 26
+warp 3 1 28412 2263 -379 0
+look 60
+# ma0301 enemies 27
+warp 3 1 765 121 290 0
+look 60
+# ma0301 enemies 33
+warp 3 1 2494 194 -227 0
+look 60
+# ma0301 enemies 35
+warp 3 1 3213 226 -434 0
+look 60
+# ma0301 enemies 38
+warp 3 1 246 39 78 0
+look 60
+# ma0301 enemies 39
+warp 3 1 381 56 194 0
+look 60
+# ma0301 enemies 40
+warp 3 1 239 32 185 0
+look 60
+# ma0301 enemies 45
+warp 3 1 495 63 -3 0
+look 60
+# ma0301 enemies 55
+warp 3 1 646 102 199 0
+look 60
+# ma0301 enemies 61
+warp 3 1 754 99 64 0
+look 60
+# ma0301 enemies 67
+warp 3 1 983 120 5 0
+look 60
+# ma0301 enemies 87
+warp 3 1 566 92 308 0
+look 60
+# ma0301 enemies 98
+warp 3 1 660 113 367 0
+look 60
+# ma0301 enemies 106
+warp 3 1 380 58 -135 0
+look 60
+# ma0301 enemies 110
+warp 3 1 437 106 -177 0
+look 60
+# ma0301 enemies 115
+warp 3 1 292 48 318 0
+look 60
+# ma0301 enemies 126
+warp 3 1 365 86 517 0
+look 60
+# ma0301 enemies 132
+warp 3 1 873 127 -244 0
+look 60
+# ma0301 enemies 141
+warp 3 1 962 122 -112 0
+look 60
+# ma0301 enemies 143
+warp 3 1 948 129 -206 0
+look 60
+# ma0301 enemies 146
+warp 3 1 1289 140 -412 0
+look 60
+# ma0301 enemies 152
+warp 3 1 1129 141 224 0
+look 60
+# ma0301 enemies 157
+warp 3 1 1212 135 39 0
+look 60
+# ma0301 enemies 161
+warp 3 1 1083 151 -282 0
+look 60
+# ma0301 enemies 164
+warp 3 1 1142 155 -361 0
+look 60
+# ma0301 enemies 172
+warp 3 1 1099 130 63 0
+look 60
+# ma0301 enemies 176
+warp 3 1 1290 141 263 0
+look 60
+# ma0301 enemies 183
+warp 3 1 1386 133 99 0
+look 60
+# ma0301 enemies 185
+warp 3 1 1505 142 -50 0
+look 60
+# ma0301 enemies 191
+warp 3 1 1585 151 10 0
+look 60
+# ma0301 enemies 195
+warp 3 1 1619 150 418 0
+look 60
+# ma0301 enemies 197
+warp 3 1 1673 157 439 0
+look 60
+# ma0301 enemies 200
+warp 3 1 1601 126 275 0
+look 60
+# ma0301 enemies 201
+warp 3 1 1661 130 284 0
+look 60
+# ma0301 enemies 209
+warp 3 1 1764 140 -65 0
+look 60
+# ma0301 enemies 211
+warp 3 1 1843 144 -27 0
+look 60
+# ma0301 enemies 215
+warp 3 1 1871 132 273 0
+look 60
+# ma0301 enemies 217
+warp 3 1 2053 136 463 0
+look 60
+# ma0301 enemies 220
+warp 3 1 1988 128 387 0
+look 60
+# ma0301 enemies 224
+warp 3 1 2116 140 463 0
+look 60
+# ma0301 enemies 235
+warp 3 1 2134 166 77 0
+look 60
+# ma0301 enemies 240
+warp 3 1 1699 90 129 0
+look 60
+# ma0301 enemies 251
+warp 3 1 2181 190 242 0
+look 60
+# ma0301 enemies 252
+warp 3 1 2174 186 301 0
+look 60
+# ma0301 enemies 256
+warp 3 1 1718 158 -302 0
+look 60
+# ma0301 enemies 258
+warp 3 1 1831 169 -356 0
+look 60
+# ma0301 enemies 270
+warp 3 1 2045 197 -151 0
+look 60
+# ma0301 enemies 273
+warp 3 1 2875 232 338 0
+look 60
+# ma0301 enemies 278
+warp 3 1 2562 224 -178 0
+look 60
+# ma0301 enemies 288
+warp 3 1 2629 222 -120 0
+look 60
+# ma0301 enemies 294
+warp 3 1 2893 224 116 0
+look 60
+# ma0301 enemies 297
+warp 3 1 2847 235 225 0
+look 60
+# ma0301 enemies 300
+warp 3 1 2941 227 -155 0
+look 60
+# ma0301 enemies 303
+warp 3 1 2478 221 -94 0
+look 60
+# ma0301 enemies 332
+warp 3 1 3015 176 -103 0
+look 60
+# ma0301 enemies 344
+warp 3 1 2848 184 76 0
+look 60
+# ma0301 enemies 346
+warp 3 1 29433 1680 1468 0
+look 60
+# ma0301 enemies 348
+warp 3 1 29114 1685 1296 0
+look 60
+# ma0301 enemies 350
+warp 3 1 29180 1688 1740 0
+look 60
+# ma0301 enemies 352
+warp 3 1 28934 1697 1389 0
+look 60
+# ma0301 enemies 354
+warp 3 1 28919 1734 1778 0
+look 60
+# ma0301 enemies 356
+warp 3 1 3041 185 -198 0
+look 60
+# ma0301 enemies 360
+warp 3 1 3061 177 -324 0
+look 60
+# ma0301 enemies 369
+warp 3 1 2522 201 258 0
+look 60
+# ma0301 enemies 377
+warp 3 1 2337 215 32 0
+look 60
+# ma0301 enemies 380
+warp 3 1 2763 233 -162 0
+look 60
+# ma0301 enemies 393
+warp 3 1 3041 232 37 0
+look 60
+# ma0301 enemies 403
+warp 3 1 3072 180 -476 0
+look 60
+# ma0301 enemies 404
+warp 3 1 2500 194 -467 0
+look 60
+# ma0301 enemies 407
+warp 3 1 2744 143 -604 0
+look 60
+# ma0301 enemies 409
+warp 3 1 2610 199 -447 0
+look 60
+# ma0301 enemies 417
+warp 3 1 3160 268 -452 0
+look 60
+# ma0301 collectible 13
+warp 3 1 2377 200 -419 0
+look 60
+# ma0301 collectible 14
+warp 3 1 3028 248 418 0
+look 60
+# ma0301 collectible 21
+warp 3 1 1564 156 -168 0
+look 60
+# ma0301 collectible 23
+warp 3 1 1265 134 -274 0
+look 60
+# ma0301 collectible 66
+warp 3 1 418 106 -309 0
+look 60
+# ma0301 collectible 125
+warp 3 1 3304 354 -203 0
+look 60
+# ma0401 landmark 72
+warp 4 1 -330 -1 42 0
+look 60
+# ma0401 landmark 73
+warp 4 1 307 -105 -844 0
+look 60
+# ma0401 landmark 74
+warp 4 1 265 -104 -667 0
+look 60
+# ma0401 landmark 75
+warp 4 1 -165 -199 -223 0
+look 60
+# ma0401 landmark 76
+warp 4 1 -31 -90 406 0
+look 60
+# ma0401 landmark 77
+warp 4 1 116 -37 870 0
+look 60
+# ma0401 landmark 78
+warp 4 1 -37 -10 -44 0
+look 60
+# ma0401 landmark 82
+warp 4 1 -185 -97 284 0
+look 60
+# ma0401 location 79
+warp 4 1 30 -268 -548 0
+look 60
+# ma0401 location 80
+warp 4 1 2 -43 278 0
+look 60
+# ma0401 location 81
+warp 4 1 103 -8 -45 0
+look 60
+# ma0401 enemies 4
+warp 4 1 -108 -863 4304 0
+look 60
+# ma0401 enemies 5
+warp 4 1 -69 -863 4196 0
+look 60
+# ma0401 enemies 6
+warp 4 1 -191 -863 4385 0
+look 60
+# ma0401 enemies 7
+warp 4 1 -536 -918 4170 0
+look 60
+# ma0401 enemies 9
+warp 4 1 -418 -903 4030 0
+look 60
+# ma0401 enemies 13
+warp 4 1 -523 -908 4004 0
+look 60
+# ma0401 enemies 15
+warp 4 1 -96 -858 4389 0
+look 60
+# ma0401 enemies 17
+warp 4 1 -56 -113 21 0
+look 60
+# ma0401 enemies 18
+warp 4 1 -55 -118 -199 0
+look 60
+# ma0401 enemies 22
+warp 4 1 60 -7 22 0
+look 60
+# ma0401 enemies 28
+warp 4 1 -45 -207 -385 0
+look 60
+# ma0401 enemies 29
+warp 4 1 -80 -35 289 0
+look 60
+# ma0401 enemies 30
+warp 4 1 -1284 -2513 -3779 0
+look 60
+# ma0401 enemies 32
+warp 4 1 150 -65 544 0
+look 60
+# ma0401 enemies 33
+warp 4 1 -188 -93 325 0
+look 60
+# ma0401 enemies 34
+warp 4 1 191 -189 -540 0
+look 60
+# ma0401 enemies 36
+warp 4 1 281 -100 -772 0
+look 60
+# ma0401 enemies 56
+warp 4 1 133 -187 -660 0
+look 60
+# ma0401 enemies 63
+warp 4 1 10 -211 -369 0
+look 60
+# ma0401 enemies 75
+warp 4 1 -2 -198 -511 0
+look 60
+# ma0401 enemies 77
+warp 4 1 -35 -184 -642 0
+look 60
+# ma0401 enemies 78
+warp 4 1 -259 -182 -377 0
+look 60
+# ma0401 enemies 80
+warp 4 1 89 -159 -789 0
+look 60
+# ma0401 enemies 97
+warp 4 1 85 -57 477 0
+look 60
+# ma0401 enemies 102
+warp 4 1 136 -64 602 0
+look 60
+# ma0401 enemies 114
+warp 4 1 9 -33 355 0
+look 60
+# ma0401 collectible 1
+warp 4 1 105 -15 -181 0
+look 60
+# ma0401 collectible 16
+warp 4 1 206 -55 -370 0
+look 60
+# ma0401 collectible 20
+warp 4 1 179 -36 -297 0
+look 60
+# ma0401 collectible 42
+warp 4 1 -212 -8 -105 0
+look 60
+# ma0401 collectible 74
+warp 4 1 -333 12 -51 0
+look 60
+# ma0401 gimmick 73
+warp 4 1 -260.91 -7.24 102.08 0
+look 60
+# ma0402 landmark 83
+warp 4 2 238 0 -233 0
+look 60
+# ma0402 landmark 85
+warp 4 2 40 -6 -29 0
+look 60
+# ma0402 landmark 86
+warp 4 2 75 -38 252 0
+look 60
+# ma0402 landmark 87
+warp 4 2 513 -74 333 0
+look 60
+# ma0402 landmark 88
+warp 4 2 193 -172 402 0
+look 60
+# ma0402 landmark 91
+warp 4 2 266 1 1074 0
+look 60
+# ma0402 landmark 92
+warp 4 2 161 2 34 0
+look 60
+# ma0402 location 96
+warp 4 2 -3 -18 11 0
+look 60
+# ma0402 location 97
+warp 4 2 23 -38 93 0
+look 60
+# ma0402 location 99
+warp 4 2 164 -33 176 0
+look 60
+# ma0402 location 103
+warp 4 2 276 -428 614 0
+look 60
+# ma0402 enemies 1
+warp 4 2 302 -638 359 0
+look 60
+# ma0402 enemies 4
+warp 4 2 2765 12 10590 0
+look 60
+# ma0402 enemies 25
+warp 4 2 1690 92 539 0
+look 60
+# ma0402 enemies 44
+warp 4 2 56 -72 300 0
+look 60
+# ma0402 enemies 51
+warp 4 2 352 -77 455 0
+look 60
+# ma0402 enemies 54
+warp 4 2 479 -147 265 0
+look 60
+# ma0402 enemies 55
+warp 4 2 442 -169 172 0
+look 60
+# ma0402 enemies 61
+warp 4 2 246 -174 492 0
+look 60
+# ma0402 collectible 9
+warp 4 2 135 7 -158 0
+look 60
+# ma0402 collectible 13
+warp 4 2 157 7 -12 0
+look 60
+# ma0402 collectible 22
+warp 4 2 108 -169 558 0
+look 60
+# ma0402 collectible 27
+warp 4 2 516 -79 475 0
+look 60
+# ma0402 collectible 42
+warp 4 2 -18 -428 341 0
+look 60
+# ma0501 landmark 104
+warp 5 1 -24 0 -121 0
+look 60
+# ma0501 landmark 105
+warp 5 1 134 43 528 0
+look 60
+# ma0501 landmark 106
+warp 5 1 381 46 961 0
+look 60
+# ma0501 landmark 107
+warp 5 1 852 96 1159 0
+look 60
+# ma0501 landmark 108
+warp 5 1 1227 132 1214 0
+look 60
+# ma0501 landmark 109
+warp 5 1 1468 180 887 0
+look 60
+# ma0501 landmark 110
+warp 5 1 1386 330 662 0
+look 60
+# ma0501 landmark 111
+warp 5 1 699 105 1333 0
+look 60
+# ma0501 location 112
+warp 5 1 222 27 518 0
+look 60
+# ma0501 location 113
+warp 5 1 590 43 668 0
+look 60
+# ma0501 location 114
+warp 5 1 596 42 837 0
+look 60
+# ma0501 location 116
+warp 5 1 795 71 1323 0
+look 60
+# ma0501 location 117
+warp 5 1 923 116 756 0
+look 60
+# ma0501 location 118
+warp 5 1 1045 119 1500 0
+look 60
+# ma0501 location 119
+warp 5 1 1045 112 1286 0
+look 60
+# ma0501 location 120
+warp 5 1 1183 172 1068 0
+look 60
+# ma0501 location 121
+warp 5 1 1508 172 1282 0
+look 60
+# ma0501 location 122
+warp 5 1 1508 162 1004 0
+look 60
+# ma0501 location 123
+warp 5 1 1163 154 854 0
+look 60
+# ma0501 location 124
+warp 5 1 1570 192 1078 0
+look 60
+# ma0501 location 125
+warp 5 1 1446 182 1162 0
+look 60
+# ma0501 enemies 1
+warp 5 1 14384 1822 8059 0
+look 60
+# ma0501 enemies 4
+warp 5 1 4787 839 5654 0
+look 60
+# ma0501 enemies 5
+warp 5 1 597 91 1012 0
+look 60
+# ma0501 enemies 7
+warp 5 1 994 121 1103 0
+look 60
+# ma0501 enemies 9
+warp 5 1 1187 125 1454 0
+look 60
+# ma0501 enemies 10
+warp 5 1 1004 148 1492 0
+look 60
+# ma0501 enemies 11
+warp 5 1 10430 1660 12733 0
+look 60
+# ma0501 enemies 14
+warp 5 1 860 116 1032 0
+look 60
+# ma0501 enemies 15
+warp 5 1 1280 152 1124 0
+look 60
+# ma0501 enemies 16
+warp 5 1 1351 168 1236 0
+look 60
+# ma0501 enemies 18
+warp 5 1 14486 1891 11642 0
+look 60
+# ma0501 enemies 20
+warp 5 1 1056 182 1313 0
+look 60
+# ma0501 enemies 25
+warp 5 1 95 6 110 0
+look 60
+# ma0501 enemies 31
+warp 5 1 146 9 215 0
+look 60
+# ma0501 enemies 42
+warp 5 1 151 42 442 0
+look 60
+# ma0501 enemies 45
+warp 5 1 166 56 675 0
+look 60
+# ma0501 enemies 56
+warp 5 1 916 458 3733 0
+look 60
+# ma0501 enemies 58
+warp 5 1 1785 527 5663 0
+look 60
+# ma0501 enemies 60
+warp 5 1 2624 542 6338 0
+look 60
+# ma0501 enemies 62
+warp 5 1 1076 500 5806 0
+look 60
+# ma0501 enemies 64
+warp 5 1 2250 503 4749 0
+look 60
+# ma0501 enemies 66
+warp 5 1 2905 501 3933 0
+look 60
+# ma0501 enemies 68
+warp 5 1 1145 523 4143 0
+look 60
+# ma0501 enemies 70
+warp 5 1 872 449 3744 0
+look 60
+# ma0501 enemies 72
+warp 5 1 838 505 3812 0
+look 60
+# ma0501 enemies 74
+warp 5 1 697 375 3376 0
+look 60
+# ma0501 enemies 76
+warp 5 1 342 42 597 0
+look 60
+# ma0501 enemies 78
+warp 5 1 245 42 793 0
+look 60
+# ma0501 enemies 79
+warp 5 1 371 42 777 0
+look 60
+# ma0501 enemies 80
+warp 5 1 2842 543 7811 0
+look 60
+# ma0501 enemies 82
+warp 5 1 5022 723 5897 0
+look 60
+# ma0501 enemies 84
+warp 5 1 3661 580 6230 0
+look 60
+# ma0501 enemies 86
+warp 5 1 4877 778 5732 0
+look 60
+# ma0501 enemies 90
+warp 5 1 4760 750 5885 0
+look 60
+# ma0501 enemies 114
+warp 5 1 391 49 623 0
+look 60
+# ma0501 enemies 128
+warp 5 1 613 59 828 0
+look 60
+# ma0501 enemies 138
+warp 5 1 2193 541 8691 0
+look 60
+# ma0501 enemies 140
+warp 5 1 3140 559 8533 0
+look 60
+# ma0501 enemies 142
+warp 5 1 4748 564 7319 0
+look 60
+# ma0501 enemies 144
+warp 5 1 4269 812 9400 0
+look 60
+# ma0501 enemies 146
+warp 5 1 3088 552 6541 0
+look 60
+# ma0501 enemies 148
+warp 5 1 3733 510 7076 0
+look 60
+# ma0501 enemies 150
+warp 5 1 3433 512 7392 0
+look 60
+# ma0501 enemies 152
+warp 5 1 2904 510 9962 0
+look 60
+# ma0501 enemies 154
+warp 5 1 2832 539 9550 0
+look 60
+# ma0501 enemies 156
+warp 5 1 4192 499 5145 0
+look 60
+# ma0501 enemies 158
+warp 5 1 5474 679 7279 0
+look 60
+# ma0501 enemies 160
+warp 5 1 5141 952 9346 0
+look 60
+# ma0501 enemies 162
+warp 5 1 7047 959 8757 0
+look 60
+# ma0501 enemies 164
+warp 5 1 3955 551 5697 0
+look 60
+# ma0501 enemies 169
+warp 5 1 768 105 898 0
+look 60
+# ma0501 enemies 173
+warp 5 1 662 80 1025 0
+look 60
+# ma0501 enemies 175
+warp 5 1 675 78 1085 0
+look 60
+# ma0501 enemies 187
+warp 5 1 927 125 1028 0
+look 60
+# ma0501 enemies 195
+warp 5 1 6707 870 9892 0
+look 60
+# ma0501 enemies 197
+warp 5 1 7519 900 10190 0
+look 60
+# ma0501 enemies 199
+warp 5 1 7716 877 11054 0
+look 60
+# ma0501 enemies 201
+warp 5 1 7272 901 11615 0
+look 60
+# ma0501 enemies 203
+warp 5 1 7575 877 9756 0
+look 60
+# ma0501 enemies 205
+warp 5 1 7506 1073 8921 0
+look 60
+# ma0501 enemies 207
+warp 5 1 8400 996 10186 0
+look 60
+# ma0501 enemies 213
+warp 5 1 9958 1343 9548 0
+look 60
+# ma0501 enemies 215
+warp 5 1 9186 1489 7491 0
+look 60
+# ma0501 enemies 218
+warp 5 1 905 127 734 0
+look 60
+# ma0501 enemies 233
+warp 5 1 8515 1182 9160 0
+look 60
+# ma0501 enemies 235
+warp 5 1 9367 1330 8544 0
+look 60
+# ma0501 enemies 241
+warp 5 1 791 77 1356 0
+look 60
+# ma0501 enemies 247
+warp 5 1 8651 852 12882 0
+look 60
+# ma0501 enemies 249
+warp 5 1 7755 852 13715 0
+look 60
+# ma0501 enemies 251
+warp 5 1 8164 880 12078 0
+look 60
+# ma0501 enemies 253
+warp 5 1 7331 890 12235 0
+look 60
+# ma0501 enemies 268
+warp 5 1 1202 130 1410 0
+look 60
+# ma0501 enemies 305
+warp 5 1 1407 174 1374 0
+look 60
+# ma0501 enemies 315
+warp 5 1 1447 184 942 0
+look 60
+# ma0501 enemies 317
+warp 5 1 1511 184 840 0
+look 60
+# ma0501 enemies 321
+warp 5 1 1245 181 797 0
+look 60
+# ma0501 enemies 323
+warp 5 1 1299 291 709 0
+look 60
+# ma0501 collectible 2
+warp 5 1 70 32 361 0
+look 60
+# ma0501 collectible 3
+warp 5 1 452 108 1086 0
+look 60
+# ma0501 collectible 26
+warp 5 1 262 46 1001 0
+look 60
+# ma0501 collectible 38
+warp 5 1 1109 160 1040 0
+look 60
+# ma0501 collectible 54
+warp 5 1 506 46 562 0
+look 60
+# ma0501 collectible 63
+warp 5 1 306 42 427 0
+look 60
+# ma0501 collectible 73
+warp 5 1 866 126 733 0
+look 60
+# ma0601 landmark 126
+warp 6 1 -805 27 -411 0
+look 60
+# ma0601 landmark 127
+warp 6 1 -562 -55 -143 0
+look 60
+# ma0601 landmark 128
+warp 6 1 -98 -61 -58 0
+look 60
+# ma0601 landmark 129
+warp 6 1 -743 -261 -176 0
+look 60
+# ma0601 landmark 130
+warp 6 1 407 -60 -723 0
+look 60
+# ma0601 landmark 131
+warp 6 1 1110 -69 -676 0
+look 60
+# ma0601 landmark 132
+warp 6 1 1222 -24 -269 0
+look 60
+# ma0601 landmark 133
+warp 6 1 1479 -56 181 0
+look 60
+# ma0601 landmark 134
+warp 6 1 1733 -84 302 0
+look 60
+# ma0601 landmark 135
+warp 6 1 -269 -28 -876 0
+look 60
+# ma0601 landmark 136
+warp 6 1 -541 -9 -1000 0
+look 60
+# ma0601 landmark 137
+warp 6 1 -428 48 424 0
+look 60
+# ma0601 landmark 138
+warp 6 1 497 -259 -1350 0
+look 60
+# ma0601 landmark 139
+warp 6 1 675 -34 -470 0
+look 60
+# ma0601 landmark 140
+warp 6 1 -493 -53 -749 0
+look 60
+# ma0601 location 129
+warp 6 1 -780 -278 -181 0
+look 60
+# ma0601 location 134
+warp 6 1 1767 -89 298 0
+look 60
+# ma0601 location 138
+warp 6 1 555 -278 -1424 0
+look 60
+# ma0601 location 141
+warp 6 1 -386 -88 -110 0
+look 60
+# ma0601 location 142
+warp 6 1 -80 -93 -447 0
+look 60
+# ma0601 location 143
+warp 6 1 36 -108 -593 0
+look 60
+# ma0601 location 144
+warp 6 1 65 -88 -735 0
+look 60
+# ma0601 location 145
+warp 6 1 -1140 -298 710 0
+look 60
+# ma0601 location 146
+warp 6 1 318 -83 -469 0
+look 60
+# ma0601 location 148
+warp 6 1 748 -68 -805 0
+look 60
+# ma0601 location 149
+warp 6 1 1896 -108 -311 0
+look 60
+# ma0601 location 150
+warp 6 1 2029 -98 -41 0
+look 60
+# ma0601 location 151
+warp 6 1 1325 -158 634 0
+look 60
+# ma0601 location 152
+warp 6 1 1750 -118 565 0
+look 60
+# ma0601 location 153
+warp 6 1 2389 -118 291 0
+look 60
+# ma0601 location 154
+warp 6 1 1644 -103 900 0
+look 60
+# ma0601 enemies 1
+warp 6 1 -7693 -2608 -1664 0
+look 60
+# ma0601 enemies 2
+warp 6 1 23529 -1094 2823 0
+look 60
+# ma0601 enemies 4
+warp 6 1 -789 -256 343 0
+look 60
+# ma0601 enemies 5
+warp 6 1 546 -48 -754 0
+look 60
+# ma0601 enemies 6
+warp 6 1 979 -61 -770 0
+look 60
+# ma0601 enemies 7
+warp 6 1 1527 -66 -64 0
+look 60
+# ma0601 enemies 8
+warp 6 1 1615 -180 700 0
+look 60
+# ma0601 enemies 9
+warp 6 1 1890 -75 451 0
+look 60
+# ma0601 enemies 10
+warp 6 1 2060 -79 29 0
+look 60
+# ma0601 enemies 11
+warp 6 1 2212 -100 288 0
+look 60
+# ma0601 enemies 12
+warp 6 1 61 -248 -754 0
+look 60
+# ma0601 enemies 13
+warp 6 1 -6375 -662 -5455 0
+look 60
+# ma0601 enemies 15
+warp 6 1 -7626 -2608 -1660 0
+look 60
+# ma0601 enemies 17
+warp 6 1 -492 -39 -234 0
+look 60
+# ma0601 enemies 22
+warp 6 1 -649 -208 -144 0
+look 60
+# ma0601 enemies 29
+warp 6 1 -302 -249 531 0
+look 60
+# ma0601 enemies 31
+warp 6 1 -285 -249 584 0
+look 60
+# ma0601 enemies 35
+warp 6 1 -235 -41 83 0
+look 60
+# ma0601 enemies 36
+warp 6 1 -301 -41 83 0
+look 60
+# ma0601 enemies 40
+warp 6 1 -2600 -20 2780 0
+look 60
+# ma0601 enemies 41
+warp 6 1 -2550 -23 2720 0
+look 60
+# ma0601 enemies 48
+warp 6 1 -221 -46 -82 0
+look 60
+# ma0601 enemies 49
+warp 6 1 -65 -46 54 0
+look 60
+# ma0601 enemies 51
+warp 6 1 -794 -325 627 0
+look 60
+# ma0601 enemies 52
+warp 6 1 -755 -323 557 0
+look 60
+# ma0601 enemies 53
+warp 6 1 -680 -301 644 0
+look 60
+# ma0601 enemies 54
+warp 6 1 -743 -297 793 0
+look 60
+# ma0601 enemies 56
+warp 6 1 15 -46 -83 0
+look 60
+# ma0601 enemies 57
+warp 6 1 -53 -61 -187 0
+look 60
+# ma0601 enemies 59
+warp 6 1 6 -54 -200 0
+look 60
+# ma0601 enemies 64
+warp 6 1 45 -60 -306 0
+look 60
+# ma0601 enemies 70
+warp 6 1 180 -78 -453 0
+look 60
+# ma0601 enemies 79
+warp 6 1 2918 -819 -4945 0
+look 60
+# ma0601 enemies 83
+warp 6 1 -100 -51 -649 0
+look 60
+# ma0601 enemies 84
+warp 6 1 -183 -48 -628 0
+look 60
+# ma0601 enemies 85
+warp 6 1 -371 -41 -525 0
+look 60
+# ma0601 enemies 89
+warp 6 1 -208 -48 -548 0
+look 60
+# ma0601 enemies 98
+warp 6 1 4789 -528 -7569 0
+look 60
+# ma0601 enemies 99
+warp 6 1 478 -53 -741 0
+look 60
+# ma0601 enemies 101
+warp 6 1 678 -44 -688 0
+look 60
+# ma0601 enemies 106
+warp 6 1 641 -53 -916 0
+look 60
+# ma0601 enemies 108
+warp 6 1 766 -52 -741 0
+look 60
+# ma0601 enemies 109
+warp 6 1 800 -52 -766 0
+look 60
+# ma0601 enemies 113
+warp 6 1 1016 -53 -743 0
+look 60
+# ma0601 enemies 116
+warp 6 1 901 -53 -966 0
+look 60
+# ma0601 enemies 122
+warp 6 1 785 -46 -979 0
+look 60
+# ma0601 enemies 136
+warp 6 1 1129 -47 -765 0
+look 60
+# ma0601 enemies 137
+warp 6 1 1162 -39 -933 0
+look 60
+# ma0601 enemies 143
+warp 6 1 1223 -66 -545 0
+look 60
+# ma0601 enemies 148
+warp 6 1 1255 -64 -436 0
+look 60
+# ma0601 enemies 154
+warp 6 1 1386 -47 -481 0
+look 60
+# ma0601 enemies 156
+warp 6 1 1445 -68 -297 0
+look 60
+# ma0601 enemies 157
+warp 6 1 1463 -68 -349 0
+look 60
+# ma0601 enemies 161
+warp 6 1 1529 -68 -356 0
+look 60
+# ma0601 enemies 163
+warp 6 1 1673 -80 -209 0
+look 60
+# ma0601 enemies 166
+warp 6 1 1528 -66 -154 0
+look 60
+# ma0601 enemies 167
+warp 6 1 1491 -66 -87 0
+look 60
+# ma0601 enemies 168
+warp 6 1 1603 -68 26 0
+look 60
+# ma0601 enemies 171
+warp 6 1 1808 -81 -224 0
+look 60
+# ma0601 enemies 173
+warp 6 1 1764 -77 -308 0
+look 60
+# ma0601 enemies 177
+warp 6 1 1901 -77 -133 0
+look 60
+# ma0601 enemies 179
+warp 6 1 1670 -45 -489 0
+look 60
+# ma0601 enemies 180
+warp 6 1 1649 -42 -544 0
+look 60
+# ma0601 enemies 183
+warp 6 1 1571 -61 166 0
+look 60
+# ma0601 enemies 184
+warp 6 1 1475 -61 141 0
+look 60
+# ma0601 enemies 187
+warp 6 1 1399 -81 356 0
+look 60
+# ma0601 enemies 193
+warp 6 1 1405 -94 460 0
+look 60
+# ma0601 enemies 196
+warp 6 1 1347 -93 512 0
+look 60
+# ma0601 enemies 198
+warp 6 1 1361 -92 703 0
+look 60
+# ma0601 enemies 203
+warp 6 1 1671 -99 771 0
+look 60
+# ma0601 enemies 204
+warp 6 1 1641 -100 783 0
+look 60
+# ma0601 enemies 208
+warp 6 1 1632 -95 511 0
+look 60
+# ma0601 enemies 210
+warp 6 1 1793 -102 659 0
+look 60
+# ma0601 enemies 212
+warp 6 1 1839 -102 601 0
+look 60
+# ma0601 enemies 213
+warp 6 1 2022 -103 430 0
+look 60
+# ma0601 enemies 214
+warp 6 1 1975 -103 507 0
+look 60
+# ma0601 enemies 220
+warp 6 1 1496 -138 797 0
+look 60
+# ma0601 enemies 229
+warp 6 1 1767 -79 77 0
+look 60
+# ma0601 enemies 230
+warp 6 1 1804 -77 20 0
+look 60
+# ma0601 enemies 231
+warp 6 1 1865 -78 204 0
+look 60
+# ma0601 enemies 235
+warp 6 1 2023 -85 236 0
+look 60
+# ma0601 enemies 236
+warp 6 1 2255 -95 131 0
+look 60
+# ma0601 enemies 238
+warp 6 1 2256 -104 323 0
+look 60
+# ma0601 enemies 244
+warp 6 1 2224 -93 125 0
+look 60
+# ma0601 enemies 254
+warp 6 1 2234 -91 -19 0
+look 60
+# ma0601 enemies 255
+warp 6 1 2269 -93 -9 0
+look 60
+# ma0601 enemies 261
+warp 6 1 -200 -58 -357 0
+look 60
+# ma0601 enemies 263
+warp 6 1 -6 -257 -543 0
+look 60
+# ma0601 enemies 266
+warp 6 1 46 -255 -958 0
+look 60
+# ma0601 enemies 267
+warp 6 1 -306 -258 -290 0
+look 60
+# ma0601 enemies 271
+warp 6 1 94 -258 -1053 0
+look 60
+# ma0601 enemies 275
+warp 6 1 -163 -257 -180 0
+look 60
+# ma0601 enemies 287
+warp 6 1 -430 -16 -1060 0
+look 60
+# ma0601 enemies 288
+warp 6 1 -429 -19 -973 0
+look 60
+# ma0601 enemies 298
+warp 6 1 -429 -29 -878 0
+look 60
+# ma0601 enemies 304
+warp 6 1 -606 -65 -594 0
+look 60
+# ma0601 collectible 14
+warp 6 1 -488 -51 -755 0
+look 60
+# ma0601 collectible 31
+warp 6 1 168 -74 -419 0
+look 60
+# ma0601 collectible 38
+warp 6 1 246 -42 -674 0
+look 60
+# ma0601 collectible 46
+warp 6 1 561 -53 -912 0
+look 60
+# ma0601 collectible 50
+warp 6 1 -70 -43 -832 0
+look 60
+# ma0601 collectible 60
+warp 6 1 -281 -23 203 0
+look 60
+# ma0601 collectible 62
+warp 6 1 -299 6 310 0
+look 60
+# ma0601 collectible 84
+warp 6 1 1506 -76 302 0
+look 60
+# ma0601 collectible 94
+warp 6 1 2115 -105 459 0
+look 60
+# ma0601 collectible 113
+warp 6 1 753 -20 -1054 0
+look 60
+# ma0601 collectible 114
+warp 6 1 729 -23 -1051 0
+look 60
+# ma0601 collectible 118
+warp 6 1 -840 -259 782 0
+look 60
+# ma0601 collectible 128
+warp 6 1 -702 -259 1322 0
+look 60
+# ma0601 collectible 129
+warp 6 1 -1234 -259 260 0
+look 60
+# ma0601 collectible 130
+warp 6 1 -818 -259 45 0
+look 60
+# ma0601 collectible 135
+warp 6 1 363 -259 -1221 0
+look 60
+# ma0601 collectible 142
+warp 6 1 1187 -52 -485 0
+look 60
+# ma0601 collectible 154
+warp 6 1 -165 -51 642 0
+look 60
+# ma0601 collectible 179
+warp 6 1 -768 -253 298 0
+look 60
+# ma0701 landmark 155
+warp 7 1 -1 -14 -130 0
+look 60
+# ma0701 landmark 156
+warp 7 1 2 0 -21 0
+look 60
+# ma0701 landmark 157
+warp 7 1 -1 1 75 0
+look 60
+# ma0701 landmark 158
+warp 7 1 23 74 112 0
+look 60
+# ma0701 enemies 1
+warp 7 1 115 2270 781 0
+look 60
+# ma0701 collectible 5
+warp 7 1 -164 -12 116 0
+look 60
+# ma0801 landmark 486
+warp 8 1 0 0 247 0
+look 60
+# ma0801 enemies 1
+warp 8 1 0 2 -50 0
+look 60
+# ma0801 gimmick 990
+warp 8 1 -321.6 801.26 649.09 0
+look 60
+# ma0901 landmark 177
+warp 9 1 -17 -3 0 0
+look 60
+# ma0901 landmark 178
+warp 9 1 57 -23 0 0
+look 60
+# ma0901 landmark 179
+warp 9 1 600 -60 0 0
+look 60
+# ma0901 landmark 181
+warp 9 1 176 -128 0 0
+look 60
+# ma0901 landmark 182
+warp 9 1 416 -128 0 0
+look 60
+# ma0901 location 184
+warp 9 1 483 -60 0 0
+look 60
+# ma0901 location 185
+warp 9 1 353 -133 -90 0
+look 60
+# ma0901 location 187
+warp 9 1 771 -66 0 0
+look 60
+# ma0901 enemies 1
+warp 9 1 6330 -596 -68 0
+look 60
+# ma0901 enemies 2
+warp 9 1 2530 -1280 0 0
+look 60
+# ma0901 enemies 5
+warp 9 1 104 -21 -12 0
+look 60
+# ma0901 enemies 7
+warp 9 1 155 -31 -12 0
+look 60
+# ma0901 enemies 13
+warp 9 1 503 -57 -5 0
+look 60
+# ma0901 collectible 38
+warp 9 1 767 -63 -29 0
+look 60
+# ma1001 landmark 188
+warp 10 1 -14 1 -1585 0
+look 60
+# ma1001 landmark 189
+warp 10 1 1840 57 -13 0
+look 60
+# ma1001 landmark 190
+warp 10 1 2981 36 -2 0
+look 60
+# ma1001 landmark 191
+warp 10 1 525 508 197 0
+look 60
+# ma1001 landmark 192
+warp 10 1 -745 351 40 0
+look 60
+# ma1001 landmark 193
+warp 10 1 -47 511 1007 0
+look 60
+# ma1001 landmark 194
+warp 10 1 38 498 -899 0
+look 60
+# ma1001 landmark 195
+warp 10 1 -1147 540 -798 0
+look 60
+# ma1001 landmark 196
+warp 10 1 -1949 1 1414 0
+look 60
+# ma1001 location 188
+warp 10 1 0 -8 -1660 0
+look 60
+# ma1001 location 192
+warp 10 1 -836 342 32 0
+look 60
+# ma1001 location 193
+warp 10 1 -53 462 866 0
+look 60
+# ma1001 location 197
+warp 10 1 838 65 -1084 0
+look 60
+# ma1001 location 198
+warp 10 1 1270 171 -618 0
+look 60
+# ma1001 location 199
+warp 10 1 627 352 -396 0
+look 60
+# ma1001 location 201
+warp 10 1 668 -8 852 0
+look 60
+# ma1001 location 202
+warp 10 1 1316 167 924 0
+look 60
+# ma1001 location 203
+warp 10 1 -180 371 337 0
+look 60
+# ma1001 location 204
+warp 10 1 -695 360 692 0
+look 60
+# ma1001 location 205
+warp 10 1 -1449 -8 498 0
+look 60
+# ma1001 location 206
+warp 10 1 -538 322 -573 0
+look 60
+# ma1001 location 207
+warp 10 1 1350 27 -1442 0
+look 60
+# ma1001 location 208
+warp 10 1 2761 -8 -824 0
+look 60
+# ma1001 location 209
+warp 10 1 2149 -8 702 0
+look 60
+# ma1001 location 210
+warp 10 1 1480 72 1270 0
+look 60
+# ma1001 location 211
+warp 10 1 -99 -8 -223 0
+look 60
+# ma1001 location 212
+warp 10 1 -1707 -8 -673 0
+look 60
+# ma1001 location 213
+warp 10 1 -2232 -8 0 0
+look 60
+# ma1001 location 214
+warp 10 1 52 -18 1999 0
+look 60
+# ma1001 enemies 1
+warp 10 1 -8550 3502 405 0
+look 60
+# ma1001 enemies 2
+warp 10 1 2566 22 -823 0
+look 60
+# ma1001 enemies 4
+warp 10 1 2094 7 578 0
+look 60
+# ma1001 enemies 5
+warp 10 1 269 34 1605 0
+look 60
+# ma1001 enemies 6
+warp 10 1 -150 3 -311 0
+look 60
+# ma1001 enemies 7
+warp 10 1 -1779 3 -766 0
+look 60
+# ma1001 enemies 11
+warp 10 1 165 519 -777 0
+look 60
+# ma1001 enemies 12
+warp 10 1 2743 33 -708 0
+look 60
+# ma1001 enemies 15
+warp 10 1 -648 398 -599 0
+look 60
+# ma1001 enemies 20
+warp 10 1 1230 76 -1436 0
+look 60
+# ma1001 enemies 21
+warp 10 1 1653 5 1201 0
+look 60
+# ma1001 enemies 27
+warp 10 1 -169 2 -1610 0
+look 60
+# ma1001 enemies 28
+warp 10 1 190 22 -1640 0
+look 60
+# ma1001 enemies 29
+warp 10 1 -127 14 -1676 0
+look 60
+# ma1001 enemies 33
+warp 10 1 55 3 -1582 0
+look 60
+# ma1001 enemies 39
+warp 10 1 -217 11 -1683 0
+look 60
+# ma1001 enemies 46
+warp 10 1 829 128 -1049 0
+look 60
+# ma1001 enemies 58
+warp 10 1 1194 207 -613 0
+look 60
+# ma1001 enemies 60
+warp 10 1 1328 201 -590 0
+look 60
+# ma1001 enemies 74
+warp 10 1 594 360 -433 0
+look 60
+# ma1001 enemies 81
+warp 10 1 488 519 98 0
+look 60
+# ma1001 enemies 85
+warp 10 1 404 520 207 0
+look 60
+# ma1001 enemies 88
+warp 10 1 -1345 2 -1247 0
+look 60
+# ma1001 enemies 95
+warp 10 1 -1381 4 -1271 0
+look 60
+# ma1001 enemies 99
+warp 10 1 2527 2 -779 0
+look 60
+# ma1001 enemies 100
+warp 10 1 2559 2 -684 0
+look 60
+# ma1001 enemies 102
+warp 10 1 2760 2 -596 0
+look 60
+# ma1001 enemies 121
+warp 10 1 2076 2 818 0
+look 60
+# ma1001 enemies 122
+warp 10 1 2022 2 618 0
+look 60
+# ma1001 enemies 123
+warp 10 1 2207 2 563 0
+look 60
+# ma1001 enemies 125
+warp 10 1 2117 27 853 0
+look 60
+# ma1001 enemies 128
+warp 10 1 2269 11 648 0
+look 60
+# ma1001 enemies 143
+warp 10 1 1640 8 1235 0
+look 60
+# ma1001 enemies 146
+warp 10 1 -89 14 1507 0
+look 60
+# ma1001 enemies 152
+warp 10 1 3 31 1555 0
+look 60
+# ma1001 enemies 153
+warp 10 1 -225 28 1662 0
+look 60
+# ma1001 enemies 154
+warp 10 1 -155 26 1644 0
+look 60
+# ma1001 enemies 160
+warp 10 1 -164 2 -154 0
+look 60
+# ma1001 enemies 173
+warp 10 1 -1603 11 -754 0
+look 60
+# ma1001 enemies 177
+warp 10 1 -1621 16 -510 0
+look 60
+# ma1001 enemies 178
+warp 10 1 -1909 2 -650 0
+look 60
+# ma1001 enemies 181
+warp 10 1 -1746 4 -599 0
+look 60
+# ma1001 enemies 188
+warp 10 1 -219 414 230 0
+look 60
+# ma1001 enemies 192
+warp 10 1 -50 405 373 0
+look 60
+# ma1001 enemies 207
+warp 10 1 596 335 874 0
+look 60
+# ma1001 enemies 222
+warp 10 1 1352 174 933 0
+look 60
+# ma1001 enemies 223
+warp 10 1 1320 175 885 0
+look 60
+# ma1001 enemies 228
+warp 10 1 -774 353 -2 0
+look 60
+# ma1001 enemies 231
+warp 10 1 -948 360 40 0
+look 60
+# ma1001 enemies 245
+warp 10 1 -19 584 748 0
+look 60
+# ma1001 enemies 247
+warp 10 1 -558 5752 7781 0
+look 60
+# ma1001 enemies 249
+warp 10 1 -1394 181 442 0
+look 60
+# ma1001 enemies 259
+warp 10 1 -550 397 -633 0
+look 60
+# ma1001 enemies 261
+warp 10 1 -436 397 -565 0
+look 60
+# ma1001 collectible 4
+warp 10 1 -1593 11 -750 0
+look 60
+# ma1001 collectible 11
+warp 10 1 1364 62 -1336 0
+look 60
+# ma1001 collectible 24
+warp 10 1 -154 10 -132 0
+look 60
+# ma1001 collectible 32
+warp 10 1 -1527 176 469 0
+look 60
+# ma1001 collectible 41
+warp 10 1 1577 5 275 0
+look 60
+# ma1001 collectible 42
+warp 10 1 1563 5 -255 0
+look 60
+# ma1001 collectible 43
+warp 10 1 2093 5 -275 0
+look 60
+# ma1001 collectible 44
+warp 10 1 2110 5 260 0
+look 60
+# ma1001 collectible 45
+warp 10 1 1778 3 -4 0
+look 60
+# ma1001 collectible 46
+warp 10 1 -1252 510 -799 0
+look 60
+# ma1001 collectible 49
+warp 10 1 140 504 -749 0
+look 60
+# ma1001 collectible 61
+warp 10 1 2977 7 -478 0
+look 60
+# ma1001 collectible 70
+warp 10 1 3141 2 234 0
+look 60
+# ma1001 collectible 71
+warp 10 1 306 40 1603 0
+look 60
+# ma1001 collectible 81
+warp 10 1 -2896 2 699 0
+look 60
+# ma1001 collectible 82
+warp 10 1 -2863 2 -686 0
+look 60
+# ma1001 gimmick 388
+warp 10 1 1406.37 199.89 -522.69 0
+look 60
+# ma1001 gimmick 389
+warp 10 1 1285.79 200.21 -794.44 0
+look 60
+# ma1001 gimmick 392
+warp 10 1 326.6 21.34 -1489.96 0
+look 60
+# ma1001 gimmick 395
+warp 10 1 1114.23 207.08 -557.81 0
+look 60
+# ma1001 gimmick 397
+warp 10 1 615.03 375.44 -284.91 0
+look 60
+# ma1001 gimmick 399
+warp 10 1 630 510.22 274.81 0
+look 60
+# ma1001 gimmick 400
+warp 10 1 673.59 327.2 726.89 0
+look 60
+# ma1001 gimmick 401
+warp 10 1 776.73 331.62 902.43 0
+look 60
+# ma1001 gimmick 404
+warp 10 1 1475.65 86.63 1196.67 0
+look 60
+# ma1001 gimmick 406
+warp 10 1 79.88 398.06 404.68 0
+look 60
+# ma1001 gimmick 407
+warp 10 1 -263.44 398.57 123.7 0
+look 60
+# ma1001 gimmick 410
+warp 10 1 -564.82 380.27 -426.91 0
+look 60
+# ma1001 gimmick 411
+warp 10 1 -424.16 388.59 -694.21 0
+look 60
+# ma1001 gimmick 413
+warp 10 1 -699.12 378.48 -604.9 0
+look 60
+# ma1001 gimmick 419
+warp 10 1 -766 372.52 678.93 0
+look 60
+# ma1001 gimmick 420
+warp 10 1 -1301.52 174.75 538.68 0
+look 60
+# ma1101 landmark 215
+warp 11 1 -251 0 0 0
+look 60
+# ma1101 landmark 216
+warp 11 1 128 62 0 0
+look 60
+# ma1101 landmark 217
+warp 11 1 -65 0 262 0
+look 60
+# ma1101 landmark 218
+warp 11 1 -65 0 -262 0
+look 60
+# ma1101 landmark 219
+warp 11 1 465 81 0 0
+look 60
+# ma1101 landmark 220
+warp 11 1 165 152 468 0
+look 60
+# ma1101 landmark 221
+warp 11 1 706 687 -519 0
+look 60
+# ma1101 location 215
+warp 11 1 -311 -8 0 0
+look 60
+# ma1101 location 220
+warp 11 1 142 137 467 0
+look 60
+# ma1101 location 224
+warp 11 1 291 52 0 0
+look 60
+# ma1101 location 226
+warp 11 1 685 712 0 0
+look 60
+# ma1101 enemies 1
+warp 11 1 1275 1544 4562 0
+look 60
+# ma1101 enemies 3
+warp 11 1 395 82 0 0
+look 60
+# ma1101 enemies 4
+warp 11 1 664 693 -648 0
+look 60
+# ma1101 enemies 8
+warp 11 1 96 10 322 0
+look 60
+# ma1101 enemies 10
+warp 11 1 -153 4 -193 0
+look 60
+# ma1101 enemies 13
+warp 11 1 20 62 -105 0
+look 60
+# ma1101 enemies 14
+warp 11 1 -14 66 67 0
+look 60
+# ma1101 enemies 16
+warp 11 1 121 15 -396 0
+look 60
+# ma1101 enemies 17
+warp 11 1 133 58 -201 0
+look 60
+# ma1101 enemies 20
+warp 11 1 -153 10 -62 0
+look 60
+# ma1101 enemies 25
+warp 11 1 162 4 -304 0
+look 60
+# ma1101 enemies 29
+warp 11 1 -63 2 -352 0
+look 60
+# ma1101 enemies 36
+warp 11 1 -20 2 -148 0
+look 60
+# ma1101 enemies 50
+warp 11 1 90 2 186 0
+look 60
+# ma1101 enemies 55
+warp 11 1 -123 2 313 0
+look 60
+# ma1101 enemies 72
+warp 11 1 192 60 -292 0
+look 60
+# ma1101 enemies 74
+warp 11 1 202 60 256 0
+look 60
+# ma1101 enemies 83
+warp 11 1 360 71 -106 0
+look 60
+# ma1101 enemies 84
+warp 11 1 244 71 -15 0
+look 60
+# ma1101 enemies 96
+warp 11 1 644 719 -7 0
+look 60
+# ma1101 enemies 104
+warp 11 1 785 692 -330 0
+look 60
+# ma1101 enemies 105
+warp 11 1 720 697 -392 0
+look 60
+# ma1201 landmark 227
+warp 12 1 251 -48 -265 0
+look 60
+# ma1201 landmark 228
+warp 12 1 -45 0 0 0
+look 60
+# ma1201 landmark 229
+warp 12 1 -572 1812 -19 0
+look 60
+# ma1201 location 230
+warp 12 1 -165 -3 0 0
+look 60
+# ma1201 location 231
+warp 12 1 -400 832 -37 0
+look 60
+# ma1201 enemies 2
+warp 12 1 -499 1819 4 0
+look 60
+# ma1201 enemies 7
+warp 12 1 158 -23 -87 0
+look 60
+# ma1201 enemies 8
+warp 12 1 139 -23 2 0
+look 60
+# ma1201 enemies 11
+warp 12 1 317 -35 -261 0
+look 60
+# ma1201 enemies 15
+warp 12 1 127 -14 -80 0
+look 60
+# ma1201 enemies 18
+warp 12 1 215 -34 -335 0
+look 60
+# ma1201 enemies 20
+warp 12 1 329 -38 -320 0
+look 60
+# ma1201 enemies 23
+warp 12 1 197 -13 26 0
+look 60
+# ma1201 enemies 41
+warp 12 1 -321 869 -201 0
+look 60
+# ma1201 enemies 53
+warp 12 1 -419 939 9 0
+look 60
+# ma1201 enemies 54
+warp 12 1 -272 854 -46 0
+look 60
+# ma1201 gimmick 458
+warp 12 1 -504.7 1245.14 262.15 0
+look 60
+# ma1202 landmark 232
+warp 12 2 118 -27 0 0
+look 60
+# ma1202 landmark 233
+warp 12 2 -45 0 0 0
+look 60
+# ma1202 landmark 234
+warp 12 2 -302 196 -1 0
+look 60
+# ma1202 landmark 236
+warp 12 2 -572 1812 -19 0
+look 60
+# ma1202 location 234
+warp 12 2 -287 182 0 0
+look 60
+# ma1202 location 237
+warp 12 2 255 -58 -264 0
+look 60
+# ma1202 location 240
+warp 12 2 -142 62 -125 0
+look 60
+# ma1202 location 249
+warp 12 2 -507 1182 156 0
+look 60
+# ma1202 enemies 4
+warp 12 2 -2997 682 1360 0
+look 60
+# ma1202 enemies 5
+warp 12 2 -1419 682 -1351 0
+look 60
+# ma1202 enemies 9
+warp 12 2 -320 949 136 0
+look 60
+# ma1202 enemies 13
+warp 12 2 -2700 1763 0 0
+look 60
+# ma1202 enemies 15
+warp 12 2 -2874 1934 -10 0
+look 60
+# ma1202 enemies 19
+warp 12 2 317 -35 -261 0
+look 60
+# ma1202 enemies 22
+warp 12 2 218 -34 -89 0
+look 60
+# ma1202 enemies 23
+warp 12 2 127 -17 -80 0
+look 60
+# ma1202 enemies 25
+warp 12 2 215 -34 -335 0
+look 60
+# ma1202 enemies 27
+warp 12 2 329 -38 -320 0
+look 60
+# ma1202 enemies 30
+warp 12 2 197 -13 26 0
+look 60
+# ma1202 enemies 40
+warp 12 2 -230 5 -5 0
+look 60
+# ma1202 enemies 76
+warp 12 2 -321 869 -201 0
+look 60
+# ma1202 enemies 83
+warp 12 2 -525 910 36 0
+look 60
+# ma1202 enemies 97
+warp 12 2 -5000 11962 2265 0
+look 60
+# ma1202 enemies 98
+warp 12 2 -5140 11962 2265 0
+look 60
+# ma1202 collectible 41
+warp 12 2 389 1188 20 0
+look 60
+# ma1301 landmark 251
+warp 13 1 46 2 55 0
+look 60
+# ma1301 landmark 252
+warp 13 1 -619 -463 -83 0
+look 60
+# ma1301 landmark 253
+warp 13 1 -1006 -727 -808 0
+look 60
+# ma1301 landmark 255
+warp 13 1 -1941 -1233 -853 0
+look 60
+# ma1301 landmark 256
+warp 13 1 -1316 -987 -1323 0
+look 60
+# ma1301 landmark 257
+warp 13 1 -1885 -1384 -37 0
+look 60
+# ma1301 landmark 258
+warp 13 1 -2814 -1750 -347 0
+look 60
+# ma1301 landmark 259
+warp 13 1 -3607 -1858 -458 0
+look 60
+# ma1301 landmark 260
+warp 13 1 -81 127 161 0
+look 60
+# ma1301 landmark 261
+warp 13 1 -1117 -238 -1202 0
+look 60
+# ma1301 location 253
+warp 13 1 -1073 -733 -849 0
+look 60
+# ma1301 location 255
+warp 13 1 -1958 -1238 -841 0
+look 60
+# ma1301 location 258
+warp 13 1 -2819 -1758 -295 0
+look 60
+# ma1301 location 262
+warp 13 1 -412 -343 196 0
+look 60
+# ma1301 location 263
+warp 13 1 -83 -123 -340 0
+look 60
+# ma1301 location 264
+warp 13 1 -34 -278 -502 0
+look 60
+# ma1301 location 265
+warp 13 1 -725 -540 -504 0
+look 60
+# ma1301 location 266
+warp 13 1 -420 -273 -700 0
+look 60
+# ma1301 location 267
+warp 13 1 -1013 -753 -680 0
+look 60
+# ma1301 location 268
+warp 13 1 -710 -653 -1310 0
+look 60
+# ma1301 location 269
+warp 13 1 -1371 -668 -630 0
+look 60
+# ma1301 location 270
+warp 13 1 -1454 -1068 -973 0
+look 60
+# ma1301 location 272
+warp 13 1 -2593 -1738 -656 0
+look 60
+# ma1301 location 273
+warp 13 1 -3245 -1868 -550 0
+look 60
+# ma1301 location 274
+warp 13 1 -1112 -728 -575 0
+look 60
+# ma1301 location 276
+warp 13 1 -950 -558 -1304 0
+look 60
+# ma1301 enemies 2
+warp 13 1 -1376 -617 -774 0
+look 60
+# ma1301 enemies 3
+warp 13 1 -1099 -1010 -1551 0
+look 60
+# ma1301 enemies 4
+warp 13 1 -1042 -1012 -1541 0
+look 60
+# ma1301 enemies 5
+warp 13 1 -2032 -1429 -415 0
+look 60
+# ma1301 enemies 6
+warp 13 1 -2283 -1403 -585 0
+look 60
+# ma1301 enemies 7
+warp 13 1 -2470 -1501 -900 0
+look 60
+# ma1301 enemies 10
+warp 13 1 -343 64 365 0
+look 60
+# ma1301 enemies 11
+warp 13 1 -736 -614 -1386 0
+look 60
+# ma1301 enemies 12
+warp 13 1 -897 -961 -857 0
+look 60
+# ma1301 enemies 14
+warp 13 1 -3324 -1843 -446 0
+look 60
+# ma1301 enemies 15
+warp 13 1 -2976 -1749 -742 0
+look 60
+# ma1301 enemies 19
+warp 13 1 -1078 -709 -674 0
+look 60
+# ma1301 enemies 20
+warp 13 1 -2164 -1472 -244 0
+look 60
+# ma1301 enemies 22
+warp 13 1 -171 -121 -68 0
+look 60
+# ma1301 enemies 27
+warp 13 1 -319 -263 -253 0
+look 60
+# ma1301 enemies 30
+warp 13 1 -140 -64 -93 0
+look 60
+# ma1301 enemies 32
+warp 13 1 -147 -6 -154 0
+look 60
+# ma1301 enemies 42
+warp 13 1 9 -224 -479 0
+look 60
+# ma1301 enemies 46
+warp 13 1 -39 -253 -613 0
+look 60
+# ma1301 enemies 58
+warp 13 1 -300 64 335 0
+look 60
+# ma1301 enemies 62
+warp 13 1 -389 -338 -366 0
+look 60
+# ma1301 enemies 64
+warp 13 1 -440 -361 -451 0
+look 60
+# ma1301 enemies 66
+warp 13 1 -502 -413 -445 0
+look 60
+# ma1301 enemies 68
+warp 13 1 -556 -452 -519 0
+look 60
+# ma1301 enemies 73
+warp 13 1 -708 -534 -616 0
+look 60
+# ma1301 enemies 91
+warp 13 1 -575 -323 188 0
+look 60
+# ma1301 enemies 93
+warp 13 1 -533 -331 -41 0
+look 60
+# ma1301 enemies 99
+warp 13 1 -590 -396 98 0
+look 60
+# ma1301 enemies 106
+warp 13 1 -706 -516 40 0
+look 60
+# ma1301 enemies 110
+warp 13 1 -791 -551 -79 0
+look 60
+# ma1301 enemies 112
+warp 13 1 -870 -595 -182 0
+look 60
+# ma1301 enemies 114
+warp 13 1 -717 -516 -357 0
+look 60
+# ma1301 enemies 119
+warp 13 1 -693 -505 -269 0
+look 60
+# ma1301 enemies 148
+warp 13 1 -1303 -650 -501 0
+look 60
+# ma1301 enemies 151
+warp 13 1 -1358 -638 -596 0
+look 60
+# ma1301 enemies 153
+warp 13 1 -1235 -664 -618 0
+look 60
+# ma1301 enemies 161
+warp 13 1 -1212 -717 -909 0
+look 60
+# ma1301 enemies 163
+warp 13 1 -837 -561 -984 0
+look 60
+# ma1301 enemies 164
+warp 13 1 -943 -606 -1002 0
+look 60
+# ma1301 enemies 168
+warp 13 1 -797 -563 -633 0
+look 60
+# ma1301 enemies 173
+warp 13 1 -894 -522 -1056 0
+look 60
+# ma1301 enemies 182
+warp 13 1 -821 -565 -362 0
+look 60
+# ma1301 enemies 183
+warp 13 1 -909 -599 -335 0
+look 60
+# ma1301 enemies 186
+warp 13 1 -1086 -674 -387 0
+look 60
+# ma1301 enemies 187
+warp 13 1 -1204 -716 -421 0
+look 60
+# ma1301 enemies 191
+warp 13 1 -915 -607 -549 0
+look 60
+# ma1301 enemies 193
+warp 13 1 -884 -601 -550 0
+look 60
+# ma1301 enemies 206
+warp 13 1 -1207 -226 -1200 0
+look 60
+# ma1301 enemies 208
+warp 13 1 -881 -347 -1240 0
+look 60
+# ma1301 enemies 209
+warp 13 1 -903 -333 -1372 0
+look 60
+# ma1301 enemies 211
+warp 13 1 -692 -537 -1109 0
+look 60
+# ma1301 enemies 222
+warp 13 1 -770 -607 -1377 0
+look 60
+# ma1301 enemies 237
+warp 13 1 -560 -564 -1219 0
+look 60
+# ma1301 enemies 241
+warp 13 1 -1249 -1022 -856 0
+look 60
+# ma1301 enemies 249
+warp 13 1 -1548 -1052 -871 0
+look 60
+# ma1301 enemies 256
+warp 13 1 -1427 -1011 -1124 0
+look 60
+# ma1301 enemies 258
+warp 13 1 -1526 -1024 -1154 0
+look 60
+# ma1301 enemies 264
+warp 13 1 -1610 -1083 -1018 0
+look 60
+# ma1301 enemies 274
+warp 13 1 -1523 -1127 -577 0
+look 60
+# ma1301 enemies 276
+warp 13 1 -1509 -1111 -690 0
+look 60
+# ma1301 enemies 287
+warp 13 1 -1539 -1208 -441 0
+look 60
+# ma1301 enemies 291
+warp 13 1 -1347 -1007 -1391 0
+look 60
+# ma1301 enemies 297
+warp 13 1 -1149 -1020 -1432 0
+look 60
+# ma1301 enemies 304
+warp 13 1 -1728 -1220 -419 0
+look 60
+# ma1301 enemies 308
+warp 13 1 -1545 -1267 -297 0
+look 60
+# ma1301 enemies 314
+warp 13 1 -1685 -1299 -275 0
+look 60
+# ma1301 enemies 324
+warp 13 1 -1812 -1396 -323 0
+look 60
+# ma1301 enemies 325
+warp 13 1 -1881 -1427 -297 0
+look 60
+# ma1301 enemies 329
+warp 13 1 -2023 -1476 -244 0
+look 60
+# ma1301 enemies 341
+warp 13 1 -2132 -1524 -366 0
+look 60
+# ma1301 enemies 355
+warp 13 1 -1971 -1397 -492 0
+look 60
+# ma1301 enemies 359
+warp 13 1 -1771 -1197 -895 0
+look 60
+# ma1301 enemies 361
+warp 13 1 -1897 -1202 -1020 0
+look 60
+# ma1301 enemies 363
+warp 13 1 -2205 -1397 -822 0
+look 60
+# ma1301 enemies 365
+warp 13 1 -2159 -1415 -728 0
+look 60
+# ma1301 enemies 369
+warp 13 1 -1972 -1355 -630 0
+look 60
+# ma1301 enemies 373
+warp 13 1 -2045 -1272 -1013 0
+look 60
+# ma1301 enemies 374
+warp 13 1 -2153 -1320 -949 0
+look 60
+# ma1301 enemies 378
+warp 13 1 -2829 -1625 -765 0
+look 60
+# ma1301 enemies 380
+warp 13 1 -2125 -1494 -468 0
+look 60
+# ma1301 enemies 390
+warp 13 1 -2432 -1499 -506 0
+look 60
+# ma1301 enemies 396
+warp 13 1 -2388 -1515 -747 0
+look 60
+# ma1301 enemies 400
+warp 13 1 -2513 -1569 -720 0
+look 60
+# ma1301 enemies 416
+warp 13 1 -2636 -1692 -517 0
+look 60
+# ma1301 enemies 418
+warp 13 1 -2621 -1706 -446 0
+look 60
+# ma1301 enemies 427
+warp 13 1 -2809 -1679 -699 0
+look 60
+# ma1301 enemies 431
+warp 13 1 -3017 -1693 -749 0
+look 60
+# ma1301 enemies 435
+warp 13 1 -2852 -1755 -455 0
+look 60
+# ma1301 enemies 437
+warp 13 1 -2800 -1734 -512 0
+look 60
+# ma1301 enemies 439
+warp 13 1 -2867 -1745 -317 0
+look 60
+# ma1301 enemies 449
+warp 13 1 -3023 -1790 -561 0
+look 60
+# ma1301 enemies 453
+warp 13 1 -3505 -1889 -92 0
+look 60
+# ma1301 enemies 455
+warp 13 1 -3442 -1871 -201 0
+look 60
+# ma1301 enemies 456
+warp 13 1 -3397 -1892 -74 0
+look 60
+# ma1301 enemies 457
+warp 13 1 -3344 -1906 11 0
+look 60
+# ma1301 collectible 17
+warp 13 1 0 -37 -94 0
+look 60
+# ma1301 collectible 20
+warp 13 1 -1052 -256 -1192 0
+look 60
+# ma1301 collectible 26
+warp 13 1 -167 -103 -242 0
+look 60
+# ma1301 collectible 27
+warp 13 1 -273 -201 -393 0
+look 60
+# ma1301 collectible 46
+warp 13 1 -3031 -1788 -443 0
+look 60
+# ma1301 collectible 47
+warp 13 1 -3172 -1808 -644 0
+look 60
+# ma1301 collectible 56
+warp 13 1 -1655 -1118 -989 0
+look 60
+# ma1301 collectible 59
+warp 13 1 -1796 -1381 -80 0
+look 60
+# ma1301 collectible 76
+warp 13 1 -103 132 147 0
+look 60
+# ma1301 collectible 90
+warp 13 1 -578 -431 -713 0
+look 60
+# ma1301 collectible 91
+warp 13 1 -3056 -1708 -761 0
+look 60
+# ma1301 collectible 100
+warp 13 1 -724 -443 -1040 0
+look 60
+# ma1301 collectible 113
+warp 13 1 -163 85 288 0
+look 60
+# ma1301 collectible 118
+warp 13 1 -1884 -1382 2 0
+look 60
+# ma1301 collectible 119
+warp 13 1 -1979 -1396 -5 0
+look 60
+# ma1301 collectible 123
+warp 13 1 40 -200 -406 0
+look 60
+# ma1301 collectible 131
+warp 13 1 -240 24 37 0
+look 60
+# ma1301 collectible 136
+warp 13 1 -420 -170 -31 0
+look 60
+# ma1301 collectible 155
+warp 13 1 -535 -247 -238 0
+look 60
+# ma1301 collectible 156
+warp 13 1 -371 -103 26 0
+look 60
+# ma1301 collectible 158
+warp 13 1 -649 -872 -831 0
+look 60
+# ma1301 locked area 2
+warp 13 1 -3600 -1858 -455 0
+look 60
+# ma1401 landmark 277
+warp 14 1 2301 240 -954 0
+look 60
+# ma1401 landmark 278
+warp 14 1 1995 19 -534 0
+look 60
+# ma1401 landmark 279
+warp 14 1 1484 16 -372 0
+look 60
+# ma1401 landmark 280
+warp 14 1 805 37 -11 0
+look 60
+# ma1401 landmark 281
+warp 14 1 445 -13 170 0
+look 60
+# ma1401 landmark 282
+warp 14 1 -217 -17 556 0
+look 60
+# ma1401 landmark 283
+warp 14 1 -444 -31 759 0
+look 60
+# ma1401 landmark 284
+warp 14 1 -832 -31 925 0
+look 60
+# ma1401 landmark 285
+warp 14 1 -438 -85 309 0
+look 60
+# ma1401 landmark 286
+warp 14 1 -185 0 0 0
+look 60
+# ma1401 location 279
+warp 14 1 1519 -3 -388 0
+look 60
+# ma1401 location 288
+warp 14 1 1110 -8 -108 0
+look 60
+# ma1401 location 289
+warp 14 1 700 -8 -153 0
+look 60
+# ma1401 location 290
+warp 14 1 291 -8 -390 0
+look 60
+# ma1401 location 291
+warp 14 1 356 -43 78 0
+look 60
+# ma1401 location 292
+warp 14 1 30 7 467 0
+look 60
+# ma1401 location 293
+warp 14 1 -660 2 1245 0
+look 60
+# ma1401 enemies 1
+warp 14 1 -2886 -177 5335 0
+look 60
+# ma1401 enemies 2
+warp 14 1 -2867 -177 5673 0
+look 60
+# ma1401 enemies 4
+warp 14 1 -307 -16 527 0
+look 60
+# ma1401 enemies 5
+warp 14 1 -83 0 2 0
+look 60
+# ma1401 enemies 6
+warp 14 1 -82 0 -7 0
+look 60
+# ma1401 enemies 25
+warp 14 1 245 -10 196 0
+look 60
+# ma1401 enemies 28
+warp 14 1 -27 18 -620 0
+look 60
+# ma1401 enemies 30
+warp 14 1 -555 -28 648 0
+look 60
+# ma1401 enemies 31
+warp 14 1 -832 -29 862 0
+look 60
+# ma1401 enemies 32
+warp 14 1 203 18 -493 0
+look 60
+# ma1401 enemies 33
+warp 14 1 1508 28 -227 0
+look 60
+# ma1401 enemies 34
+warp 14 1 1495 29 -220 0
+look 60
+# ma1401 enemies 35
+warp 14 1 1227 19 -182 0
+look 60
+# ma1401 enemies 42
+warp 14 1 1026 26 -109 0
+look 60
+# ma1401 enemies 50
+warp 14 1 9090 422 -115 0
+look 60
+# ma1401 enemies 51
+warp 14 1 8570 422 -115 0
+look 60
+# ma1401 enemies 53
+warp 14 1 810 53 -251 0
+look 60
+# ma1401 enemies 54
+warp 14 1 678 37 -302 0
+look 60
+# ma1401 enemies 55
+warp 14 1 445 4 -294 0
+look 60
+# ma1401 enemies 56
+warp 14 1 668 7 -145 0
+look 60
+# ma1401 enemies 58
+warp 14 1 593 7 -255 0
+look 60
+# ma1401 enemies 62
+warp 14 1 401 4 -304 0
+look 60
+# ma1401 enemies 65
+warp 14 1 266 -9 -46 0
+look 60
+# ma1401 enemies 66
+warp 14 1 448 -7 -2 0
+look 60
+# ma1401 enemies 68
+warp 14 1 504 32 85 0
+look 60
+# ma1401 enemies 75
+warp 14 1 227 -10 89 0
+look 60
+# ma1401 enemies 83
+warp 14 1 5 7 -3 0
+look 60
+# ma1401 enemies 93
+warp 14 1 81 9 350 0
+look 60
+# ma1401 enemies 95
+warp 14 1 -620 -15 975 0
+look 60
+# ma1401 enemies 97
+warp 14 1 -135 16 800 0
+look 60
+# ma1401 enemies 98
+warp 14 1 -573 16 1145 0
+look 60
+# ma1401 enemies 102
+warp 14 1 -153 26 891 0
+look 60
+# ma1401 enemies 105
+warp 14 1 -262 26 994 0
+look 60
+# ma1401 enemies 106
+warp 14 1 -311 27 1024 0
+look 60
+# ma1401 enemies 107
+warp 14 1 -346 26 1076 0
+look 60
+# ma1401 enemies 113
+warp 14 1 -662 28 1187 0
+look 60
+# ma1401 enemies 117
+warp 14 1 -237 -6 734 0
+look 60
+# ma1401 enemies 120
+warp 14 1 -336 -30 674 0
+look 60
+# ma1401 enemies 122
+warp 14 1 -517 -30 850 0
+look 60
+# ma1401 enemies 134
+warp 14 1 -928 -4 943 0
+look 60
+# ma1401 collectible 10
+warp 14 1 1847 40 -555 0
+look 60
+# ma1401 collectible 14
+warp 14 1 298 2 -195 0
+look 60
+# ma1401 collectible 15
+warp 14 1 55 6 1 0
+look 60
+# ma1401 collectible 18
+warp 14 1 -686 -83 675 0
+look 60
+# ma1401 collectible 26
+warp 14 1 1218 22 -143 0
+look 60
+# ma1401 collectible 31
+warp 14 1 1068 64 -240 0
+look 60
+# ma1401 collectible 32
+warp 14 1 2203 218 -862 0
+look 60
+# ma1401 collectible 33
+warp 14 1 2050 174 -736 0
+look 60
+# ma1401 collectible 35
+warp 14 1 1757 28 -543 0
+look 60
+# ma1401 collectible 44
+warp 14 1 -531 -83 579 0
+look 60
+# ma1401 collectible 52
+warp 14 1 883 55 9 0
+look 60
+# ma1401 collectible 89
+warp 14 1 935 47 -173 0
+look 60
+# ma1401 collectible 91
+warp 14 1 -542 -17 950 0
+look 60
+# ma1401 collectible 98
+warp 14 1 57 20 -609 0
+look 60
+# ma1401 collectible 100
+warp 14 1 81 -6 240 0
+look 60
+# ma1401 collectible 103
+warp 14 1 -229 -10 -8 0
+look 60
+# ma1401 collectible 117
+warp 14 1 -978 -16 844 0
+look 60
+# ma1401 collectible 118
+warp 14 1 -908 -82 698 0
+look 60
+# ma1401 collectible 121
+warp 14 1 930 47 173 0
+look 60
+# ma1401 collectible 122
+warp 14 1 502 33 -316 0
+look 60
+# ma1401 collectible 126
+warp 14 1 -823 -2 1144 0
+look 60
+# ma1401 collectible 128
+warp 14 1 -596 33 1237 0
+look 60
+# ma1401 collectible 129
+warp 14 1 -842 16 1227 0
+look 60
+# ma1401 collectible 132
+warp 14 1 557 34 -114 0
+look 60
+# ma1401 collectible 135
+warp 14 1 -1066 -3 894 0
+look 60
+# ma1401 collectible 139
+warp 14 1 1635 13 -514 0
+look 60
+# ma1401 collectible 143
+warp 14 1 -5 16 476 0
+look 60
+# ma1401 collectible 146
+warp 14 1 -832 -29 729 0
+look 60
+# ma1401 collectible 151
+warp 14 1 128 57 -549 0
+look 60
+# ma1501 landmark 294
+warp 15 1 159 5 17 0
+look 60
+# ma1501 landmark 295
+warp 15 1 -80 -47 0 0
+look 60
+# ma1501 landmark 297
+warp 15 1 -233 -81 0 0
+look 60
+# ma1501 landmark 298
+warp 15 1 -312 -317 39 0
+look 60
+# ma1501 location 294
+warp 15 1 122 -18 0 0
+look 60
+# ma1501 location 300
+warp 15 1 -30 -3 -80 0
+look 60
+# ma1501 enemies 1
+warp 15 1 -3482 -3173 259 0
+look 60
+# ma1501 enemies 2
+warp 15 1 -3118 -3173 44 0
+look 60
+# ma1501 enemies 4
+warp 15 1 -2000 -1464 -140 0
+look 60
+# ma1501 enemies 5
+warp 15 1 -2060 -1464 -190 0
+look 60
+# ma1501 enemies 6
+warp 15 1 -2000 -1464 140 0
+look 60
+# ma1501 enemies 7
+warp 15 1 -2060 -1464 190 0
+look 60
+# ma1501 enemies 19
+warp 15 1 -296 -315 -13 0
+look 60
+# ma1501 enemies 21
+warp 15 1 -304 -315 -42 0
+look 60
+# ma1501 enemies 29
+warp 15 1 -2600 52 8394 0
+look 60
+# ma1501 enemies 37
+warp 15 1 -340 7 -681 0
+look 60
+# ma1501 enemies 39
+warp 15 1 -3400 52 -7868 0
+look 60
+# ma1501 enemies 40
+warp 15 1 -3400 52 -8398 0
+look 60
+# ma1501 enemies 41
+warp 15 1 -260 7 -681 0
+look 60
+# ma1501 enemies 43
+warp 15 1 -2600 52 -7868 0
+look 60
+# ma1501 enemies 44
+warp 15 1 -2600 52 -8398 0
+look 60
+# ma1501 enemies 45
+warp 15 1 -9808 52 400 0
+look 60
+# ma1501 enemies 46
+warp 15 1 -10338 52 400 0
+look 60
+# ma1501 enemies 47
+warp 15 1 -10868 52 400 0
+look 60
+# ma1501 enemies 48
+warp 15 1 -11393 52 400 0
+look 60
+# ma1501 enemies 49
+warp 15 1 -9808 52 -400 0
+look 60
+# ma1501 enemies 50
+warp 15 1 -10338 52 -400 0
+look 60
+# ma1501 enemies 51
+warp 15 1 -10868 52 -400 0
+look 60
+# ma1501 enemies 52
+warp 15 1 -11393 52 -400 0
+look 60
+# ma1501 enemies 53
+warp 15 1 -340 7 681 0
+look 60
+# ma1501 enemies 55
+warp 15 1 -3400 52 7868 0
+look 60
+# ma1501 enemies 56
+warp 15 1 -3400 52 8394 0
+look 60
+# ma1501 enemies 57
+warp 15 1 -260 7 681 0
+look 60
+# ma1501 enemies 59
+warp 15 1 -2600 7 7868 0
+look 60
+# ma1601 landmark 309
+warp 16 1 -112 -2 -41 0
+look 60
+# ma1601 landmark 310
+warp 16 1 -86 35 218 0
+look 60
+# ma1601 landmark 311
+warp 16 1 -363 72 352 0
+look 60
+# ma1601 landmark 312
+warp 16 1 -428 -5 229 0
+look 60
+# ma1601 landmark 313
+warp 16 1 -694 0 298 0
+look 60
+# ma1601 landmark 314
+warp 16 1 -575 42 475 0
+look 60
+# ma1601 landmark 315
+warp 16 1 -784 2 49 0
+look 60
+# ma1601 landmark 317
+warp 16 1 -1060 40 460 0
+look 60
+# ma1601 landmark 318
+warp 16 1 -1470 174 616 0
+look 60
+# ma1601 landmark 319
+warp 16 1 -1046 505 486 0
+look 60
+# ma1601 location 313
+warp 16 1 -689 -6 301 0
+look 60
+# ma1601 location 316
+warp 16 1 -914 2 181 0
+look 60
+# ma1601 location 321
+warp 16 1 -130 -8 36 0
+look 60
+# ma1601 location 322
+warp 16 1 185 -13 -94 0
+look 60
+# ma1601 location 323
+warp 16 1 42 17 141 0
+look 60
+# ma1601 location 324
+warp 16 1 -90 27 479 0
+look 60
+# ma1601 location 325
+warp 16 1 -155 17 330 0
+look 60
+# ma1601 location 327
+warp 16 1 -425 -23 482 0
+look 60
+# ma1601 location 328
+warp 16 1 -710 7 726 0
+look 60
+# ma1601 location 329
+warp 16 1 -825 -18 463 0
+look 60
+# ma1601 location 330
+warp 16 1 -682 -18 -36 0
+look 60
+# ma1601 location 331
+warp 16 1 -594 -1 145 0
+look 60
+# ma1601 location 332
+warp 16 1 -858 -18 -206 0
+look 60
+# ma1601 location 333
+warp 16 1 -1025 -18 -70 0
+look 60
+# ma1601 location 334
+warp 16 1 -1280 -8 195 0
+look 60
+# ma1601 location 335
+warp 16 1 -1315 47 470 0
+look 60
+# ma1601 enemies 1
+warp 16 1 -1655 372 2254 0
+look 60
+# ma1601 enemies 2
+warp 16 1 -1340 372 2254 0
+look 60
+# ma1601 enemies 4
+warp 16 1 132 4 -160 0
+look 60
+# ma1601 enemies 7
+warp 16 1 -724 65 774 0
+look 60
+# ma1601 enemies 9
+warp 16 1 -5948 52 1418 0
+look 60
+# ma1601 enemies 11
+warp 16 1 76 0 -70 0
+look 60
+# ma1601 enemies 15
+warp 16 1 -948 36 440 0
+look 60
+# ma1601 enemies 25
+warp 16 1 151 3 -162 0
+look 60
+# ma1601 enemies 33
+warp 16 1 -239 -1 -56 0
+look 60
+# ma1601 enemies 36
+warp 16 1 42 22 174 0
+look 60
+# ma1601 enemies 40
+warp 16 1 -121 45 335 0
+look 60
+# ma1601 enemies 45
+warp 16 1 -461 -3 218 0
+look 60
+# ma1601 enemies 48
+warp 16 1 -480 10 432 0
+look 60
+# ma1601 enemies 57
+warp 16 1 -609 40 450 0
+look 60
+# ma1601 enemies 78
+warp 16 1 -784 -1 438 0
+look 60
+# ma1601 enemies 104
+warp 16 1 -700 2 133 0
+look 60
+# ma1601 enemies 131
+warp 16 1 -857 6 160 0
+look 60
+# ma1601 enemies 132
+warp 16 1 -910 9 124 0
+look 60
+# ma1601 enemies 169
+warp 16 1 -1342 121 445 0
+look 60
+# ma1601 collectible 13
+warp 16 1 -1060 20 248 0
+look 60
+# ma1601 collectible 30
+warp 16 1 -1058 42 440 0
+look 60
+# ma1601 collectible 36
+warp 16 1 -1399 147 439 0
+look 60
+# ma1601 collectible 38
+warp 16 1 -1396 194 469 0
+look 60
+# ma1601 collectible 52
+warp 16 1 -803 0 -34 0
+look 60
+# ma1601 collectible 85
+warp 16 1 -213 64 215 0
+look 60
+# ma1601 collectible 86
+warp 16 1 -381 -3 142 0
+look 60
+# ma1601 collectible 115
+warp 16 1 348 -4 -32 0
+look 60
+# ma1701 landmark 337
+warp 17 1 293 -4 -512 0
+look 60
+# ma1701 landmark 338
+warp 17 1 -124 16 -114 0
+look 60
+# ma1701 landmark 339
+warp 17 1 -188 244 74 0
+look 60
+# ma1701 landmark 341
+warp 17 1 12 570 0 0
+look 60
+# ma1701 landmark 342
+warp 17 1 353 977 0 0
+look 60
+# ma1701 landmark 344
+warp 17 1 -322 2139 260 0
+look 60
+# ma1701 landmark 345
+warp 17 1 -322 2139 1308 0
+look 60
+# ma1701 landmark 346
+warp 17 1 398 775 -215 0
+look 60
+# ma1701 landmark 347
+warp 17 1 263 869 -398 0
+look 60
+# ma1701 location 343
+warp 17 1 -66 843 0 0
+look 60
+# ma1701 location 344
+warp 17 1 -323 2132 300 0
+look 60
+# ma1701 location 345
+warp 17 1 -323 2132 1356 0
+look 60
+# ma1701 location 350
+warp 17 1 -191 16 -184 0
+look 60
+# ma1701 location 353
+warp 17 1 -154 290 153 0
+look 60
+# ma1701 location 358
+warp 17 1 435 966 -111 0
+look 60
+# ma1701 location 359
+warp 17 1 87 854 -261 0
+look 60
+# ma1701 location 360
+warp 17 1 102 854 223 0
+look 60
+# ma1701 location 361
+warp 17 1 -325 963 0 0
+look 60
+# ma1701 location 362
+warp 17 1 -95 -133 166 0
+look 60
+# ma1701 enemies 1
+warp 17 1 -323 2142 960 0
+look 60
+# ma1701 enemies 2
+warp 17 1 -286 2142 642 0
+look 60
+# ma1701 enemies 4
+warp 17 1 -324 2142 688 0
+look 60
+# ma1701 enemies 5
+warp 17 1 -343 2142 795 0
+look 60
+# ma1701 enemies 8
+warp 17 1 -288 2142 896 0
+look 60
+# ma1701 enemies 9
+warp 17 1 -282 2144 901 0
+look 60
+# ma1701 enemies 15
+warp 17 1 5 920 -41 0
+look 60
+# ma1701 enemies 22
+warp 17 1 -188 4 -76 0
+look 60
+# ma1701 enemies 57
+warp 17 1 -20 911 -235 0
+look 60
+# ma1701 collectible 11
+warp 17 1 289 980 4 0
+look 60
+# ma1701 collectible 12
+warp 17 1 289 980 -4 0
+look 60
+# ma1701 collectible 24
+warp 17 1 480 979 -23 0
+look 60
+# ma1701 collectible 39
+warp 17 1 79 8 -400 0
+look 60
+# ma1701 collectible 93
+warp 17 1 310 856 -363 0
+look 60
+# ma1901 landmark 363
+warp 19 1 -146 0 175 0
+look 60
+# ma1901 landmark 364
+warp 19 1 -59 0 0 0
+look 60
+# ma1901 landmark 365
+warp 19 1 -190 26 -190 0
+look 60
+# ma1901 landmark 366
+warp 19 1 -325 36 -135 0
+look 60
+# ma1901 landmark 367
+warp 19 1 -325 36 135 0
+look 60
+# ma1901 landmark 368
+warp 19 1 -190 26 190 0
+look 60
+# ma1901 landmark 369
+warp 19 1 -275 15 0 0
+look 60
+# ma1901 landmark 371
+warp 19 1 -1431 194 0 0
+look 60
+# ma1901 location 375
+warp 19 1 -126 -16 -123 0
+look 60
+# ma1901 location 382
+warp 19 1 -411 44 -173 0
+look 60
+# ma1901 location 383
+warp 19 1 -413 44 174 0
+look 60
+# ma1901 location 385
+warp 19 1 -1266 124 0 0
+look 60
+# ma1901 enemies 10
+warp 19 1 -275 17 -104 0
+look 60
+# ma1901 enemies 18
+warp 19 1 -138 -6 -172 0
+look 60
+# ma1901 enemies 50
+warp 19 1 -452 47 146 0
+look 60
+# ma1901 gimmick 775
+warp 19 1 0 131.5 4.96 0
+look 60
+# ma1901 gimmick 777
+warp 19 1 0 131.5 -4.96 0
+look 60
+# ma1901 gimmick 787
+warp 19 1 -470.56 82.55 -23.11 0
+look 60
+# ma1901 gimmick 799
+warp 19 1 -1154.39 133 0 0
+look 60
+# ma2001 landmark 386
+warp 20 1 214 -53 0 0
+look 60
+# ma2001 landmark 387
+warp 20 1 -291 -134 242 0
+look 60
+# ma2001 landmark 388
+warp 20 1 -296 42 112 0
+look 60
+# ma2001 landmark 389
+warp 20 1 -519 38 254 0
+look 60
+# ma2001 landmark 390
+warp 20 1 -473 108 0 0
+look 60
+# ma2001 landmark 392
+warp 20 1 -530 160 -210 0
+look 60
+# ma2001 landmark 393
+warp 20 1 -291 800 607 0
+look 60
+# ma2001 landmark 394
+warp 20 1 -311 673 0 0
+look 60
+# ma2001 location 387
+warp 20 1 -312 -138 254 0
+look 60
+# ma2001 location 396
+warp 20 1 190 -68 159 0
+look 60
+# ma2001 location 397
+warp 20 1 190 -68 -159 0
+look 60
+# ma2001 location 404
+warp 20 1 -297 44 -160 0
+look 60
+# ma2001 location 405
+warp 20 1 -591 81 343 0
+look 60
+# ma2001 location 407
+warp 20 1 -634 142 -389 0
+look 60
+# ma2001 location 408
+warp 20 1 35 652 0 0
+look 60
+# ma2001 enemies 3
+warp 20 1 -508 110 -35 0
+look 60
+# ma2001 enemies 4
+warp 20 1 183 5 -53 0
+look 60
+# ma2001 enemies 6
+warp 20 1 -3122 -1333 2461 0
+look 60
+# ma2001 enemies 12
+warp 20 1 -402 121 -450 0
+look 60
+# ma2001 enemies 15
+warp 20 1 -3772 622 950 0
+look 60
+# ma2001 enemies 16
+warp 20 1 -620 95 265 0
+look 60
+# ma2001 enemies 45
+warp 20 1 -320 40 -80 0
+look 60
+# ma2001 enemies 55
+warp 20 1 -141 12 -124 0
+look 60
+# ma2001 enemies 57
+warp 20 1 -230 -1 -118 0
+look 60
+# ma2001 enemies 60
+warp 20 1 -620 89 403 0
+look 60
+# ma2001 enemies 70
+warp 20 1 -490 152 -342 0
+look 60
+# ma2001 collectible 5
+warp 20 1 -442 57 -179 0
+look 60
+# ma2001 collectible 9
+warp 20 1 -438 122 -536 0
+look 60
+# ma2001 collectible 21
+warp 20 1 -312 -131 305 0
+look 60
+# ma2001 collectible 26
+warp 20 1 -500 66 453 0
+look 60
+# ma2001 collectible 44
+warp 20 1 103 -53 206 0
+look 60
+# ma2001 collectible 45
+warp 20 1 -4 -67 175 0
+look 60
+# ma2001 collectible 49
+warp 20 1 -65 668 0 0
+look 60
+# ma2001 collectible 50
+warp 20 1 -274 804 514 0
+look 60
+# ma2001 collectible 78
+warp 20 1 -464 147 -502 0
+look 60
+# ma2001 collectible 82
+warp 20 1 -373 801 755 0
+look 60
+# ma2001 collectible 101
+warp 20 1 -593 801 757 0
+look 60
+# ma2001 collectible 102
+warp 20 1 -297 786 365 0
+look 60
+# ma2001 gimmick 851
+warp 20 1 -321.6 801.26 649.09 0
+look 60
+# ma2101 landmark 410
+warp 21 1 -43 -11 194 0
+look 60
+# ma2101 landmark 411
+warp 21 1 465 542 -7 0
+look 60
+# ma2101 landmark 412
+warp 21 1 -356 -127 -930 0
+look 60
+# ma2101 landmark 413
+warp 21 1 -150 -80 -532 0
+look 60
+# ma2101 landmark 414
+warp 21 1 298 -22 -732 0
+look 60
+# ma2101 landmark 415
+warp 21 1 221 59 -276 0
+look 60
+# ma2101 landmark 416
+warp 21 1 130 148 -583 0
+look 60
+# ma2101 location 414
+warp 21 1 302 -24 -730 0
+look 60
+# ma2101 location 417
+warp 21 1 -295 -108 -675 0
+look 60
+# ma2101 location 418
+warp 21 1 -285 -2 -390 0
+look 60
+# ma2101 location 419
+warp 21 1 130 -27 -18 0
+look 60
+# ma2101 location 420
+warp 21 1 42 -53 -761 0
+look 60
+# ma2101 location 421
+warp 21 1 122 -28 -983 0
+look 60
+# ma2101 location 422
+warp 21 1 413 -25 -542 0
+look 60
+# ma2101 location 423
+warp 21 1 215 -8 -114 0
+look 60
+# ma2101 enemies 1
+warp 21 1 2123 1378 -4950 0
+look 60
+# ma2101 enemies 2
+warp 21 1 210 142 -504 0
+look 60
+# ma2101 enemies 4
+warp 21 1 -304 1 -462 0
+look 60
+# ma2101 enemies 7
+warp 21 1 125 30 0 0
+look 60
+# ma2101 enemies 10
+warp 21 1 1 104 -329 0
+look 60
+# ma2101 enemies 11
+warp 21 1 -58 39 -286 0
+look 60
+# ma2101 enemies 12
+warp 21 1 -269 -96 -783 0
+look 60
+# ma2101 enemies 13
+warp 21 1 -315 -96 -738 0
+look 60
+# ma2101 enemies 21
+warp 21 1 -302 -99 -777 0
+look 60
+# ma2101 enemies 22
+warp 21 1 -308 2 -355 0
+look 60
+# ma2101 enemies 28
+warp 21 1 -2 6 -6 0
+look 60
+# ma2101 enemies 35
+warp 21 1 -42 -64 -616 0
+look 60
+# ma2101 enemies 37
+warp 21 1 172 -17 -871 0
+look 60
+# ma2101 enemies 40
+warp 21 1 328 40 -400 0
+look 60
+# ma2101 enemies 44
+warp 21 1 180 -19 -953 0
+look 60
+# ma2101 enemies 45
+warp 21 1 321 50 -223 0
+look 60
+# ma2101 enemies 52
+warp 21 1 62 62 -268 0
+look 60
+# ma2101 enemies 53
+warp 21 1 455 35 -546 0
+look 60
+# ma2101 collectible 16
+warp 21 1 454 18 -379 0
+look 60
+# ma2101 collectible 18
+warp 21 1 -54 101 -364 0
+look 60
+# ma2101 collectible 22
+warp 21 1 1 -53 -691 0
+look 60
+# ma2101 collectible 28
+warp 21 1 -11 -42 -776 0
+look 60
+# ma2101 collectible 40
+warp 21 1 307 506 -20 0
+look 60
+# ma2201 landmark 425
+warp 22 1 -98 0 317 0
+look 60
+# ma2201 landmark 426
+warp 22 1 -185 -12 108 0
+look 60
+# ma2201 landmark 427
+warp 22 1 153 -20 333 0
+look 60
+# ma2201 landmark 428
+warp 22 1 -213 -13 -286 0
+look 60
+# ma2201 landmark 429
+warp 22 1 0 0 16 0
+look 60
+# ma2201 location 427
+warp 22 1 142 -19 334 0
+look 60
+# ma2201 enemies 1
+warp 22 1 0 2 -5 0
+look 60
+# ma2201 enemies 2
+warp 22 1 -5 2 -5 0
+look 60
+# ma2201 enemies 8
+warp 22 1 -239 12 292 0
+look 60
+# ma2201 enemies 10
+warp 22 1 300 12 279 0
+look 60
+# ma2201 enemies 11
+warp 22 1 -261 -45 -413 0
+look 60
+# ma2201 gimmick 900
+warp 22 1 -204 2 309 0
+look 60
+# ma2201 gimmick 902
+warp 22 1 242 2 265 0
+look 60
+# ma2201 gimmick 904
+warp 22 1 227 2 -172 0
+look 60
+# ma2301 location 430
+warp 23 1 0 -8 0 0
+look 60
+# ma2301 enemies 1
+warp 23 1 -295 -1568 0 0
+look 60
+# ma2301 enemies 2
+warp 23 1 -2 -12 0 0
+look 60
+# ma2401 landmark 431
+warp 24 1 0 0 -12 0
+look 60
+# ma2401 enemies 2
+warp 24 1 -75 12 -80 0
+look 60
+# ma2401 gimmick 990
+warp 24 1 -321.6 801.26 649.09 0
+look 60
+# ma2501 landmark 432
+warp 25 1 -860 9 -138 0
+look 60
+# ma2501 landmark 433
+warp 25 1 -921 19 106 0
+look 60
+# ma2501 landmark 434
+warp 25 1 -993 32 600 0
+look 60
+# ma2501 landmark 435
+warp 25 1 -1462 139 273 0
+look 60
+# ma2501 landmark 436
+warp 25 1 -213 12 12 0
+look 60
+# ma2501 landmark 437
+warp 25 1 4 2 -93 0
+look 60
+# ma2501 landmark 438
+warp 25 1 150 52 -143 0
+look 60
+# ma2501 landmark 439
+warp 25 1 527 62 -529 0
+look 60
+# ma2501 landmark 440
+warp 25 1 355 -13 37 0
+look 60
+# ma2501 landmark 441
+warp 25 1 -599 38 -513 0
+look 60
+# ma2501 landmark 442
+warp 25 1 -829 57 -521 0
+look 60
+# ma2501 landmark 443
+warp 25 1 -622 77 -277 0
+look 60
+# ma2501 landmark 444
+warp 25 1 540 -57 -99 0
+look 60
+# ma2501 landmark 445
+warp 25 1 707 -68 174 0
+look 60
+# ma2501 landmark 446
+warp 25 1 1062 -95 221 0
+look 60
+# ma2501 landmark 447
+warp 25 1 994 -95 592 0
+look 60
+# ma2501 landmark 448
+warp 25 1 1109 -91 637 0
+look 60
+# ma2501 landmark 449
+warp 25 1 1229 -102 1010 0
+look 60
+# ma2501 landmark 450
+warp 25 1 -139 -43 -443 0
+look 60
+# ma2501 landmark 451
+warp 25 1 -523 -49 -757 0
+look 60
+# ma2501 landmark 452
+warp 25 1 -1194 -41 -642 0
+look 60
+# ma2501 landmark 453
+warp 25 1 -1521 -54 -602 0
+look 60
+# ma2501 landmark 454
+warp 25 1 1203 74 685 0
+look 60
+# ma2501 landmark 455
+warp 25 1 -562 61 142 0
+look 60
+# ma2501 location 439
+warp 25 1 616 28 -577 0
+look 60
+# ma2501 location 450
+warp 25 1 -172 -54 -445 0
+look 60
+# ma2501 location 451
+warp 25 1 -527 -55 -742 0
+look 60
+# ma2501 location 452
+warp 25 1 -1207 -42 -642 0
+look 60
+# ma2501 location 456
+warp 25 1 -959 3 -258 0
+look 60
+# ma2501 location 457
+warp 25 1 -996 2 181 0
+look 60
+# ma2501 location 458
+warp 25 1 -1297 89 162 0
+look 60
+# ma2501 location 459
+warp 25 1 -1684 52 210 0
+look 60
+# ma2501 location 460
+warp 25 1 -961 5 970 0
+look 60
+# ma2501 location 461
+warp 25 1 -546 -4 -10 0
+look 60
+# ma2501 location 462
+warp 25 1 -228 -42 -110 0
+look 60
+# ma2501 location 464
+warp 25 1 437 47 -403 0
+look 60
+# ma2501 location 465
+warp 25 1 -717 32 -497 0
+look 60
+# ma2501 location 467
+warp 25 1 -600 132 -286 0
+look 60
+# ma2501 location 469
+warp 25 1 1157 -102 339 0
+look 60
+# ma2501 location 471
+warp 25 1 1025 -105 1016 0
+look 60
+# ma2501 location 473
+warp 25 1 69 -38 -406 0
+look 60
+# ma2501 location 475
+warp 25 1 -957 -76 -590 0
+look 60
+# ma2501 location 476
+warp 25 1 -1391 -86 -590 0
+look 60
+# ma2501 enemies 1
+warp 25 1 -770 9 76 0
+look 60
+# ma2501 enemies 6
+warp 25 1 -996 32 549 0
+look 60
+# ma2501 enemies 9
+warp 25 1 -6 2 -8 0
+look 60
+# ma2501 enemies 10
+warp 25 1 -618 44 -643 0
+look 60
+# ma2501 enemies 11
+warp 25 1 -478 42 -306 0
+look 60
+# ma2501 enemies 12
+warp 25 1 -1107 57 220 0
+look 60
+# ma2501 enemies 13
+warp 25 1 532 66 -265 0
+look 60
+# ma2501 enemies 14
+warp 25 1 -1497 -51 -678 0
+look 60
+# ma2501 enemies 15
+warp 25 1 1086 -40 -2082 0
+look 60
+# ma2501 enemies 17
+warp 25 1 -1304 78 -22 0
+look 60
+# ma2501 enemies 19
+warp 25 1 -680 12 78 0
+look 60
+# ma2501 enemies 21
+warp 25 1 -955 36 316 0
+look 60
+# ma2501 enemies 23
+warp 25 1 2580 42 -33 0
+look 60
+# ma2501 enemies 24
+warp 25 1 2516 52 -50 0
+look 60
+# ma2501 enemies 28
+warp 25 1 247 8 0 0
+look 60
+# ma2501 enemies 29
+warp 25 1 716 108 -618 0
+look 60
+# ma2501 enemies 30
+warp 25 1 1429 -69 502 0
+look 60
+# ma2501 enemies 33
+warp 25 1 -724 7 -18 0
+look 60
+# ma2501 enemies 35
+warp 25 1 1200 -86 300 0
+look 60
+# ma2501 enemies 38
+warp 25 1 -733 73 -370 0
+look 60
+# ma2501 enemies 40
+warp 25 1 0 2 15 0
+look 60
+# ma2501 enemies 41
+warp 25 1 -5 2 10 0
+look 60
+# ma2501 enemies 44
+warp 25 1 -1068 62 -94 0
+look 60
+# ma2501 enemies 45
+warp 25 1 -469 -340 -4792 0
+look 60
+# ma2501 enemies 50
+warp 25 1 1173 -96 1173 0
+look 60
+# ma2501 enemies 55
+warp 25 1 -1636 125 222 0
+look 60
+# ma2501 enemies 60
+warp 25 1 1238 -101 1053 0
+look 60
+# ma2501 enemies 83
+warp 25 1 -1023 28 -130 0
+look 60
+# ma2501 enemies 88
+warp 25 1 -893 32 285 0
+look 60
+# ma2501 enemies 90
+warp 25 1 -1233 107 128 0
+look 60
+# ma2501 enemies 100
+warp 25 1 -1082 30 140 0
+look 60
+# ma2501 enemies 116
+warp 25 1 -899 26 312 0
+look 60
+# ma2501 enemies 217
+warp 25 1 -436 -5 -98 0
+look 60
+# ma2501 enemies 223
+warp 25 1 -444 2 19 0
+look 60
+# ma2501 enemies 227
+warp 25 1 -183 -2 -210 0
+look 60
+# ma2501 enemies 229
+warp 25 1 -123 -1 -200 0
+look 60
+# ma2501 enemies 235
+warp 25 1 7 19 -161 0
+look 60
+# ma2501 enemies 249
+warp 25 1 -331 54 -276 0
+look 60
+# ma2501 enemies 264
+warp 25 1 160 18 -165 0
+look 60
+# ma2501 enemies 294
+warp 25 1 -440 33 -402 0
+look 60
+# ma2501 enemies 299
+warp 25 1 -396 40 -521 0
+look 60
+# ma2501 enemies 328
+warp 25 1 325 -2 -36 0
+look 60
+# ma2501 enemies 333
+warp 25 1 657 -58 33 0
+look 60
+# ma2501 enemies 351
+warp 25 1 510 -32 111 0
+look 60
+# ma2501 enemies 353
+warp 25 1 586 -43 160 0
+look 60
+# ma2501 enemies 360
+warp 25 1 659 -59 -29 0
+look 60
+# ma2501 enemies 362
+warp 25 1 4373 -214 167 0
+look 60
+# ma2501 enemies 363
+warp 25 1 3955 -146 525 0
+look 60
+# ma2501 enemies 382
+warp 25 1 5150 -625 -880 0
+look 60
+# ma2501 enemies 383
+warp 25 1 5140 -625 -960 0
+look 60
+# ma2501 enemies 388
+warp 25 1 1565 474 226 0
+look 60
+# ma2501 enemies 398
+warp 25 1 586 73 -637 0
+look 60
+# ma2501 enemies 402
+warp 25 1 339 56 -157 0
+look 60
+# ma2501 enemies 406
+warp 25 1 3259 632 -1110 0
+look 60
+# ma2501 enemies 407
+warp 25 1 3399 612 -1209 0
+look 60
+# ma2501 enemies 408
+warp 25 1 1797 409 100 0
+look 60
+# ma2501 enemies 409
+warp 25 1 1779 403 318 0
+look 60
+# ma2501 enemies 415
+warp 25 1 400 69 -573 0
+look 60
+# ma2501 enemies 429
+warp 25 1 -91 -37 -494 0
+look 60
+# ma2501 enemies 436
+warp 25 1 210 -7 -373 0
+look 60
+# ma2501 enemies 444
+warp 25 1 67 -21 -458 0
+look 60
+# ma2501 enemies 452
+warp 25 1 -620 -333 -5110 0
+look 60
+# ma2501 enemies 453
+warp 25 1 -260 -295 -5064 0
+look 60
+# ma2501 enemies 469
+warp 25 1 -5320 292 -6874 0
+look 60
+# ma2501 enemies 481
+warp 25 1 -9160 653 -4837 0
+look 60
+# ma2501 enemies 482
+warp 25 1 -9713 677 -5310 0
+look 60
+# ma2501 enemies 486
+warp 25 1 -1062 72 -476 0
+look 60
+# ma2501 enemies 492
+warp 25 1 -777 77 -340 0
+look 60
+# ma2501 enemies 497
+warp 25 1 -788 66 -271 0
+look 60
+# ma2501 enemies 512
+warp 25 1 -5998 1632 -3270 0
+look 60
+# ma2501 enemies 534
+warp 25 1 -8760 -444 -5576 0
+look 60
+# ma2501 enemies 535
+warp 25 1 -7460 -563 -5308 0
+look 60
+# ma2501 enemies 536
+warp 25 1 -7768 -471 -6130 0
+look 60
+# ma2501 enemies 539
+warp 25 1 -9604 -295 -5760 0
+look 60
+# ma2501 enemies 540
+warp 25 1 -766 -56 -603 0
+look 60
+# ma2501 enemies 551
+warp 25 1 -1333 -66 -523 0
+look 60
+# ma2501 enemies 564
+warp 25 1 -1503 -56 -487 0
+look 60
+# ma2501 enemies 570
+warp 25 1 880 -85 174 0
+look 60
+# ma2501 enemies 572
+warp 25 1 1379 -65 274 0
+look 60
+# ma2501 enemies 574
+warp 25 1 909 -88 186 0
+look 60
+# ma2501 enemies 576
+warp 25 1 1440 -64 375 0
+look 60
+# ma2501 enemies 579
+warp 25 1 898 -87 530 0
+look 60
+# ma2501 enemies 580
+warp 25 1 901 -88 624 0
+look 60
+# ma2501 enemies 581
+warp 25 1 915 -89 378 0
+look 60
+# ma2501 enemies 582
+warp 25 1 1311 -71 186 0
+look 60
+# ma2501 enemies 585
+warp 25 1 1050 -85 139 0
+look 60
+# ma2501 enemies 588
+warp 25 1 858 -87 650 0
+look 60
+# ma2501 enemies 592
+warp 25 1 1423 -69 604 0
+look 60
+# ma2501 enemies 610
+warp 25 1 1354 -103 776 0
+look 60
+# ma2501 enemies 630
+warp 25 1 1247 -95 1231 0
+look 60
+# ma2501 collectible 12
+warp 25 1 1113 -107 549 0
+look 60
+# ma2501 collectible 14
+warp 25 1 1066 -102 902 0
+look 60
+# ma2501 collectible 16
+warp 25 1 1219 -102 875 0
+look 60
+# ma2501 collectible 33
+warp 25 1 -955 33 857 0
+look 60
+# ma2501 collectible 68
+warp 25 1 1101 -96 1206 0
+look 60
+# ma2501 collectible 69
+warp 25 1 980 -95 1080 0
+look 60
+# ma2501 collectible 108
+warp 25 1 1338 -89 581 0
+look 60
+# ma2501 collectible 111
+warp 25 1 -224 -49 -476 0
+look 60
+# ma2501 collectible 145
+warp 25 1 895 -88 343 0
+look 60
+# ma2501 collectible 151
+warp 25 1 1143 -69 761 0
+look 60
+# ma2501 collectible 166
+warp 25 1 -1059 36 775 0
+look 60
+# ma2601 landmark 477
+warp 26 1 0 0 247 0
+look 60
+# ma2601 landmark 478
+warp 26 1 0 62 -141 0
+look 60
+# ma2601 landmark 479
+warp 26 1 -255 0 59 0
+look 60
+# ma2601 landmark 480
+warp 26 1 255 0 59 0
+look 60
+# ma2601 landmark 481
+warp 26 1 0 67 -350 0
+look 60
+# ma2601 location 477
+warp 26 1 0 -4 310 0
+look 60
+# ma2601 location 478
+warp 26 1 0 63 -151 0
+look 60
+# ma2601 location 482
+warp 26 1 285 -1 -63 0
+look 60
+# ma2601 location 483
+warp 26 1 -281 0 -62 0
+look 60
+# ma2601 enemies 2
+warp 26 1 -590 689 -683 0
+look 60
+# ma2601 enemies 4
+warp 26 1 -5862 6896 -6761 0
+look 60
+# ma2601 enemies 5
+warp 26 1 -5750 6896 -6874 0
+look 60
+# ma2601 enemies 8
+warp 26 1 321 18 -22 0
+look 60
+# ma2601 enemies 9
+warp 26 1 -350 14 5 0
+look 60
+# ma2601 enemies 10
+warp 26 1 -82 11 164 0
+look 60
+# ma2601 enemies 11
+warp 26 1 -132 64 7 0
+look 60
+# ma2601 enemies 12
+warp 26 1 108 65 11 0
+look 60
+# ma2601 enemies 21
+warp 26 1 -348 7 -21 0
+look 60
+# ma2601 collectible 4
+warp 26 1 -98 2 -227 0
+look 60
+# ma2601 locked area 1
+warp 26 1 -142.4 69 -386.28 0
+look 60
+# ma5001 locked area 1
+warp 50 1 -1725 95 204 0
+look 60
+# ma5101 enemies 1
+warp 51 1 -646 23 -345 0
+look 60
+# ma5201 enemies 1
+warp 52 1 2530 217 -300 0
+look 60
+# ma5201 enemies 2
+warp 52 1 2523 219 -324 0
+look 60
+# ma5301 enemies 1
+warp 53 1 51 6 -142 0
+look 60
+# ma5401 enemies 1
+warp 54 1 1451 -68 -328 0
+look 60
+# ma5501 enemies 1
+warp 55 1 1319 174 898 0
+look 60
+# ma5501 enemies 2
+warp 55 1 1314 172 922 0
+look 60
+# ma5601 enemies 1
+warp 56 1 -973 23 314 0
+look 60
+# ma5601 enemies 4
+warp 56 1 -974 25 296 0
+look 60
+# ma5701 enemies 1
+warp 57 1 -220 574 -108 0
+look 60
+# ma5801 enemies 1
+warp 58 1 -50 0 9 0
+look 60
+# ma5801 enemies 2
+warp 58 1 -60 0 -8 0
+look 60
+# ma5901 enemies 1
+warp 59 1 -245 178 -25 0
+look 60
+# ma5901 enemies 4
+warp 59 1 -261 178 10 0
+look 60
+# ma6001 enemies 1
+warp 60 1 155 57 -145 0
+look 60
+# ma6001 enemies 3
+warp 60 1 185 55 -163 0
+look 60
+# ma6001 enemies 4
+warp 60 1 140 53 -105 0
+look 60

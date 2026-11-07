@@ -1,0 +1,71 @@
+name: Source release kits
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Source-kit version (letters, digits, dots, underscores and hyphens)
+        required: true
+        default: 0.1.0-source-preview
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  source-kit:
+    name: Reviewed ${{ matrix.platform }} source kit
+    # Both archives are source/setup kits; this does not compile a Windows game.
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux
+            archive_extension: tar.gz
+          - platform: windows
+            archive_extension: zip
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+      GIT_CONFIG_COUNT: '1'
+      GIT_CONFIG_KEY_0: core.autocrlf
+      GIT_CONFIG_VALUE_0: 'false'
+      # Never interpolate an untrusted manual input directly into shell code.
+      MONADO_RELEASE_VERSION: ${{ inputs.version }}
+      MONADO_RELEASE_PLATFORM: ${{ matrix.platform }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Check out reviewed sources
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Set up Python 3.14
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.14'
+      - name: Check exact sources and authored fixtures
+        # No game launch/input, private dependency fetch or full native game build.
+        run: |
+          python -B tools/publication_guard.py .
+          python -B -m unittest discover -s tests -p 'test_*.py' -v
+          python -B tools/publication_guard.py .
+      - name: Package and read back the source-only archive
+        run: >-
+          python -B tools/package_source_release.py
+          --source .
+          --platform "$MONADO_RELEASE_PLATFORM"
+          --version "$MONADO_RELEASE_VERSION"
+          --output "../release-${MONADO_RELEASE_PLATFORM}"
+      - name: Upload only the reviewed source archive and checksum
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: monado-ii-${{ matrix.platform }}-source
+          path: |
+            ../release-${{ matrix.platform }}/monado-ii-*-${{ matrix.platform }}-source.${{ matrix.archive_extension }}
+            ../release-${{ matrix.platform }}/SHA256SUMS
+          if-no-files-found: error
+          compression-level: 0
+          include-hidden-files: false

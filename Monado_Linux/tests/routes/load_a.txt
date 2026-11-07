@@ -1,0 +1,12 @@
+# xcde input v1
+# load the save (scripts/drive_env.sh with DRIVE_SAVE): A at 600 (title -> menu, cursor on Load Game), A at 1000 (load list,
+# cursor on the newest save), A at 1400 (Confirm dialog), A at 1800 (Yes)
+1 0 0 0 0 0
+600 1 0 0 0 0
+606 0 0 0 0 0
+1000 1 0 0 0 0
+1006 0 0 0 0 0
+1400 1 0 0 0 0
+1406 0 0 0 0 0
+1800 1 0 0 0 0
+1806 0 0 0 0 0

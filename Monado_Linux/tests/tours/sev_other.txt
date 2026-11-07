@@ -1,0 +1,1204 @@
+# ma0101 event vs01070100 (EVT_sev 1, 0 s)
+story 5
+warp 1 1 -649.082 22.243 -363.66 0
+event vs01070100 0
+# ma0101 event vs01090100 (EVT_sev 2, 0 s)
+story 7
+warp 1 1 -313.07 0.967 77.43 0
+event vs01090100 0
+# ma0101 event vs01090110 (EVT_sev 3, 0 s)
+story 8
+warp 1 1 -13.996 0.967 -118.067 0
+event vs01090110 0
+# ma0101 event vs01130100 (EVT_sev 4, 0 s)
+story 10
+warp 1 1 -118.67 -4 -175.8 0
+event vs01130100 0
+# ma0101 event vs01140150 (EVT_sev 5, 0 s)
+story 12
+warp 1 1 -313.452 0.993 41.152 0
+event vs01140150 0
+# ma0101 event vs01200100 (EVT_sev 6, 0 s)
+story 15
+warp 1 1 -114.915 -3.938 -175.479 0
+event vs01200100 0
+# ma0201 event vs01250100 (EVT_sev 7, 0 s)
+story 17
+warp 2 1 -156.363 8.257 -201.146 0
+event vs01250100 0
+# ma0101 event vs01260100 (EVT_sev 8, 0 s)
+story 18
+warp 1 1 -832.613 182.299 -275.634 0
+event vs01260100 0
+# ma0101 event vs01280100 (EVT_sev 9, 0 s)
+story 20
+warp 1 1 -849.81 182.299 -268.585 0
+event vs01280100 0
+# ma0101 event vs02110100 (EVT_sev 10, 0 s)
+story 24
+warp 1 1 -301 0.941 73.6 0
+event vs02110100 0
+# ma0101 event vs02120100 (EVT_sev 11, 0 s)
+story 25
+warp 1 1 -298.16 0.931 73.36 0
+event vs02120100 0
+# ma0101 event vs02150100 (EVT_sev 12, 0 s)
+story 27
+warp 1 1 -33.621 0.967 -171.217 0
+event vs02150100 0
+# ma0101 event vs02190150 (EVT_sev 13, 0 s)
+story 30
+warp 1 1 8.486 0.967 3.063 0
+event vs02190150 0
+# ma0101 event vs02290050 (EVT_sev 14, 0 s)
+story 36
+warp 1 1 -299.47 0.933 71.76 0
+event vs02290050 0
+# ma0101 event vs02290100 (EVT_sev 15, 0 s)
+story 38
+warp 1 1 -299.47 0.933 71.76 0
+event vs02290100 0
+# ma0101 event vs02280100 (EVT_sev 16, 0 s)
+story 39
+warp 1 1 -246.24 58.713 367.12 0
+event vs02280100 0
+# ma0101 event vs02280150 (EVT_sev 17, 0 s)
+story 40
+warp 1 1 -385.35 0.722 75.86 0
+event vs02280150 0
+# ma0101 event vs03020100 (EVT_sev 18, 0 s)
+story 43
+warp 1 1 -385.35 0.722 75.86 0
+event vs03020100 0
+# ma0201 event vs03020150 (EVT_sev 19, 0 s)
+story 44
+warp 2 1 -116.261 23.043 -247.42 0
+event vs03020150 0
+# ma0201 event vs03030100 (EVT_sev 20, 0 s)
+story 45
+warp 2 1 -112.213 26.598 -183.529 0
+event vs03030100 0
+# ma0201 event vs03040100 (EVT_sev 21, 0 s)
+story 46
+warp 2 1 -201.62 38.506 -133.543 0
+event vs03040100 0
+# ma0201 event vs03050100 (EVT_sev 22, 0 s)
+story 47
+warp 2 1 -250 44.456 -103.68 0
+event vs03050100 0
+# ma0201 event vs03070100 (EVT_sev 23, 0 s)
+story 49
+warp 2 1 -247.431 44.314 -102.399 0
+event vs03070100 0
+# ma0201 event vs03070160 (EVT_sev 24, 0 s)
+story 51
+warp 2 1 -250 44.456 -103.68 0
+event vs03070160 0
+# ma0201 event vs03080100 (EVT_sev 25, 0 s)
+story 52
+warp 2 1 -303.47 48.246 -89.873 0
+event vs03080100 0
+# ma0201 event vs03090150 (EVT_sev 26, 0 s)
+story 53
+warp 2 1 -342.13 46.725 23.572 0
+event vs03090150 0
+# ma0201 event vs03110100 (EVT_sev 27, 0 s)
+story 55
+warp 2 1 -458.161 92.705 -22.924 0
+event vs03110100 0
+# ma0201 event vs04010060 (EVT_sev 28, 0 s)
+story 57
+warp 2 1 -666.18 115.279 -89.77 0
+event vs04010060 0
+# ma0301 event vs04010080 (EVT_sev 29, 0 s)
+story 59
+warp 3 1 -0.73 1.989 -0.46 0
+event vs04010080 0
+# ma0301 event vs04010100 (EVT_sev 30, 0 s)
+story 60
+warp 3 1 475.637 69.613 204.011 0
+event vs04010100 0
+# ma0301 event vs04010110 (EVT_sev 31, 0 s)
+story 61
+warp 3 1 481.3 70.567 206.05 0
+event vs04010110 0
+# ma0301 event vs04010120 (EVT_sev 32, 0 s)
+story 62
+warp 3 1 481.3 70.567 206.05 0
+event vs04010120 0
+# ma0301 event vs04020100 (EVT_sev 33, 0 s)
+story 63
+warp 3 1 838.163 94.107 -36.056 0
+event vs04020100 0
+# ma0301 event vs04030100 (EVT_sev 34, 0 s)
+story 64
+warp 3 1 822.089 90.71 -42.119 0
+event vs04030100 0
+# ma0301 event vs04040100 (EVT_sev 35, 0 s)
+story 66
+warp 3 1 1112.8 127 581.889 0
+event vs04040100 0
+# ma0301 event vs04070100 (EVT_sev 36, 0 s)
+story 68
+warp 3 1 1113.74 127.823 526.36 0
+event vs04070100 0
+# ma0301 event vs04090100 (EVT_sev 37, 0 s)
+story 69
+warp 3 1 1113.74 127.823 526.36 0
+event vs04090100 0
+# ma0301 event vs04100100 (EVT_sev 38, 0 s)
+story 70
+warp 3 1 1115.27 130.399 152.819 0
+event vs04100100 0
+# ma0301 event vs04110100 (EVT_sev 39, 0 s)
+story 71
+warp 3 1 1115.27 130.399 152.819 0
+event vs04110100 0
+# ma0301 event vs04110110 (EVT_sev 40, 0 s)
+story 72
+warp 3 1 1881.44 162 421.951 0
+event vs04110110 0
+# ma0301 event vs04110130 (EVT_sev 41, 0 s)
+story 74
+warp 3 1 1896.65 162 418.08 0
+event vs04110130 0
+# ma0301 event vs04110150 (EVT_sev 42, 0 s)
+story 75
+warp 3 1 2225.62 173.568 155.675 0
+event vs04110150 0
+# ma0301 event vs04140050 (EVT_sev 43, 0 s)
+story 77
+warp 3 1 2879.44 227.583 -38.431 0
+event vs04140050 0
+# ma0301 event vs05020100 (EVT_sev 44, 0 s)
+story 81
+warp 3 1 1089.58 146.764 386.16 0
+event vs05020100 0
+# ma0301 event vs05020150 (EVT_sev 45, 0 s)
+story 82
+warp 3 1 1089.58 146.764 386.16 0
+event vs05020150 0
+# ma0401 event vs05030100 (EVT_sev 46, 0 s)
+story 84
+warp 4 1 307 -103.825 -844 0
+event vs05030100 0
+# ma0402 event vs05050100 (EVT_sev 47, 0 s)
+story 85
+warp 4 2 182.165 11.254 -159.292 0
+event vs05050100 0
+# ma0402 event vs05070100 (EVT_sev 48, 0 s)
+story 87
+warp 4 2 1.241 -5.021 4.791 0
+event vs05070100 0
+# ma0402 event vs05080100 (EVT_sev 49, 0 s)
+story 88
+warp 4 2 33.93 -4.767 -28.83 0
+event vs05080100 0
+# ma0402 event vs05090100 (EVT_sev 50, 0 s)
+story 89
+warp 4 2 33.93 -4.767 -28.83 0
+event vs05090100 0
+# ma0402 event vs05100100 (EVT_sev 51, 0 s)
+story 90
+warp 4 2 33.93 -4.767 -28.83 0
+event vs05100100 0
+# ma0402 event vs05120100 (EVT_sev 52, 0 s)
+story 92
+warp 4 2 -13.839 -10.607 40.524 0
+event vs05120100 0
+# ma0402 event vs05140100 (EVT_sev 53, 0 s)
+story 94
+warp 4 2 72.824 -36.126 251.453 0
+event vs05140100 0
+# ma0402 event vs05190100 (EVT_sev 54, 0 s)
+story 97
+warp 4 2 307.34 -638.706 415.17 0
+event vs05190100 0
+# ma0402 event vs05190160 (EVT_sev 55, 0 s)
+story 98
+warp 4 2 263.831 -414.155 640.499 0
+event vs05190160 0
+# ma0401 event vs06040100 (EVT_sev 56, 0 s)
+story 102
+warp 4 1 -110.38 -91.889 368.08 0
+event vs06040100 0
+# ma0501 event vs06050110 (EVT_sev 57, 0 s)
+story 104
+warp 5 1 -18.569 1.567 -51.977 0
+event vs06050110 0
+# ma0501 event vs06050120 (EVT_sev 58, 0 s)
+story 105
+warp 5 1 73.775 35.53 403.456 0
+event vs06050120 0
+# ma0501 event vs06050150 (EVT_sev 59, 0 s)
+story 106
+warp 5 1 1125.98 124.7 1187.11 0
+event vs06050150 0
+# ma0501 event vs06060140 (EVT_sev 60, 0 s)
+story 108
+warp 5 1 1125.98 124.7 1187.11 0
+event vs06060140 0
+# ma0501 event vs06060150 (EVT_sev 61, 0 s)
+story 109
+warp 5 1 1125.98 124.7 1187.11 0
+event vs06060150 0
+# ma0501 event vs06070100 (EVT_sev 62, 0 s)
+story 110
+warp 5 1 1464.68 183 872.573 0
+event vs06070100 0
+# ma0501 event vs06070150 (EVT_sev 63, 0 s)
+story 111
+warp 5 1 1401.36 194.586 706.474 0
+event vs06070150 0
+# ma0501 event vs06080100 (EVT_sev 64, 0 s)
+story 112
+warp 5 1 1380.35 331 659.398 0
+event vs06080100 0
+# ma2101 event vs06080150 (EVT_sev 65, 0 s)
+story 113
+warp 21 1 -31.345 -9.683 160.936 0
+event vs06080150 0
+# ma0601 event vs07000000 (EVT_sev 66, 0 s)
+story 115
+warp 6 1 -768.67 35.293 -398.04 0
+event vs07000000 0
+# ma0601 event vs07030100 (EVT_sev 67, 0 s)
+story 117
+warp 6 1 -519.97 -20.955 -296.135 0
+event vs07030100 0
+# ma0601 event vs07030160 (EVT_sev 68, 0 s)
+story 119
+warp 6 1 -519.97 -20.955 -296.135 0
+event vs07030160 0
+# ma0601 event vs07040150 (EVT_sev 69, 0 s)
+story 122
+warp 6 1 332.97 -64.122 -613.809 0
+event vs07040150 0
+# ma0601 event vs07060150 (EVT_sev 70, 0 s)
+story 125
+warp 6 1 418.14 -55.864 -717.85 0
+event vs07060150 0
+# ma0601 event vs07070150 (EVT_sev 71, 0 s)
+story 127
+warp 6 1 418.14 -55.864 -717.85 0
+event vs07070150 0
+# ma0601 event vs07080100 (EVT_sev 72, 0 s)
+story 128
+warp 6 1 418.14 -55.864 -717.85 0
+event vs07080100 0
+# ma0601 event vs07080150 (EVT_sev 73, 0 s)
+story 129
+warp 6 1 1228.31 -26.952 -298.269 0
+event vs07080150 0
+# ma0701 event vs07090150 (EVT_sev 74, 0 s)
+story 131
+warp 7 1 -1.19 2.26 63.47 0
+event vs07090150 0
+# ma0701 event vs07100100 (EVT_sev 75, 0 s)
+story 132
+warp 7 1 -1.19 2.26 63.47 0
+event vs07100100 0
+# ma0701 event vs07100150 (EVT_sev 76, 0 s)
+story 133
+warp 7 1 -67.149 157.505 82.605 0
+event vs07100150 0
+# ma0701 event vs07120100 (EVT_sev 77, 0 s)
+story 135
+warp 7 1 -0.611 3.106 80.915 0
+event vs07120100 0
+# ma0701 event vs07130100 (EVT_sev 78, 0 s)
+story 136
+warp 7 1 -22.168 20.717 118.88 0
+event vs07130100 0
+# ma0701 event vs07140100 (EVT_sev 79, 0 s)
+story 137
+warp 7 1 -1.52 2.655 70.44 0
+event vs07140100 0
+# ma0601 event vs07150100 (EVT_sev 80, 0 s)
+story 138
+warp 6 1 2285.14 -106.775 262.424 0
+event vs07150100 0
+# ma0601 event vs07170150 (EVT_sev 81, 0 s)
+story 142
+warp 6 1 2328.31 -107.675 275.13 0
+event vs07170150 0
+# ma0701 event vs07180100 (EVT_sev 82, 0 s)
+story 143
+warp 7 1 -1 -14 -130 0
+event vs07180100 0
+# ma0701 event vs07190100 (EVT_sev 83, 0 s)
+story 144
+warp 7 1 -1.52 2.655 70.44 0
+event vs07190100 0
+# ma0701 event vs07200100 (EVT_sev 84, 0 s)
+story 145
+warp 7 1 -31.2 156.038 80.869 0
+event vs07200100 0
+# ma0701 event vs07200150 (EVT_sev 85, 0 s)
+story 146
+warp 7 1 15.043 228.552 71.719 0
+event vs07200150 0
+# ma1001 event vs08010100 (EVT_sev 86, 0 s)
+story 149
+warp 10 1 139.09 3.706 -1589.11 0
+event vs08010100 0
+# ma1001 event vs08030100 (EVT_sev 87, 0 s)
+story 150
+warp 10 1 1834.37 57.106 -45.121 0
+event vs08030100 0
+# ma1001 event vs08050100 (EVT_sev 88, 0 s)
+story 152
+warp 10 1 0 -7.744 0 0
+event vs08050100 0
+# ma1101 event vs08060150 (EVT_sev 89, 0 s)
+story 153
+warp 11 1 -251 0 0 0
+event vs08060150 0
+# ma1101 event vs08060100 (EVT_sev 90, 0 s)
+story 154
+warp 11 1 -257.171 1.387 -0.001 0
+event vs08060100 0
+# ma1101 event vs08070100 (EVT_sev 91, 0 s)
+story 156
+warp 11 1 629.652 717.068 0.005 0
+event vs08070100 0
+# ma1101 event vs08080150 (EVT_sev 92, 0 s)
+story 157
+warp 11 1 -251 0 0 0
+event vs08080150 0
+# ma1101 event vs08090100 (EVT_sev 93, 0 s)
+story 158
+warp 11 1 113.265 156.622 446.407 0
+event vs08090100 0
+# ma1101 event vs08090150 (EVT_sev 94, 0 s)
+story 159
+warp 11 1 132.63 156.12 467.54 0
+event vs08090150 0
+# ma1101 event vs08100100 (EVT_sev 95, 0 s)
+story 160
+warp 11 1 -35 1.456 0 0
+event vs08100100 0
+# ma1101 event vs08110100 (EVT_sev 96, 0 s)
+story 161
+warp 11 1 -35 1.456 0 0
+event vs08110100 0
+# ma1001 event vs08110150 (EVT_sev 97, 0 s)
+story 162
+warp 10 1 0 0.633 0 0
+event vs08110150 0
+# ma1101 event vs08120100 (EVT_sev 98, 0 s)
+story 163
+warp 11 1 135.067 156.12 463.85 0
+event vs08120100 0
+# ma1101 event vs08140100 (EVT_sev 99, 0 s)
+story 165
+warp 11 1 132.63 156.12 467.54 0
+event vs08140100 0
+# ma1101 event vs08150100 (EVT_sev 100, 0 s)
+story 166
+warp 11 1 132.63 156.12 467.54 0
+event vs08150100 0
+# ma1101 event vs08160100 (EVT_sev 101, 0 s)
+story 167
+warp 11 1 114.911 156.508 453.433 0
+event vs08160100 0
+# ma1001 event vs08170100 (EVT_sev 102, 0 s)
+story 168
+warp 10 1 0 0.629 0 0
+event vs08170100 0
+# ma1101 event vs08180100 (EVT_sev 103, 0 s)
+story 169
+warp 11 1 -35 1.456 0 0
+event vs08180100 0
+# ma1001 event vs08190100 (EVT_sev 104, 0 s)
+story 170
+warp 10 1 2926.55 38.773 -2.031 0
+event vs08190100 0
+# ma0901 event vs08190160 (EVT_sev 105, 0 s)
+story 171
+warp 9 1 -17 -3 0 0
+event vs08190160 0
+# ma0901 event vs08200100 (EVT_sev 106, 0 s)
+story 172
+warp 9 1 58.55 -21 -1.012 0
+event vs08200100 0
+# ma0901 event vs08210100 (EVT_sev 107, 0 s)
+story 175
+warp 9 1 629.737 -59.323 -0.438 0
+event vs08210100 0
+# ma0901 event vs08200160 (EVT_sev 108, 0 s)
+story 176
+warp 9 1 -17 -3 0 0
+event vs08200160 0
+# ma0901 event vs08210050 (EVT_sev 109, 0 s)
+story 177
+warp 9 1 216.586 -126 37.402 0
+event vs08210050 0
+# ma0901 event vs08210150 (EVT_sev 110, 0 s)
+story 178
+warp 9 1 256.121 -126.251 1.56 0
+event vs08210150 0
+# ma1101 event vs08240100 (EVT_sev 111, 0 s)
+story 181
+warp 11 1 -35 1.456 0 0
+event vs08240100 0
+# ma1101 event vs08240120 (EVT_sev 112, 0 s)
+story 182
+warp 11 1 132.63 156.12 467.54 0
+event vs08240120 0
+# ma1101 event vs08240150 (EVT_sev 113, 0 s)
+story 183
+warp 11 1 537.453 701.159 0.17 0
+event vs08240150 0
+# ma1001 event vs09050100 (EVT_sev 114, 0 s)
+story 187
+warp 10 1 0 0.557 0 0
+event vs09050100 0
+# ma1101 event vs09060150 (EVT_sev 115, 0 s)
+story 189
+warp 11 1 -35 1.456 0 0
+event vs09060150 0
+# ma1101 event vs09070100 (EVT_sev 116, 0 s)
+story 190
+warp 11 1 709.428 688.855 -503.365 0
+event vs09070100 0
+# ma1101 event vs09070160 (EVT_sev 117, 0 s)
+story 192
+warp 11 1 0 1.456 0 0
+event vs09070160 0
+# ma1101 event vs09090100 (EVT_sev 118, 0 s)
+story 194
+warp 11 1 -35 1.456 0 0
+event vs09090100 0
+# ma1101 event vs09100100 (EVT_sev 119, 0 s)
+story 195
+warp 11 1 712.99 688.162 -496.9 0
+event vs09100100 0
+# ma1101 event vs09110100 (EVT_sev 120, 0 s)
+story 196
+warp 11 1 619.98 715.769 0.001 0
+event vs09110100 0
+# ma1001 event vs09110150 (EVT_sev 121, 0 s)
+story 198
+warp 10 1 1834.34 59.192 -2.03 0
+event vs09110150 0
+# ma1001 event vs09130100 (EVT_sev 122, 0 s)
+story 199
+warp 10 1 -887.716 381.979 38.86 0
+event vs09130100 0
+# ma1001 event vs09140100 (EVT_sev 123, 0 s)
+story 200
+warp 10 1 -847.914 352.925 40.758 0
+event vs09140100 0
+# ma1201 event vs09180100 (EVT_sev 124, 0 s)
+story 202
+warp 12 1 30.608 -0.346 -2.036 0
+event vs09180100 0
+# ma1201 event vs09200100 (EVT_sev 125, 0 s)
+story 204
+warp 12 1 30.608 -0.346 -2.036 0
+event vs09200100 0
+# ma1201 event vs09230100 (EVT_sev 126, 0 s)
+story 207
+warp 12 1 -549.515 1778.82 29.38 0
+event vs09230100 0
+# ma1201 event vs09230160 (EVT_sev 127, 0 s)
+story 209
+warp 12 1 -549.515 1778.82 29.38 0
+event vs09230160 0
+# ma1201 event vs09250100 (EVT_sev 128, 0 s)
+story 211
+warp 12 1 -549.515 1778.82 29.38 0
+event vs09250100 0
+# ma1201 event vs09290100 (EVT_sev 129, 0 s)
+story 214
+warp 12 1 -548.71 1819.05 -18.91 0
+event vs09290100 0
+# ma1101 event vs10010100 (EVT_sev 130, 0 s)
+story 216
+warp 11 1 -35 1.456 0 0
+event vs10010100 0
+# ma1101 event vs10020100 (EVT_sev 131, 0 s)
+story 217
+warp 11 1 361 69.6 63.69 0
+event vs10020100 0
+# ma1101 event vs10040100 (EVT_sev 132, 0 s)
+story 219
+warp 11 1 361 69.6 63.69 0
+event vs10040100 0
+# ma1101 event vs10040150 (EVT_sev 133, 0 s)
+story 220
+warp 11 1 361 69.6 63.69 0
+event vs10040150 0
+# ma1101 event vs10050100 (EVT_sev 134, 0 s)
+story 221
+warp 11 1 0.557 54.002 39.683 0
+event vs10050100 0
+# ma1101 event vs10060050 (EVT_sev 135, 0 s)
+story 222
+warp 11 1 132.63 156.12 467.54 0
+event vs10060050 0
+# ma1101 event vs10060100 (EVT_sev 136, 0 s)
+story 223
+warp 11 1 682.442 717.569 0.699 0
+event vs10060100 0
+# ma1101 event vs10070100 (EVT_sev 137, 0 s)
+story 224
+warp 11 1 3.5 54.002 0 0
+event vs10070100 0
+# ma1101 event vs10080100 (EVT_sev 138, 0 s)
+story 225
+warp 11 1 3.5 54.002 0 0
+event vs10080100 0
+# ma0601 event vs10080160 (EVT_sev 139, 0 s)
+story 228
+warp 6 1 -269.19 -26.043 -876.21 0
+event vs10080160 0
+# ma1001 event vs10100050 (EVT_sev 140, 0 s)
+story 226
+warp 10 1 1834.34 59.192 -2.03 0
+event vs10100050 0
+# ma1001 event vs10080150 (EVT_sev 141, 0 s)
+story 227
+warp 10 1 1837.1 57.106 41.044 0
+event vs10080150 0
+# ma1301 event vs10110100 (EVT_sev 142, 0 s)
+story 231
+warp 13 1 28.73 0.3 35.84 0
+event vs10110100 0
+# ma1301 event vs10110150 (EVT_sev 143, 0 s)
+story 232
+warp 13 1 -1939.05 -1231.42 -842.991 0
+event vs10110150 0
+# ma1301 event vs10120100 (EVT_sev 144, 0 s)
+story 233
+warp 13 1 -1949.55 -1231.31 -847.19 0
+event vs10120100 0
+# ma1301 event vs10120120 (EVT_sev 145, 0 s)
+story 235
+warp 13 1 -1949.55 -1231.31 -847.19 0
+event vs10120120 0
+# ma1301 event vs10130100 (EVT_sev 146, 0 s)
+story 236
+warp 13 1 -1949.55 -1231.31 -847.19 0
+event vs10130100 0
+# ma1301 event vs10140100 (EVT_sev 147, 0 s)
+story 237
+warp 13 1 -1949.55 -1231.31 -847.19 0
+event vs10140100 0
+# ma1301 event vs11020050 (EVT_sev 148, 0 s)
+story 240
+warp 13 1 -3184.54 -1841.95 -472.534 0
+event vs11020050 0
+# ma1401 event vs11030100 (EVT_sev 149, 0 s)
+story 241
+warp 14 1 2171.79 211.147 -837.799 0
+event vs11030100 0
+# ma1401 event vs11060100 (EVT_sev 150, 0 s)
+story 243
+warp 14 1 1872.97 89.724 -600.9 0
+event vs11060100 0
+# ma1401 event vs11030110 (EVT_sev 151, 0 s)
+story 244
+warp 14 1 1947.37 64.869 -635.694 0
+event vs11030110 0
+# ma1401 event vs11040100 (EVT_sev 152, 0 s)
+story 245
+warp 14 1 2002.65 20.147 -528.465 0
+event vs11040100 0
+# ma1401 event vs11050150 (EVT_sev 153, 0 s)
+story 246
+warp 14 1 1990.69 19.877 -529.02 0
+event vs11050150 0
+# ma1401 event vs11060200 (EVT_sev 154, 0 s)
+story 248
+warp 14 1 1990.69 19.877 -529.02 0
+event vs11060200 0
+# ma1401 event vs11070150 (EVT_sev 155, 0 s)
+story 249
+warp 14 1 45.091 31.752 431.418 0
+event vs11070150 0
+# ma1401 event vs11090100 (EVT_sev 156, 0 s)
+story 251
+warp 14 1 -263.48 -15.906 541.55 0
+event vs11090100 0
+# ma0901 event vs11110100 (EVT_sev 157, 0 s)
+story 253
+warp 9 1 0 -7.398 0 0
+event vs11110100 0
+# ma1401 event vs11120100 (EVT_sev 158, 0 s)
+story 254
+warp 14 1 0 -0.435 0 0
+event vs11120100 0
+# ma1401 event vs11120160 (EVT_sev 159, 0 s)
+story 256
+warp 14 1 0 -0.435 0 0
+event vs11120160 0
+# ma1401 event vs11130050 (EVT_sev 160, 0 s)
+story 257
+warp 14 1 -405.851 -83.432 319.027 0
+event vs11130050 0
+# ma1501 event vs11130150 (EVT_sev 161, 0 s)
+story 259
+warp 15 1 23.79 3 0 0
+event vs11130150 0
+# ma1501 event vs11140050 (EVT_sev 162, 0 s)
+story 260
+warp 15 1 -88.285 -45 -0.495 0
+event vs11140050 0
+# ma1501 event vs11140060 (EVT_sev 163, 0 s)
+story 261
+warp 15 1 -175.521 -43.674 1.038 0
+event vs11140060 0
+# ma1501 event vs11140100 (EVT_sev 164, 0 s)
+story 262
+warp 15 1 -246.552 -144.478 0.077 0
+event vs11140100 0
+# ma1501 event vs11150100 (EVT_sev 165, 0 s)
+story 263
+warp 15 1 -202.622 -144.678 -21.964 0
+event vs11150100 0
+# ma1101 event vs11180100 (EVT_sev 166, 0 s)
+story 266
+warp 11 1 -35 1.456 0 0
+event vs11180100 0
+# ma1601 event vs12050100 (EVT_sev 167, 0 s)
+story 271
+warp 16 1 -129.545 0.111 33.81 0
+event vs12050100 0
+# ma1601 event vs12070100 (EVT_sev 168, 0 s)
+story 273
+warp 16 1 0 0.772 0 0
+event vs12070100 0
+# ma1601 event vs12080100 (EVT_sev 169, 0 s)
+story 275
+warp 16 1 0 0.772 0 0
+event vs12080100 0
+# ma1601 event vs12080150 (EVT_sev 170, 0 s)
+story 276
+warp 16 1 -83.68 36.785 220.165 0
+event vs12080150 0
+# ma1601 event vs12100100 (EVT_sev 171, 0 s)
+story 278
+warp 16 1 -172.891 36.785 234.236 0
+event vs12100100 0
+# ma1601 event vs12120100 (EVT_sev 172, 0 s)
+story 279
+warp 16 1 -112 -2 -41 0
+event vs12120100 0
+# ma1601 event vs12130100 (EVT_sev 173, 0 s)
+story 280
+warp 16 1 -127.459 92.585 359.398 0
+event vs12130100 0
+# ma1601 event vs12150100 (EVT_sev 174, 0 s)
+story 282
+warp 16 1 -141.542 36.785 221.954 0
+event vs12150100 0
+# ma1601 event vs12160100 (EVT_sev 175, 0 s)
+story 283
+warp 16 1 -482.578 25.408 355.819 0
+event vs12160100 0
+# ma1601 event vs12170150 (EVT_sev 176, 0 s)
+story 284
+warp 16 1 -482.578 25.408 355.819 0
+event vs12170150 0
+# ma1601 event vs12180100 (EVT_sev 177, 0 s)
+story 285
+warp 16 1 -482.578 25.408 355.819 0
+event vs12180100 0
+# ma1601 event vs12190100 (EVT_sev 178, 0 s)
+story 286
+warp 16 1 -482.578 25.408 355.819 0
+event vs12190100 0
+# ma1601 event vs12200100 (EVT_sev 179, 0 s)
+story 287
+warp 16 1 -112 -2 -41 0
+event vs12200100 0
+# ma1601 event vs12220050 (EVT_sev 180, 0 s)
+story 289
+warp 16 1 -614.068 13.272 338.309 0
+event vs12220050 0
+# ma1601 event vs12220100 (EVT_sev 181, 0 s)
+story 291
+warp 16 1 -686.574 1.48 297.634 0
+event vs12220100 0
+# ma1601 event vs12230100 (EVT_sev 182, 0 s)
+story 292
+warp 16 1 -664.131 1.48 280.676 0
+event vs12230100 0
+# ma1101 event vs13010100 (EVT_sev 183, 0 s)
+story 293
+warp 11 1 -35 1.456 0 0
+event vs13010100 0
+# ma1601 event vs13020100 (EVT_sev 184, 0 s)
+story 294
+warp 16 1 0 0.772 0 0
+event vs13020100 0
+# ma1601 event vs13030100 (EVT_sev 185, 0 s)
+story 295
+warp 16 1 0 0.772 0 0
+event vs13030100 0
+# ma1601 event vs13030110 (EVT_sev 186, 0 s)
+story 296
+warp 16 1 0 0.772 0 0
+event vs13030110 0
+# ma1601 event vs13030150 (EVT_sev 187, 0 s)
+story 297
+warp 16 1 -671.055 7.23 283.342 0
+event vs13030150 0
+# ma1601 event vs13040100 (EVT_sev 188, 0 s)
+story 298
+warp 16 1 -626.591 3.368 313.191 0
+event vs13040100 0
+# ma1601 event vs13060100 (EVT_sev 189, 0 s)
+story 300
+warp 16 1 -626.591 3.368 313.191 0
+event vs13060100 0
+# ma1601 event vs13070100 (EVT_sev 190, 0 s)
+story 301
+warp 16 1 -626.591 3.368 313.191 0
+event vs13070100 0
+# ma1601 event vs13100050 (EVT_sev 191, 0 s)
+story 303
+warp 16 1 0 0.772 0 0
+event vs13100050 0
+# ma1701 event vs13120150 (EVT_sev 192, 0 s)
+story 306
+warp 17 1 58.653 0.322 -375.457 0
+event vs13120150 0
+# ma1701 event vs13120160 (EVT_sev 193, 0 s)
+story 307
+warp 17 1 -216.934 18.011 -137.642 0
+event vs13120160 0
+# ma1701 event vs13130060 (EVT_sev 194, 0 s)
+story 308
+warp 17 1 418.768 969.873 -183.629 0
+event vs13130060 0
+# ma1701 event vs13120100 (EVT_sev 195, 0 s)
+story 311
+warp 17 1 0 -4.496 0 0
+event vs13120100 0
+# ma1701 event vs14030150 (EVT_sev 196, 0 s)
+story 318
+warp 17 1 0 -4.496 0 0
+event vs14030150 0
+# ma1701 event vs14050100 (EVT_sev 197, 0 s)
+story 320
+warp 17 1 0 -4.496 0 0
+event vs14050100 0
+# ma2001 event vs14060050 (EVT_sev 198, 0 s)
+story 322
+warp 20 1 213.095 -50.935 0.381 0
+event vs14060050 0
+# ma1901 event vs14070100 (EVT_sev 199, 0 s)
+story 325
+warp 19 1 -163.597 0.819 85.329 0
+event vs14070100 0
+# ma1901 event vs14100100 (EVT_sev 200, 0 s)
+story 327
+warp 19 1 -26.071 131.625 0.109 0
+event vs14100100 0
+# ma1901 event vs14100150 (EVT_sev 201, 0 s)
+story 328
+warp 19 1 -26.071 131.625 0.109 0
+event vs14100150 0
+# ma1901 event vs14110100 (EVT_sev 202, 0 s)
+story 330
+warp 19 1 -376.632 59 -6.098 0
+event vs14110100 0
+# ma1901 event vs14140200 (EVT_sev 203, 0 s)
+story 334
+warp 19 1 -1160 133 0 0
+event vs14140200 0
+# ma1901 event vs14150100 (EVT_sev 204, 0 s)
+story 335
+warp 19 1 -1399.38 186.819 -0.001 0
+event vs14150100 0
+# ma1601 event vs15050100 (EVT_sev 205, 0 s)
+story 340
+warp 16 1 0 0.772 0 0
+event vs15050100 0
+# ma1601 event vs15060150 (EVT_sev 206, 0 s)
+story 341
+warp 16 1 0 0.772 0 0
+event vs15060150 0
+# ma2401 event vs15080150 (EVT_sev 207, 0 s)
+story 344
+warp 24 1 0 2 -0.265 0
+event vs15080150 0
+# ma2401 event vs15090150 (EVT_sev 208, 0 s)
+story 346
+warp 24 1 0 2 -0.265 0
+event vs15090150 0
+# ma2001 event vs15090170 (EVT_sev 209, 0 s)
+story 348
+warp 20 1 214 -53 0 0
+event vs15090170 0
+# ma2001 event vs15100150 (EVT_sev 210, 0 s)
+story 350
+warp 20 1 214 -53 0 0
+event vs15100150 0
+# ma2001 event vs15120100 (EVT_sev 211, 0 s)
+story 352
+warp 20 1 -4.576 654.018 0 0
+event vs15120100 0
+# ma2001 event vs15130100 (EVT_sev 212, 0 s)
+story 354
+warp 20 1 48.299 654.018 -0.007 0
+event vs15130100 0
+# ma2301 event vs16060150 (EVT_sev 213, 0 s)
+story 361
+warp 23 1 14.646 2.383 -0.005 0
+event vs16060150 0
+# ma2001 event vs16070050 (EVT_sev 214, 0 s)
+story 362
+warp 20 1 -333.14 801.261 680.91 0
+event vs16070050 0
+# ma0401 event vs17020100 (EVT_sev 215, 0 s)
+story 368
+warp 4 1 -330 -1 42 0
+event vs17020100 0
+# ma0401 event vs17030150 (EVT_sev 216, 0 s)
+story 370
+warp 4 1 -48.894 -15 146.829 0
+event vs17030150 0
+# ma0401 event vs17050150 (EVT_sev 217, 0 s)
+story 374
+warp 4 1 -330 -1 42 0
+event vs17050150 0
+# ma0401 event vs17090150 (EVT_sev 218, 0 s)
+story 378
+warp 4 1 -4.142 -10.435 -22.809 0
+event vs17090150 0
+# ma0401 event vs17090100 (EVT_sev 219, 0 s)
+story 379
+warp 4 1 -4.142 -10.435 -22.809 0
+event vs17090100 0
+# ma2101 event vs17100020 (EVT_sev 220, 0 s)
+story 381
+warp 21 1 -397.77 -126.953 -913.81 0
+event vs17100020 0
+# ma2101 event vs17100060 (EVT_sev 221, 0 s)
+story 383
+warp 21 1 -166.085 -79.633 -530.889 0
+event vs17100060 0
+# ma2101 event vs17110150 (EVT_sev 222, 0 s)
+story 386
+warp 21 1 210.607 139.552 -504.804 0
+event vs17110150 0
+# ma1202 event vs17130050 (EVT_sev 223, 0 s)
+story 387
+warp 12 2 131 -25.349 0 0
+event vs17130050 0
+# ma1202 event vs17130160 (EVT_sev 224, 0 s)
+story 388
+warp 12 2 -244.368 178 -45.565 0
+event vs17130160 0
+# ma1202 event vs17130170 (EVT_sev 225, 0 s)
+story 389
+warp 12 2 -387.292 1173.91 -26.648 0
+event vs17130170 0
+# ma1202 event vs17130180 (EVT_sev 226, 0 s)
+story 390
+warp 12 2 -508.852 1174 -27.751 0
+event vs17130180 0
+# ma1202 event vs17130100 (EVT_sev 227, 0 s)
+story 390
+warp 12 2 -516.8 1173.91 -27.65 0
+event vs17130100 0
+# ma1202 event vs17130200 (EVT_sev 228, 0 s)
+story 392
+warp 12 2 -508.25 1776.53 29.4 0
+event vs17130200 0
+# ma2201 event vs17170100 (EVT_sev 229, 0 s)
+story 397
+warp 22 1 -98 0 317 0
+event vs17170100 0
+# ma2201 event vs17190150 (EVT_sev 230, 0 s)
+story 399
+warp 22 1 -1.843 2 -0.575 0
+event vs17190150 0
+# ma0401 event vs17250100 (EVT_sev 231, 0 s)
+story 404
+warp 4 1 208.223 -65 -416.337 0
+event vs17250100 0
+# ma0401 event vs17260100 (EVT_sev 232, 0 s)
+story 404
+warp 4 1 208.223 -65 -416.337 0
+event vs17260100 0
+# ma0401 event vs17270100 (EVT_sev 233, 0 s)
+story 404
+warp 4 1 208.223 -65 -416.337 0
+event vs17270100 0
+# ma0401 event vs17280100 (EVT_sev 234, 0 s)
+story 404
+warp 4 1 208.223 -65 -416.337 0
+event vs17280100 0
+# ma0601 event vs17290100 (EVT_sev 235, 0 s)
+story 404
+warp 6 1 -743 -259.024 -176 0
+event vs17290100 0
+# ma0601 event vs17300100 (EVT_sev 236, 0 s)
+story 404
+warp 6 1 -747.933 -259.132 -163.32 0
+event vs17300100 0
+# ma0601 event vs17310100 (EVT_sev 237, 0 s)
+story 404
+warp 6 1 -747.933 -259.132 -163.32 0
+event vs17310100 0
+# ma2501 event vs20040100 (EVT_sev 303, 0 s)
+story 2005
+warp 25 1 -860 9 -138 0
+event vs20040100 0
+# ma2501 event vs20070100 (EVT_sev 304, 0 s)
+story 2007
+warp 25 1 -787.939 8.532 41.845 0
+event vs20070100 0
+# ma2501 event vs20080100 (EVT_sev 305, 0 s)
+story 2009
+warp 25 1 -770.648 8.607 80.55 0
+event vs20080100 0
+# ma2501 event vs20090100 (EVT_sev 306, 0 s)
+story 2010
+warp 25 1 -770.648 8.607 80.55 0
+event vs20090100 0
+# ma2501 event vs20110100 (EVT_sev 307, 0 s)
+story 2012
+warp 25 1 -747.378 21.085 144.95 0
+event vs20110100 0
+# ma2501 event vs20130100 (EVT_sev 308, 0 s)
+story 2013
+warp 25 1 -747.378 21.085 144.95 0
+event vs20130100 0
+# ma2501 event vs20140100 (EVT_sev 309, 0 s)
+story 2015
+warp 25 1 -992.931 34.561 597.33 0
+event vs20140100 0
+# ma2501 event vs20150100 (EVT_sev 310, 0 s)
+story 2016
+warp 25 1 -992.931 34.561 597.33 0
+event vs20150100 0
+# ma2501 event vs20160100 (EVT_sev 311, 0 s)
+story 2020
+warp 25 1 -462.537 -4.234 -27.465 0
+event vs20160100 0
+# ma2501 event vs20170100 (EVT_sev 312, 0 s)
+story 2022
+warp 25 1 651.181 128.845 -628.05 0
+event vs20170100 0
+# ma2601 event vs20180100 (EVT_sev 313, 0 s)
+story 2025
+warp 26 1 0.047 1.456 253.689 0
+event vs20180100 0
+# ma2601 event vs20190100 (EVT_sev 314, 0 s)
+story 2027
+warp 26 1 -2.677 54.507 10.238 0
+event vs20190100 0
+# ma2501 event vs20210100 (EVT_sev 315, 0 s)
+story 2030
+warp 25 1 620.472 60.8 -588.204 0
+event vs20210100 0
+# ma2501 event vs20230100 (EVT_sev 316, 0 s)
+story 2032
+warp 25 1 -831.631 61.274 -593.341 0
+event vs20230100 0
+# ma2501 event vs20240100 (EVT_sev 317, 0 s)
+story 2033
+warp 25 1 -831.368 61.274 -593.931 0
+event vs20240100 0
+# ma2501 event vs20250100 (EVT_sev 318, 0 s)
+story 2034
+warp 25 1 -831.368 61.274 -593.931 0
+event vs20250100 0
+# ma2501 event vs20270100 (EVT_sev 319, 0 s)
+story 2036
+warp 25 1 678.795 -66.076 151.731 0
+event vs20270100 0
+# ma2501 event vs20290100 (EVT_sev 320, 0 s)
+story 2038
+warp 25 1 1021.19 -90.205 601.84 0
+event vs20290100 0
+# ma2501 event vs20300100 (EVT_sev 321, 0 s)
+story 2040
+warp 25 1 1171.67 -84.619 650.919 0
+event vs20300100 0
+# ma2501 event vs20310100 (EVT_sev 322, 10 s)
+story 2041
+warp 25 1 1171.67 -84.619 650.919 0
+event vs20310100 10
+# ma2501 event vs20320100 (EVT_sev 323, 0 s)
+story 2043
+warp 25 1 546.103 62.101 -528.778 0
+event vs20320100 0
+# ma2501 event vs20330100 (EVT_sev 324, 0 s)
+story 2045
+warp 25 1 591.264 60.691 -562.398 0
+event vs20330100 0
+# ma2501 event vs20340100 (EVT_sev 325, 0 s)
+story 2047
+warp 25 1 1010.18 -92.935 596.644 0
+event vs20340100 0
+# ma2501 event vs20350100 (EVT_sev 326, 0 s)
+story 2049
+warp 25 1 1055.74 -90.205 608.331 0
+event vs20350100 0
+# ma2501 event vs20390100 (EVT_sev 327, 0 s)
+story 2055
+warp 25 1 -828.339 61.274 -585.887 0
+event vs20390100 0
+# ma2501 event vs20395100 (EVT_sev 328, 0 s)
+story 2058
+warp 25 1 1176.68 -84.617 647.074 0
+event vs20395100 0
+# ma2501 event vs20400100 (EVT_sev 329, 0 s)
+story 2060
+warp 25 1 707 -66.076 174 0
+event vs20400100 0
+# ma2501 event vs20410100 (EVT_sev 330, 0 s)
+story 2062
+warp 25 1 745.448 -67.784 191.952 0
+event vs20410100 0
+# ma2501 event vs20420100 (EVT_sev 331, 0 s)
+story 2064
+warp 25 1 -993 34.57 600 0
+event vs20420100 0
+# ma2501 event vs20430100 (EVT_sev 332, 0 s)
+story 2066
+warp 25 1 -993.427 31.012 546.792 0
+event vs20430100 0
+# ma2501 event vs20440100 (EVT_sev 333, 0 s)
+story 2067
+warp 25 1 -993.427 31.012 546.792 0
+event vs20440100 0
+# ma2501 event vs20460100 (EVT_sev 334, 0 s)
+story 2071
+warp 25 1 687.237 -66.053 139.405 0
+event vs20460100 0
+# ma2501 event vs20500100 (EVT_sev 335, 0 s)
+story 2072
+warp 25 1 687.237 -66.053 139.405 0
+event vs20500100 0
+# ma2501 event vs20510100 (EVT_sev 336, 10 s)
+story 2073
+warp 25 1 687.237 -66.053 139.405 0
+event vs20510100 10
+# ma2501 event addkizunatalk001 (EVT_sev 337, 0 s)
+story 2000
+warp 25 1 -860 9 -138 0
+event addkizunatalk001 0
+# ma2601 event addkizunatalk002 (EVT_sev 338, 0 s)
+story 2059
+warp 26 1 0 0 247 0
+event addkizunatalk002 0
+# ma2501 event addkizunatalk003 (EVT_sev 339, 0 s)
+story 2000
+warp 25 1 -860 9 -138 0
+event addkizunatalk003 0
+# ma2501 event addkizunatalk004 (EVT_sev 340, 0 s)
+story 2056
+warp 25 1 -860 9 -138 0
+event addkizunatalk004 0
+# ma2501 event addkizunatalk005 (EVT_sev 341, 0 s)
+story 2000
+warp 25 1 -860 9 -138 0
+event addkizunatalk005 0
+# ma2501 event addkizunatalk006 (EVT_sev 342, 0 s)
+story 2039
+warp 25 1 -860 9 -138 0
+event addkizunatalk006 0
+# ma2501 event addkizunatalk007 (EVT_sev 343, 0 s)
+story 2000
+warp 25 1 -860 9 -138 0
+event addkizunatalk007 0
+# ma2501 event addkizunatalk008 (EVT_sev 344, 0 s)
+story 2035
+warp 25 1 -860 9 -138 0
+event addkizunatalk008 0
+# ma2501 event addkizunatalk009 (EVT_sev 345, 0 s)
+story 2039
+warp 25 1 -860 9 -138 0
+event addkizunatalk009 0
+# ma2501 event addkizunatalk010 (EVT_sev 346, 0 s)
+story 2074
+warp 25 1 -860 9 -138 0
+event addkizunatalk010 0
+# ma2501 event addkizunatalk011 (EVT_sev 347, 0 s)
+story 2035
+warp 25 1 -860 9 -138 0
+event addkizunatalk011 0
+# ma2501 event addkizunatalk012 (EVT_sev 348, 0 s)
+story 2074
+warp 25 1 -860 9 -138 0
+event addkizunatalk012 0
+# ma2501 event addkizunatalk013 (EVT_sev 349, 0 s)
+story 2056
+warp 25 1 -860 9 -138 0
+event addkizunatalk013 0
+# ma2501 event addkizunatalk014 (EVT_sev 350, 0 s)
+story 2074
+warp 25 1 -860 9 -138 0
+event addkizunatalk014 0
+# ma2501 event 2501m1 (EVT_sev 351, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event 2501m1 0
+# ma2501 event qst001301 (EVT_sev 352, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst001301 0
+# ma2501 event qst001302 (EVT_sev 353, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst001302 0
+# ma2501 event qst001303 (EVT_sev 354, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst001303 0
+# ma2501 event qst020402 (EVT_sev 355, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst020402 0
+# ma2501 event qst020602 (EVT_sev 356, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst020602 0
+# ma2501 event qst020603 (EVT_sev 357, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst020603 0
+# ma2501 event qst030102 (EVT_sev 358, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst030102 0
+# ma2601 event qst030404 (EVT_sev 359, 0 s)
+story 0
+warp 26 1 0 0 247 0
+event qst030404 0
+# ma2501 event qst030503 (EVT_sev 360, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst030503 0
+# ma2501 event qst031001 (EVT_sev 361, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst031001 0
+# ma2501 event qst031402 (EVT_sev 362, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst031402 0
+# ma2501 event qst031403 (EVT_sev 363, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst031403 0
+# ma2501 event qst031502 (EVT_sev 364, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst031502 0
+# ma2501 event qst031503 (EVT_sev 365, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst031503 0
+# ma2501 event qst031504 (EVT_sev 366, 0 s)
+story 0
+warp 25 1 -860 9 -138 0
+event qst031504 0

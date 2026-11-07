@@ -1,0 +1,545 @@
+# ma0101 enemies 1 (story 34-34)
+warp 1 1 -172 1 260 0
+story 34
+warp 1 1 -172 1 260 0
+battle 2400
+# ma0101 enemies 2 (story 35-35)
+warp 1 1 -143 1 234 0
+story 35
+warp 1 1 -143 1 234 0
+battle 2400
+# ma0101 enemies 3 (story 5-5)
+warp 1 1 -648 23 -364 0
+story 5
+warp 1 1 -648 23 -364 0
+battle 2400
+# ma0101 enemies 4 (story 5-5)
+warp 1 1 -650 23 -359 0
+story 5
+warp 1 1 -650 23 -359 0
+battle 2400
+# ma0101 enemies 5 (story 20-20)
+warp 1 1 -844 182 -266 0
+story 20
+warp 1 1 -844 182 -266 0
+battle 2400
+# ma0101 enemies 7 (story 25-25)
+warp 1 1 -2903 -8 732 0
+story 25
+warp 1 1 -2903 -8 732 0
+battle 2400
+# ma0101 enemies 8 (story 29-29)
+warp 1 1 -8 1 -10 0
+story 29
+warp 1 1 -8 1 -10 0
+battle 2400
+# ma0101 enemies 9 (story 30-30)
+warp 1 1 6 1 -1 0
+story 30
+warp 1 1 6 1 -1 0
+battle 2400
+# ma0101 enemies 10 (story 33-33)
+warp 1 1 -3600 -8 756 0
+story 33
+warp 1 1 -3600 -8 756 0
+battle 2400
+# ma0101 enemies 11 (story 33-33)
+warp 1 1 -3525 -8 791 0
+story 33
+warp 1 1 -3525 -8 791 0
+battle 2400
+# ma0101 enemies 12 (story 33-33)
+warp 1 1 -3505 -8 723 0
+story 33
+warp 1 1 -3505 -8 723 0
+battle 2400
+# ma0101 enemies 252 (story 26-28)
+warp 1 1 -243 1 68 0
+story 26
+warp 1 1 -243 1 68 0
+battle 2400
+# ma0101 enemies 255 (story 26-28)
+warp 1 1 -229 1 83 0
+story 26
+warp 1 1 -229 1 83 0
+battle 2400
+# ma0101 enemies 257 (story 26-28)
+warp 1 1 -230 1 102 0
+story 26
+warp 1 1 -230 1 102 0
+battle 2400
+# ma0101 enemies 281 (story 29-29)
+warp 1 1 -23 1 -9 0
+story 29
+warp 1 1 -23 1 -9 0
+battle 2400
+# ma0101 enemies 282 (story 29-29)
+warp 1 1 -16 1 7 0
+story 29
+warp 1 1 -16 1 7 0
+battle 2400
+# ma0201 enemies 1 (story 55-55)
+warp 2 1 -443 93 -48 0
+story 55
+warp 2 1 -443 93 -48 0
+battle 2400
+# ma0201 enemies 2 (story 55-55)
+warp 2 1 -441 93 -39 0
+story 55
+warp 2 1 -441 93 -39 0
+battle 2400
+# ma0201 enemies 3 (story 55-55)
+warp 2 1 -466 93 -57 0
+story 55
+warp 2 1 -466 93 -57 0
+battle 2400
+# ma0201 enemies 18 (story 49-49)
+warp 2 1 -250 45 -100 0
+story 49
+warp 2 1 -250 45 -100 0
+battle 2400
+# ma0301 enemies 1 (story 63-63)
+warp 3 1 824 87 -64 0
+story 63
+warp 3 1 824 87 -64 0
+battle 2400
+# ma0301 enemies 3 (story 64-64)
+warp 3 1 8220 836 -734 0
+story 64
+warp 3 1 8220 836 -734 0
+battle 2400
+# ma0301 enemies 4 (story 78-78)
+warp 3 1 28803 2484 -412 0
+story 78
+warp 3 1 28803 2484 -412 0
+battle 2400
+# ma0301 enemies 5 (story 77-77)
+warp 3 1 2873 227 -38 0
+story 77
+warp 3 1 2873 227 -38 0
+battle 2400
+# ma0301 enemies 6 (story 77-77)
+warp 3 1 2886 227 -23 0
+story 77
+warp 3 1 2886 227 -23 0
+battle 2400
+# ma0301 enemies 12 (story 79-79)
+warp 3 1 28848 2485 -281 0
+story 79
+warp 3 1 28848 2485 -281 0
+battle 2400
+# ma0401 enemies 1 (story 101-101)
+warp 4 1 -28 -85 420 0
+story 101
+warp 4 1 -28 -85 420 0
+battle 2400
+# ma0401 enemies 2 (story 101-101)
+warp 4 1 -18 -85 417 0
+story 101
+warp 4 1 -18 -85 417 0
+battle 2400
+# ma0401 enemies 4 (story 101-101)
+warp 4 1 -108 -863 4304 0
+story 101
+warp 4 1 -108 -863 4304 0
+battle 2400
+# ma0401 enemies 5 (story 101-101)
+warp 4 1 -69 -863 4196 0
+story 101
+warp 4 1 -69 -863 4196 0
+battle 2400
+# ma0401 enemies 8 (story 101-101)
+warp 4 1 -548 -903 4080 0
+story 101
+warp 4 1 -548 -903 4080 0
+battle 2400
+# ma0401 enemies 17 (story 376-376)
+warp 4 1 -56 -113 21 0
+story 376
+warp 4 1 -56 -113 21 0
+battle 2400
+# ma0401 enemies 18 (story 377-377)
+warp 4 1 -55 -118 -199 0
+story 377
+warp 4 1 -55 -118 -199 0
+battle 2400
+# ma0401 enemies 19 (story 375-375)
+warp 4 1 -90 -118 -70 0
+story 375
+warp 4 1 -90 -118 -70 0
+battle 2400
+# ma0401 enemies 20 (story 375-375)
+warp 4 1 -57 -108 -132 0
+story 375
+warp 4 1 -57 -108 -132 0
+battle 2400
+# ma0401 enemies 112 (story 0-367)
+warp 4 1 -17 -33 347 0
+story 0
+warp 4 1 -17 -33 347 0
+battle 2400
+# ma0402 enemies 1 (story 96-96)
+warp 4 2 302 -638 359 0
+story 96
+warp 4 2 302 -638 359 0
+battle 2400
+# ma0402 enemies 2 (story 96-96)
+warp 4 2 304 -638 363 0
+story 96
+warp 4 2 304 -638 363 0
+battle 2400
+# ma0402 enemies 4 (story 99-99)
+warp 4 2 2765 12 10590 0
+story 99
+warp 4 2 2765 12 10590 0
+battle 2400
+# ma0402 enemies 5 (story 87-87)
+warp 4 2 0 -5 6 0
+story 87
+warp 4 2 0 -5 6 0
+battle 2400
+# ma0601 enemies 1 (story 124-124)
+warp 6 1 -7693 -2608 -1664 0
+story 124
+warp 6 1 -7693 -2608 -1664 0
+battle 2400
+# ma0601 enemies 2 (story 140-140)
+warp 6 1 23529 -1094 2823 0
+story 140
+warp 6 1 23529 -1094 2823 0
+battle 2400
+# ma0901 enemies 1 (story 180-180)
+warp 9 1 6330 -596 -68 0
+story 180
+warp 9 1 6330 -596 -68 0
+battle 2400
+# ma0901 enemies 2 (story 178-178)
+warp 9 1 2530 -1280 0 0
+story 178
+warp 9 1 2530 -1280 0 0
+battle 2400
+# ma0901 enemies 13 (story 175-175)
+warp 9 1 503 -57 -5 0
+story 175
+warp 9 1 503 -57 -5 0
+battle 2400
+# ma1001 enemies 1 (story 200-200)
+warp 10 1 -8550 3502 405 0
+story 200
+warp 10 1 -8550 3502 405 0
+battle 2400
+# ma1101 enemies 1 (story 167-167)
+warp 11 1 1275 1544 4562 0
+story 167
+warp 11 1 1275 1544 4562 0
+battle 2400
+# ma1201 enemies 1 (story 213-213)
+warp 12 1 -527 1819 -18 0
+story 213
+warp 12 1 -527 1819 -18 0
+battle 2400
+# ma1201 enemies 2 (story 213-213)
+warp 12 1 -499 1819 4 0
+story 213
+warp 12 1 -499 1819 4 0
+battle 2400
+# ma1201 enemies 3 (story 213-213)
+warp 12 1 -501 1819 16 0
+story 213
+warp 12 1 -501 1819 16 0
+battle 2400
+# ma1202 enemies 1 (story 394-394)
+warp 12 2 -488 1819 -19 0
+story 394
+warp 12 2 -488 1819 -19 0
+battle 2400
+# ma1202 enemies 2 (story 395-395)
+warp 12 2 -502 1819 -19 0
+story 395
+warp 12 2 -502 1819 -19 0
+battle 2400
+# ma1202 enemies 14 (story 389-389)
+warp 12 2 -192 149 0 0
+story 389
+warp 12 2 -192 149 0 0
+battle 2400
+# ma1401 enemies 1 (story 251-252)
+warp 14 1 -2886 -177 5335 0
+story 251
+warp 14 1 -2886 -177 5335 0
+battle 2400
+# ma1401 enemies 5 (story 0-3)
+warp 14 1 -83 0 2 0
+story 0
+warp 14 1 -83 0 2 0
+battle 2400
+# ma1401 enemies 7 (story 0-3)
+warp 14 1 -80 0 12 0
+story 0
+warp 14 1 -80 0 12 0
+battle 2400
+# ma1401 enemies 9 (story 0-3)
+warp 14 1 -85 0 0 0
+story 0
+warp 14 1 -85 0 0 0
+battle 2400
+# ma1501 enemies 1 (story 265-265)
+warp 15 1 -3482 -3173 259 0
+story 265
+warp 15 1 -3482 -3173 259 0
+battle 2400
+# ma1501 enemies 2 (story 265-265)
+warp 15 1 -3118 -3173 44 0
+story 265
+warp 15 1 -3118 -3173 44 0
+battle 2400
+# ma1501 enemies 3 (story 263-264)
+warp 15 1 -184 -144 0 0
+story 263
+warp 15 1 -184 -144 0 0
+battle 2400
+# ma1501 enemies 4 (story 263-264)
+warp 15 1 -2000 -1464 -140 0
+story 263
+warp 15 1 -2000 -1464 -140 0
+battle 2400
+# ma1501 enemies 5 (story 263-264)
+warp 15 1 -2060 -1464 -190 0
+story 263
+warp 15 1 -2060 -1464 -190 0
+battle 2400
+# ma1601 enemies 1 (story 281-281)
+warp 16 1 -1655 372 2254 0
+story 281
+warp 16 1 -1655 372 2254 0
+battle 2400
+# ma1601 enemies 2 (story 281-281)
+warp 16 1 -1340 372 2254 0
+story 281
+warp 16 1 -1340 372 2254 0
+battle 2400
+# ma1601 enemies 3 (story 278-278)
+warp 16 1 -1672 352 2282 0
+story 278
+warp 16 1 -1672 352 2282 0
+battle 2400
+# ma1701 enemies 1 (story 314-314)
+warp 17 1 -323 2142 960 0
+story 314
+warp 17 1 -323 2142 960 0
+battle 2400
+# ma1701 enemies 2 (story 0-314)
+warp 17 1 -286 2142 642 0
+story 0
+warp 17 1 -286 2142 642 0
+battle 2400
+# ma1701 enemies 3 (story 0-314)
+warp 17 1 -282 2144 651 0
+story 0
+warp 17 1 -282 2144 651 0
+battle 2400
+# ma1701 enemies 4 (story 0-314)
+warp 17 1 -324 2142 688 0
+story 0
+warp 17 1 -324 2142 688 0
+battle 2400
+# ma1701 enemies 5 (story 0-314)
+warp 17 1 -343 2142 795 0
+story 0
+warp 17 1 -343 2142 795 0
+battle 2400
+# ma1701 enemies 7 (story 0-314)
+warp 17 1 -361 2144 852 0
+story 0
+warp 17 1 -361 2144 852 0
+battle 2400
+# ma1901 enemies 1 (story 330-331)
+warp 19 1 -375 59 0 0
+story 330
+warp 19 1 -375 59 0 0
+battle 2400
+# ma1901 enemies 2 (story 332-332)
+warp 19 1 -370 59 0 0
+story 332
+warp 19 1 -370 59 0 0
+battle 2400
+# ma1901 enemies 3 (story 337-337)
+warp 19 1 -1488 197 0 0
+story 337
+warp 19 1 -1488 197 0 0
+battle 2400
+# ma1901 enemies 4 (story 337-337)
+warp 19 1 -1479 197 5 0
+story 337
+warp 19 1 -1479 197 5 0
+battle 2400
+# ma1901 enemies 5 (story 337-337)
+warp 19 1 -1470 197 7 0
+story 337
+warp 19 1 -1470 197 7 0
+battle 2400
+# ma1901 enemies 6 (story 337-337)
+warp 19 1 -1479 197 0 0
+story 337
+warp 19 1 -1479 197 0 0
+battle 2400
+# ma1901 enemies 7 (story 338-338)
+warp 19 1 -1488 197 0 0
+story 338
+warp 19 1 -1488 197 0 0
+battle 2400
+# ma1901 enemies 8 (story 337-337)
+warp 19 1 -1479 197 0 0
+story 337
+warp 19 1 -1479 197 0 0
+battle 2400
+# ma1901 enemies 54 (story 332-332)
+warp 19 1 -377 59 -12 0
+story 332
+warp 19 1 -377 59 -12 0
+battle 2400
+# ma2001 enemies 1 (story 354-354)
+warp 20 1 63 662 0 0
+story 354
+warp 20 1 63 662 0 0
+battle 2400
+# ma2101 enemies 1 (story 385-385)
+warp 21 1 2123 1378 -4950 0
+story 385
+warp 21 1 2123 1378 -4950 0
+battle 2400
+# ma2101 enemies 2 (story 385-385)
+warp 21 1 210 142 -504 0
+story 385
+warp 21 1 210 142 -504 0
+battle 2400
+# ma2201 enemies 1 (story 400-400)
+warp 22 1 0 2 -5 0
+story 400
+warp 22 1 0 2 -5 0
+battle 2400
+# ma2201 enemies 2 (story 400-400)
+warp 22 1 -5 2 -5 0
+story 400
+warp 22 1 -5 2 -5 0
+battle 2400
+# ma2201 enemies 5 (story 399-399)
+warp 22 1 0 2 -10 0
+story 399
+warp 22 1 0 2 -10 0
+battle 2400
+# ma2201 enemies 6 (story 399-399)
+warp 22 1 -5 2 -5 0
+story 399
+warp 22 1 -5 2 -5 0
+battle 2400
+# ma2201 enemies 8 (story 398-398)
+warp 22 1 -239 12 292 0
+story 398
+warp 22 1 -239 12 292 0
+battle 2400
+# ma2201 enemies 9 (story 398-398)
+warp 22 1 -244 -1 4 0
+story 398
+warp 22 1 -244 -1 4 0
+battle 2400
+# ma2201 enemies 10 (story 398-398)
+warp 22 1 300 12 279 0
+story 398
+warp 22 1 300 12 279 0
+battle 2400
+# ma2201 enemies 11 (story 398-398)
+warp 22 1 -261 -45 -413 0
+story 398
+warp 22 1 -261 -45 -413 0
+battle 2400
+# ma2301 enemies 1 (story 356-356)
+warp 23 1 -295 -1568 0 0
+story 356
+warp 23 1 -295 -1568 0 0
+battle 2400
+# ma2301 enemies 2 (story 356-356)
+warp 23 1 -2 -12 0 0
+story 356
+warp 23 1 -2 -12 0 0
+battle 2400
+# ma2301 enemies 3 (story 356-356)
+warp 23 1 -160 22 20 0
+story 356
+warp 23 1 -160 22 20 0
+battle 2400
+# ma2301 enemies 4 (story 356-356)
+warp 23 1 18 4 5 0
+story 356
+warp 23 1 18 4 5 0
+battle 2400
+# ma2301 enemies 5 (story 356-356)
+warp 23 1 -18 1 12 0
+story 356
+warp 23 1 -18 1 12 0
+battle 2400
+# ma2501 enemies 1 (story 2008-2008)
+warp 25 1 -770 9 76 0
+story 2008
+warp 25 1 -770 9 76 0
+battle 2400
+# ma2501 enemies 2 (story 2044-2044)
+warp 25 1 591 61 -566 0
+story 2044
+warp 25 1 591 61 -566 0
+battle 2400
+# ma2501 enemies 3 (story 2048-2048)
+warp 25 1 1060 -89 606 0
+story 2048
+warp 25 1 1060 -89 606 0
+battle 2400
+# ma2501 enemies 4 (story 2052-2052)
+warp 25 1 -830 62 -586 0
+story 2052
+warp 25 1 -830 62 -586 0
+battle 2400
+# ma2501 enemies 5 (story 2061-2061)
+warp 25 1 742 -65 188 0
+story 2061
+warp 25 1 742 -65 188 0
+battle 2400
+# ma2501 enemies 6 (story 2065-2065)
+warp 25 1 -996 32 549 0
+story 2065
+warp 25 1 -996 32 549 0
+battle 2400
+# ma2501 enemies 7 (story 2070-2070)
+warp 25 1 689 -64 152 0
+story 2070
+warp 25 1 689 -64 152 0
+battle 2400
+# ma2501 enemies 8 (story 2070-2070)
+warp 25 1 682 -59 151 0
+story 2070
+warp 25 1 682 -59 151 0
+battle 2400
+# ma2601 enemies 1 (story 2028-2028)
+warp 26 1 0 65 -104 0
+story 2028
+warp 26 1 0 65 -104 0
+battle 2400
+# ma2601 enemies 2 (story 2079-2079)
+warp 26 1 -590 689 -683 0
+story 2079
+warp 26 1 -590 689 -683 0
+battle 2400
+# ma2601 enemies 3 (story 2081-2081)
+warp 26 1 -590 689 -683 0
+story 2081
+warp 26 1 -590 689 -683 0
+battle 2400
+# ma2601 enemies 4 (story 2079-2079)
+warp 26 1 -5862 6896 -6761 0
+story 2079
+warp 26 1 -5862 6896 -6761 0
+battle 2400
+# ma2601 enemies 5 (story 2081-2081)
+warp 26 1 -5750 6896 -6874 0
+story 2081
+warp 26 1 -5750 6896 -6874 0
+battle 2400

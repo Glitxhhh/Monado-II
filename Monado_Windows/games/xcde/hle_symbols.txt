@@ -1,0 +1,6 @@
+# SDK functions replaced by host implementations (gen.py --hle). Each needs `hle_<mangled>` in the runtime.
+# nn::os fibers (runtime/hle/fibers.c): recompiled code cannot switch stacks.
+_ZN2nn2os15InitializeFiberEPNS0_9FiberTypeEPFS2_PvES3_S3_mi
+_ZN2nn2os13FinalizeFiberEPNS0_9FiberTypeE
+_ZN2nn2os13SwitchToFiberEPNS0_9FiberTypeE
+_ZN2nn2os15GetCurrentFiberEv

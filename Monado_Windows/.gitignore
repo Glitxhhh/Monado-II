@@ -1,0 +1,25 @@
+# Derived from the game: NEVER published (CONTRIBUTING.md, art. I)
+targets/
+build/
+generated/
+dump/
+*.nsp
+*.xci
+*.nca
+*.nsz
+*.xcz
+*.keys
+*.log
+__pycache__/
+.venv/
+cache/
+save/
+build/
+crash/
+play/
+xcde.ini
+mods/
+reports/
+sdk/
+saves/
+ref/

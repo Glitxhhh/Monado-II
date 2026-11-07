@@ -1,0 +1,95 @@
+{
+ "id": "xcde",
+ "title_id": "0100ff500e34a000",
+ "version": "2.0.0",
+ "version_code": 262144,
+ "modules": [
+  {
+   "name": "rtld",
+   "base": null,
+   "lift": false,
+   "build_id": "31a2773ea6928ffe"
+  },
+  {
+   "name": "main",
+   "base": "0x7000000000",
+   "lift": true,
+   "build_id": "7e1df8e08d60544b"
+  },
+  {
+   "name": "subsdk0",
+   "base": "0x7002000000",
+   "lift": false,
+   "build_id": "5a7ada8dd7447c10"
+  },
+  {
+   "name": "sdk",
+   "base": "0x7004000000",
+   "lift": true,
+   "build_id": "ad3fdfbd62a5f4b0"
+  }
+ ],
+ "exefs_required": [
+  "main",
+  "main.npdm",
+  "rtld",
+  "sdk",
+  "subsdk0"
+ ],
+ "romfs_manifest": {
+  "dirs": {
+   "bdat": [
+    627,
+    63980472
+   ],
+   "chr": [
+    7782,
+    4424838996
+   ],
+   "config": [
+    4,
+    641
+   ],
+   "cs": [
+    432,
+    1814990979
+   ],
+   "eff": [
+    2798,
+    370869437
+   ],
+   "map": [
+    168,
+    3766566320
+   ],
+   "menu": [
+    5612,
+    938347187
+   ],
+   "monolib": [
+    65,
+    20059402
+   ],
+   "movie": [
+    14,
+    257434420
+   ],
+   "param": [
+    12,
+    699824
+   ],
+   "script": [
+    974,
+    38090243
+   ],
+   "sound": [
+    41,
+    2912896182
+   ]
+  },
+  "files": 18529,
+  "bytes": 14608774103,
+  "sha256": "4000306053de5c81dd1847874335ecd3ba6b7deb840bd927d5665bf2fccf1cbf"
+ },
+ "heap_max": "0xD0000000"
+}

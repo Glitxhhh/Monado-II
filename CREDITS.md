@@ -1,0 +1,22 @@
+# Credits
+
+- **TheMonadoGuy / Monado contributors — original Monado.** This is a continuation
+  of that project, not a claim to have created its original recompiler/runtime.
+  Historical upstream: <https://github.com/TheMonadoGuy/Monado> (unavailable when
+  checked November 7, 2026). The creator's
+  [original announcement](https://www.reddit.com/r/decomps/comments/1xfdgiz/monado_a_xenoblade_de_recomp_support_not_provided/)
+  identifies that repository and invites continuation. The inherited source
+  snapshot did not contain upstream Git history; its MIT notices are preserved.
+- **Peiikai — [LASRecomp](https://github.com/peiikai/LASRecomp)**, MIT. Monado's
+  AArch64-to-C lifter and substantial runtime derive from LASRecomp, recorded
+  upstream revision `136f679`. Its original copyright notice remains intact.
+- **Monado II contributors** — native Linux integration, timing/menu/footstep
+  corrections, diagnostics/testing, source publication tooling and ongoing work.
+- **Dependency authors** — Dear ImGui, SMAA, AMD FidelityFX, NVIDIA Streamline/NGX,
+  DejaVu, SDL, Vulkan tooling, LLVM/Zig, FFmpeg, Opus and other components retain
+  their own credit and licenses. See [NOTICE](NOTICE.md).
+
+The original Monado documentation states that it used extensive Claude/Claude
+Code assistance under human direction. Monado II also uses AI-assisted development
+and human testing. No involvement or endorsement by Nintendo, Monolith Soft or
+the original contributors is implied.

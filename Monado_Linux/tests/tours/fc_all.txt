@@ -1,0 +1,96 @@
+# ma5001 locked area 1
+warp 50 1 -1725 95 204 0
+look 240
+# ma5001 locked area 2
+warp 50 1 -1800 95 192.39 0
+look 240
+# ma5001 locked area 3
+warp 50 1 -1767 95 219.5 0
+look 240
+# ma5101 enemies 1
+warp 51 1 -646 23 -345 0
+look 240
+# ma5101 enemies 2
+warp 51 1 -665 23 -350 0
+look 240
+# ma5101 enemies 3
+warp 51 1 -649 23 -362 0
+look 240
+# ma5101 gimmick 1055
+warp 51 1 -654 22 -362 0
+look 240
+# ma5201 enemies 1
+warp 52 1 2530 217 -300 0
+look 240
+# ma5201 enemies 2
+warp 52 1 2523 219 -324 0
+look 240
+# ma5301 enemies 1
+warp 53 1 51 6 -142 0
+look 240
+# ma5301 enemies 2
+warp 53 1 27 4 -136 0
+look 240
+# ma5401 enemies 1
+warp 54 1 1451 -68 -328 0
+look 240
+# ma5401 enemies 2
+warp 54 1 1440 -68 -305 0
+look 240
+# ma5501 enemies 1
+warp 55 1 1319 174 898 0
+look 240
+# ma5501 enemies 2
+warp 55 1 1314 172 922 0
+look 240
+# ma5601 enemies 1
+warp 56 1 -973 23 314 0
+look 240
+# ma5601 enemies 4
+warp 56 1 -974 25 296 0
+look 240
+# ma5701 enemies 1
+warp 57 1 -220 574 -108 0
+look 240
+# ma5701 enemies 2
+warp 57 1 -240 572 -90 0
+look 240
+# ma5801 enemies 1
+warp 58 1 -50 0 9 0
+look 240
+# ma5801 enemies 2
+warp 58 1 -60 0 -8 0
+look 240
+# ma5801 gimmick 1265
+warp 58 1 -53 -1 0 0
+look 240
+# ma5901 enemies 1
+warp 59 1 -245 178 -25 0
+look 240
+# ma5901 enemies 4
+warp 59 1 -261 178 10 0
+look 240
+# ma5901 gimmick 1298
+warp 59 1 -244 178 0 0
+look 240
+# ma6001 enemies 1
+warp 60 1 155 57 -145 0
+look 240
+# ma6001 enemies 3
+warp 60 1 185 55 -163 0
+look 240
+# ma6001 enemies 4
+warp 60 1 140 53 -105 0
+look 240
+# ma6001 enemies 6
+warp 60 1 212 54 -100 0
+look 240
+# ma6001 enemies 7
+warp 60 1 223 61 -165 0
+look 240
+# ma6001 enemies 9
+warp 60 1 180 61 -90 0
+look 240
+# ma6001 enemies 11
+warp 60 1 225 61 -112 0
+look 240

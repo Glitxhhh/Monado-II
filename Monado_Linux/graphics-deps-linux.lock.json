@@ -1,0 +1,479 @@
+{
+  "schema": 1,
+  "task": "LINUX-002",
+  "platform": "Ubuntu 26.04 resolute amd64",
+  "purpose": "Local dynamic-link development sysroot; extraction only, no maintainer scripts/system installation. Transitive runtime dependencies use installed host packages and require link validation.",
+  "metadata_source": "Existing host APT package indexes (candidate versions); package bytes verified against indexed SHA256.",
+  "packages": [
+    {
+      "package": "libsdl3-dev",
+      "version": "3.4.2+ds-1ubuntu1",
+      "architecture": "amd64",
+      "filename": "libsdl3-dev_3.4.2+ds-1ubuntu1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libs/libsdl3/libsdl3-dev_3.4.2+ds-1ubuntu1_amd64.deb",
+      "size": 1797720,
+      "sha256": "95dc447d52875b4b9c8cc97f48b91e237306f33966619d77879543febca1a0be",
+      "depends": "libasound2-dev, libdbus-1-dev, libdecor-0-dev (>= 0.2.0), libdrm-dev, libegl-dev, libfribidi-dev, libgbm-dev, libgl-dev, libgles-dev, libibus-1.0-dev, libpulse-dev, libsdl3-0 (= 3.4.2+ds-1ubuntu1), libudev-dev, libwayland-dev, libx11-dev, libxcursor-dev, libxext-dev, libxfixes-dev, libxi-dev, libxinerama-dev, libxkbcommon-dev, libxrandr-dev, libxss-dev, libxt-dev, libxtst-dev, libxv-dev, libxxf86vm-dev"
+    },
+    {
+      "package": "libsdl3-0",
+      "version": "3.4.2+ds-1ubuntu1",
+      "architecture": "amd64",
+      "filename": "libsdl3-0_3.4.2+ds-1ubuntu1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libs/libsdl3/libsdl3-0_3.4.2+ds-1ubuntu1_amd64.deb",
+      "size": 1148332,
+      "sha256": "9cffe342d34a7787e25ddb28d6244158a4b44f977a2ab29bc6f4526a29e11825",
+      "depends": "libasound2t64 (>= 1.0.27), libc6 (>= 2.43), libdecor-0-0 (>= 0.2.0), libdrm2 (>= 2.4.112), libfribidi0 (>= 0.19.2), libgbm1 (>= 17.1.0~rc2), libpulse0 (>= 5.0), libwayland-client0 (>= 1.23.0), libwayland-cursor0 (>= 1.0.2), libwayland-egl1 (>= 1.15.0), libx11-6 (>= 2:1.2.99.901), libxcursor1 (>> 1.1.2), libxext6, libxfixes3 (>= 1:5.0), libxi6 (>= 2:1.5.99.2), libxkbcommon0 (>= 1.12.3), libxrandr2 (>= 2:1.2.99.3), libxss1, libxtst6 (>= 2:1.2.5)"
+    },
+    {
+      "package": "libvulkan-dev",
+      "version": "1.4.341.0-1",
+      "architecture": "amd64",
+      "filename": "libvulkan-dev_1.4.341.0-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/v/vulkan-loader/libvulkan-dev_1.4.341.0-1_amd64.deb",
+      "size": 1709730,
+      "sha256": "41d22a62e3cd03f59b54e159cd15091cf8a7535d91332b8815e114102d2db988",
+      "depends": "libvulkan1 (= 1.4.341.0-1), python3:any"
+    },
+    {
+      "package": "libvulkan1",
+      "version": "1.4.341.0-1",
+      "architecture": "amd64",
+      "filename": "libvulkan1_1.4.341.0-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/v/vulkan-loader/libvulkan1_1.4.341.0-1_amd64.deb",
+      "size": 157194,
+      "sha256": "b4aca7a519d6318347f15a0e485c636603005e2553dae1a986272ac8c96176b0",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "libshaderc-dev",
+      "version": "2026.1-1",
+      "architecture": "amd64",
+      "filename": "libshaderc-dev_2026.1-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/s/shaderc/libshaderc-dev_2026.1-1_amd64.deb",
+      "size": 69508,
+      "sha256": "46dddc96ee17d5e4288bc5d831fe15e0613d6145317896f21342773bbe07a6f8",
+      "depends": "libshaderc1 (= 2026.1-1), glslang-dev, spirv-headers"
+    },
+    {
+      "package": "libshaderc1",
+      "version": "2026.1-1",
+      "architecture": "amd64",
+      "filename": "libshaderc1_2026.1-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/s/shaderc/libshaderc1_2026.1-1_amd64.deb",
+      "size": 2717894,
+      "sha256": "125a36c5bbaefc2eb636ad7a3608460d5ea8a9182aad9ae368f9121b0d4b8f38",
+      "depends": "libc6 (>= 2.38), libgcc-s1 (>= 3.3.1), libstdc++6 (>= 13.1)"
+    },
+    {
+      "package": "libvulkan-memory-allocator-dev",
+      "version": "3.3.0+dfsg-2",
+      "architecture": "all",
+      "filename": "libvulkan-memory-allocator-dev_3.3.0+dfsg-2_all.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/v/vulkan-memory-allocator/libvulkan-memory-allocator-dev_3.3.0+dfsg-2_all.deb",
+      "size": 120978,
+      "sha256": "0c13e2bfccde6b321b034c1252d2396a755dd2ff51b589a035bef3e83b655cab",
+      "depends": ""
+    },
+    {
+      "package": "libavcodec-dev",
+      "version": "7:8.0.1-3ubuntu2",
+      "architecture": "amd64",
+      "filename": "libavcodec-dev_8.0.1-3ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/f/ffmpeg/libavcodec-dev_8.0.1-3ubuntu2_amd64.deb",
+      "size": 7960908,
+      "sha256": "c6ac870c49f245b51d4a54e230f485970fbdbed154bf3375bae44078ebf4cef8",
+      "depends": "libavcodec62 (= 7:8.0.1-3ubuntu2), libavutil-dev (= 7:8.0.1-3ubuntu2), libswresample-dev (= 7:8.0.1-3ubuntu2)"
+    },
+    {
+      "package": "libavcodec62",
+      "version": "7:8.0.1-3ubuntu2",
+      "architecture": "amd64",
+      "filename": "libavcodec62_8.0.1-3ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/f/ffmpeg/libavcodec62_8.0.1-3ubuntu2_amd64.deb",
+      "size": 9710932,
+      "sha256": "3afab9dafae3b26b7c4cffcee92395c28c10ea026dece5ea1aaee2e72297ee9b",
+      "depends": "libaom3 (>= 3.2.0), libavutil60 (= 7:8.0.1-3ubuntu2), libc6 (>= 2.38), libcairo2 (>= 1.2.4), libcodec2-1.2 (>= 1.2.0), libdav1d7 (>= 1.1.0), libglib2.0-0t64 (>= 2.12.0), libgsm1 (>= 1.0.18), libjxl0.11 (>= 0.8.0), liblzma5 (>= 5.1.1alpha+20120614), libmp3lame0 (>= 3.100), libopenjp2-7 (>= 2.1), libopus0 (>= 1.1), librav1e0.8 (>= 0.5.1), librsvg2-2 (>= 2.52.5), libshine3 (>= 3.1.0), libsnappy1v5 (>= 1.2.2), libspeex1 (>= 1.2~), libstdc++6 (>= 13.1), libsvtav1enc2 (>= 2.2.1), libswresample6 (>= 7:8.0.1), libtheoradec2 (>= 1.2), libtheoraenc2 (>= 1.2), libtwolame0 (>= 0.3.10), libva2 (>= 2.9.0), libvorbis0a (>= 1.1.2), libvorbisenc2 (>= 1.1.2), libvpl2 (>= 1:2.15.0), libvpx12 (>= 1.16.0), libwebp7 (>= 1.5.0), libwebpmux3 (>= 1.5.0), libx264-165 (>= 2:0.165.3222+gitb35605ac), libx265-215 (>= 4.1), libxvidcore4 (>= 1.2.2), libzvbi0t64 (>= 0.2.35), zlib1g (>= 1:1.2.0)"
+    },
+    {
+      "package": "libavformat-dev",
+      "version": "7:8.0.1-3ubuntu2",
+      "architecture": "amd64",
+      "filename": "libavformat-dev_8.0.1-3ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/f/ffmpeg/libavformat-dev_8.0.1-3ubuntu2_amd64.deb",
+      "size": 1551842,
+      "sha256": "8fa3b0b2c7643b927e243b756214f57cd9fb985b44169a41f51e507e0ca1675e",
+      "depends": "libavcodec-dev (= 7:8.0.1-3ubuntu2), libavformat62 (= 7:8.0.1-3ubuntu2), libavutil-dev (= 7:8.0.1-3ubuntu2), libswresample-dev (= 7:8.0.1-3ubuntu2)"
+    },
+    {
+      "package": "libavformat62",
+      "version": "7:8.0.1-3ubuntu2",
+      "architecture": "amd64",
+      "filename": "libavformat62_8.0.1-3ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/f/ffmpeg/libavformat62_8.0.1-3ubuntu2_amd64.deb",
+      "size": 1291070,
+      "sha256": "1610ea1662bd52430cf850662e81baf9e17c3818525bf15ad259c6dacf4740e2",
+      "depends": "libavcodec62 (= 7:8.0.1-3ubuntu2), libavutil60 (= 7:8.0.1-3ubuntu2), libbluray3 (>= 1:0.2.2), libbz2-1.0, libc6 (>= 2.35), libchromaprint1 (>= 1.3.2), libdvdnav4 (>= 6.1.0), libdvdread8t64 (>= 6.1.0), libgme0 (>= 0.5.5), libgnutls30t64 (>= 3.8.1), libopenmpt0t64 (>= 0.3.0), librabbitmq4 (>= 0.6.0), librist4 (>= 0.2.6+dfsg), libsrt1.5-gnutls (>= 1.5.4), libssh-4 (>= 0.8.0), libxml2-16 (>= 2.14.1), libzmq5 (>= 4.0.1+dfsg), zlib1g (>= 1:1.2.0.2)"
+    },
+    {
+      "package": "libavutil-dev",
+      "version": "7:8.0.1-3ubuntu2",
+      "architecture": "amd64",
+      "filename": "libavutil-dev_8.0.1-3ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/f/ffmpeg/libavutil-dev_8.0.1-3ubuntu2_amd64.deb",
+      "size": 614774,
+      "sha256": "2f5614eea98a5b842131ddbe3c21acbbe7ec2820600a351f676b149d12911486",
+      "depends": "libavutil60 (= 7:8.0.1-3ubuntu2)"
+    },
+    {
+      "package": "libavutil60",
+      "version": "7:8.0.1-3ubuntu2",
+      "architecture": "amd64",
+      "filename": "libavutil60_8.0.1-3ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/f/ffmpeg/libavutil60_8.0.1-3ubuntu2_amd64.deb",
+      "size": 449290,
+      "sha256": "708566c7b998afc1665a531ba712bbd440e12d260e8c7d102a0d9fd655886c52",
+      "depends": "libc6 (>= 2.35), libdrm2 (>= 2.4.66), libva-drm2 (>= 1.3), libva-x11-2 (>= 1.3), libva2 (>= 2.21.0), libvdpau1 (>= 0.2), libvpl2 (>= 1:2.15.0), libx11-6, ocl-icd-libopencl1 | libopencl1, ocl-icd-libopencl1 (>= 1.0) | libopencl-1.2-1"
+    },
+    {
+      "package": "libswresample-dev",
+      "version": "7:8.0.1-3ubuntu2",
+      "architecture": "amd64",
+      "filename": "libswresample-dev_8.0.1-3ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/f/ffmpeg/libswresample-dev_8.0.1-3ubuntu2_amd64.deb",
+      "size": 93976,
+      "sha256": "f745417bdc172605f53169541604bd56e18fd8eae0970fec31f3cc0660498d19",
+      "depends": "libavutil-dev (= 7:8.0.1-3ubuntu2), libswresample6 (= 7:8.0.1-3ubuntu2)"
+    },
+    {
+      "package": "libswresample6",
+      "version": "7:8.0.1-3ubuntu2",
+      "architecture": "amd64",
+      "filename": "libswresample6_8.0.1-3ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/f/ffmpeg/libswresample6_8.0.1-3ubuntu2_amd64.deb",
+      "size": 76950,
+      "sha256": "b29179c516389c54c0f5cc1fccdd572a8379ae97f932f44d5f75b378cacaa169",
+      "depends": "libavutil60 (>= 7:8.0.1), libc6 (>= 2.29), libsoxr0 (>= 0.1.0)"
+    },
+    {
+      "package": "libswscale-dev",
+      "version": "7:8.0.1-3ubuntu2",
+      "architecture": "amd64",
+      "filename": "libswscale-dev_8.0.1-3ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/f/ffmpeg/libswscale-dev_8.0.1-3ubuntu2_amd64.deb",
+      "size": 453090,
+      "sha256": "ef4d2c7fad87ce343422d9a6943459028ba41809f31a186fe3867d49b97571e5",
+      "depends": "libavutil-dev (= 7:8.0.1-3ubuntu2), libswscale9 (= 7:8.0.1-3ubuntu2)"
+    },
+    {
+      "package": "libswscale9",
+      "version": "7:8.0.1-3ubuntu2",
+      "architecture": "amd64",
+      "filename": "libswscale9_8.0.1-3ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/f/ffmpeg/libswscale9_8.0.1-3ubuntu2_amd64.deb",
+      "size": 411078,
+      "sha256": "6c1357bac21631c09f5a2ddc3308a7889308c91a7477b190a799b7a9ae4682be",
+      "depends": "libavutil60 (= 7:8.0.1-3ubuntu2), libc6 (>= 2.34)"
+    },
+    {
+      "package": "libopus-dev",
+      "version": "1.6.1-1",
+      "architecture": "amd64",
+      "filename": "libopus-dev_1.6.1-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/o/opus/libopus-dev_1.6.1-1_amd64.deb",
+      "size": 3639650,
+      "sha256": "21efc2d84ac7580b8cc1f015be031f998c9197bf9e6704dbd3bb08af2548fa8d",
+      "depends": "libopus0 (= 1.6.1-1)"
+    },
+    {
+      "package": "libopus0",
+      "version": "1.6.1-1",
+      "architecture": "amd64",
+      "filename": "libopus0_1.6.1-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/o/opus/libopus0_1.6.1-1_amd64.deb",
+      "size": 3563890,
+      "sha256": "395f9e1bf29b804e42471e225976d69355c220bbfe469cb4ed387d36184b9bcc",
+      "depends": "libc6 (>= 2.29)"
+    },
+    {
+      "package": "libasound2-dev",
+      "version": "1.2.15.3-1ubuntu1.1",
+      "architecture": "amd64",
+      "filename": "libasound2-dev_1.2.15.3-1ubuntu1.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/a/alsa-lib/libasound2-dev_1.2.15.3-1ubuntu1.1_amd64.deb",
+      "size": 120706,
+      "sha256": "8e4bca41a403957cece9c42c494d3e994fd6a4a72e7eb34481acd08e8eb95c02",
+      "depends": "libasound2t64 (= 1.2.15.3-1ubuntu1.1)"
+    },
+    {
+      "package": "libpulse-dev",
+      "version": "1:17.0+dfsg1-2ubuntu4",
+      "architecture": "amd64",
+      "filename": "libpulse-dev_17.0+dfsg1-2ubuntu4_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/p/pulseaudio/libpulse-dev_17.0+dfsg1-2ubuntu4_amd64.deb",
+      "size": 75516,
+      "sha256": "c9a433d52a8d50a29e665a7ab2e3cba34038647cadea7399247856efe7f00815",
+      "depends": "libpulse0 (= 1:17.0+dfsg1-2ubuntu4), libpulse-mainloop-glib0 (= 1:17.0+dfsg1-2ubuntu4), libglib2.0-dev"
+    },
+    {
+      "package": "libx11-dev",
+      "version": "2:1.8.13-1ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "libx11-dev_1.8.13-1ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libx11/libx11-dev_1.8.13-1ubuntu0.1_amd64.deb",
+      "size": 738918,
+      "sha256": "b751b15b1661789ea179a3c01948b4e6eef819a8c3b5d27da679e345b46dccf5",
+      "depends": "libx11-6 (= 2:1.8.13-1ubuntu0.1), libxau-dev, libxdmcp-dev, x11proto-dev (>= 2019.2-1), xtrans-dev, libxcb1-dev"
+    },
+    {
+      "package": "libxext-dev",
+      "version": "2:1.3.4-1build3",
+      "architecture": "amd64",
+      "filename": "libxext-dev_1.3.4-1build3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxext/libxext-dev_1.3.4-1build3_amd64.deb",
+      "size": 83760,
+      "sha256": "5de129b859b79eab3a273c77dcc450a521fd28cff3920b679ad6ad99fcf6fbb6",
+      "depends": "libxext6 (= 2:1.3.4-1build3), x11proto-dev, libx11-dev"
+    },
+    {
+      "package": "libxcursor-dev",
+      "version": "1:1.2.3-1build1",
+      "architecture": "amd64",
+      "filename": "libxcursor-dev_1.2.3-1build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxcursor/libxcursor-dev_1.2.3-1build1_amd64.deb",
+      "size": 33214,
+      "sha256": "bf87cafc6fb47b9b956630fc52a2ca56761bef63b401f43e68dada074539bbaa",
+      "depends": "libxcursor1 (= 1:1.2.3-1build1), x11proto-dev, libx11-dev, libxrender-dev, libxfixes-dev"
+    },
+    {
+      "package": "libxi-dev",
+      "version": "2:1.8.2-2",
+      "architecture": "amd64",
+      "filename": "libxi-dev_1.8.2-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxi/libxi-dev_1.8.2-2_amd64.deb",
+      "size": 195004,
+      "sha256": "20b2eda715e37dabaf4a43a15ee1f705b880c8be248c9ca27c3cd5239e4f3fdd",
+      "depends": "libxi6 (= 2:1.8.2-2), libx11-dev, libxext-dev, libxfixes-dev, x11proto-dev (>= 2021.5), xorg-sgml-doctools"
+    },
+    {
+      "package": "libxfixes-dev",
+      "version": "1:6.0.0-2build2",
+      "architecture": "amd64",
+      "filename": "libxfixes-dev_6.0.0-2build2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxfixes/libxfixes-dev_6.0.0-2build2_amd64.deb",
+      "size": 12300,
+      "sha256": "67aa2c4649d448ce4c984b63b63a24b926efab282a8ef18cce94a4edb9b0cecb",
+      "depends": "libxfixes3 (= 1:6.0.0-2build2), libx11-dev, x11proto-dev"
+    },
+    {
+      "package": "libxrandr-dev",
+      "version": "2:1.5.4-1build1",
+      "architecture": "amd64",
+      "filename": "libxrandr-dev_1.5.4-1build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxrandr/libxrandr-dev_1.5.4-1build1_amd64.deb",
+      "size": 26424,
+      "sha256": "2f359402f6c05604d9a6c92cb013ffa88c42cd5c1c9f78069b9073f77e6dd8af",
+      "depends": "libxrandr2 (= 2:1.5.4-1build1), libx11-dev, libxext-dev, x11proto-dev, libxrender-dev"
+    },
+    {
+      "package": "libxss-dev",
+      "version": "1:1.2.3-1build4",
+      "architecture": "amd64",
+      "filename": "libxss-dev_1.2.3-1build4_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxss/libxss-dev_1.2.3-1build4_amd64.deb",
+      "size": 12256,
+      "sha256": "e20852c17e33fbca29b004eed0a80eaecce0daeafa32630efd41434be5d45b76",
+      "depends": "libxss1 (= 1:1.2.3-1build4), libx11-dev, libxext-dev, x11proto-scrnsaver-dev (>= 1.2.0)"
+    },
+    {
+      "package": "libxtst-dev",
+      "version": "2:1.2.5-1ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "libxtst-dev_1.2.5-1ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxtst/libxtst-dev_1.2.5-1ubuntu0.1_amd64.deb",
+      "size": 16022,
+      "sha256": "9329e640e764a84587988751867b9a6c50d681185224465be4c44e5a08913691",
+      "depends": "libxtst6 (= 2:1.2.5-1ubuntu0.1), libx11-dev, libxext-dev, libxi-dev, x11proto-dev"
+    },
+    {
+      "package": "libfribidi-dev",
+      "version": "1.0.16-5",
+      "architecture": "amd64",
+      "filename": "libfribidi-dev_1.0.16-5_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/f/fribidi/libfribidi-dev_1.0.16-5_amd64.deb",
+      "size": 64592,
+      "sha256": "5663c9bb5329be367a8809332514943e8b551b90b2b6351142d58dcde332ad24",
+      "depends": "libfribidi0 (= 1.0.16-5)"
+    },
+    {
+      "package": "libdrm-dev",
+      "version": "2.4.131-1",
+      "architecture": "amd64",
+      "filename": "libdrm-dev_2.4.131-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libd/libdrm/libdrm-dev_2.4.131-1_amd64.deb",
+      "size": 321480,
+      "sha256": "cfec0a51730336538df6c2bbb4f5b473bdcac9281def27981edbdccec99a9be9",
+      "depends": "libdrm2 (= 2.4.131-1), libdrm-intel1 (= 2.4.131-1), libdrm-radeon1 (= 2.4.131-1), libdrm-nouveau2 (= 2.4.131-1), libdrm-amdgpu1 (= 2.4.131-1), libpciaccess-dev"
+    },
+    {
+      "package": "libgbm-dev",
+      "version": "26.0.8-1ubuntu0.3",
+      "architecture": "amd64",
+      "filename": "libgbm-dev_26.0.8-1ubuntu0.3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/m/mesa/libgbm-dev_26.0.8-1ubuntu0.3_amd64.deb",
+      "size": 11946,
+      "sha256": "bd9537834c98cbb3b7c2ae6e1d739b14ffaa568e8cc311274bdeedd72b8c6e32",
+      "depends": "libgbm1 (= 26.0.8-1ubuntu0.3)"
+    },
+    {
+      "package": "libwayland-dev",
+      "version": "1.24.0-2",
+      "architecture": "amd64",
+      "filename": "libwayland-dev_1.24.0-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/w/wayland/libwayland-dev_1.24.0-2_amd64.deb",
+      "size": 75830,
+      "sha256": "a548bfe425ed52952a3f4317e4c18b8d85ae10e9455745ff49062523ba8c177e",
+      "depends": "libwayland-client0 (= 1.24.0-2), libwayland-server0 (= 1.24.0-2), libwayland-cursor0 (= 1.24.0-2), libwayland-egl1 (= 1.24.0-2), libwayland-bin (= 1.24.0-2), libffi-dev"
+    },
+    {
+      "package": "libegl-dev",
+      "version": "1.7.0-3",
+      "architecture": "amd64",
+      "filename": "libegl-dev_1.7.0-3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libg/libglvnd/libegl-dev_1.7.0-3_amd64.deb",
+      "size": 18144,
+      "sha256": "d0f96489f4937816b7e439f893e90c210290a82a5219ec16b1f13b4c3807bf85",
+      "depends": "libegl1 (= 1.7.0-3), libgl-dev, libx11-dev"
+    },
+    {
+      "package": "libxkbcommon-dev",
+      "version": "1.13.1-1",
+      "architecture": "amd64",
+      "filename": "libxkbcommon-dev_1.13.1-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxkbcommon/libxkbcommon-dev_1.13.1-1_amd64.deb",
+      "size": 63926,
+      "sha256": "dff586e787d464b6b9870d1f0958d97a296af0e3900ecaae1ba17616199936e9",
+      "depends": "libxkbcommon0 (= 1.13.1-1)"
+    },
+    {
+      "package": "libdecor-0-dev",
+      "version": "0.2.5-1",
+      "architecture": "amd64",
+      "filename": "libdecor-0-dev_0.2.5-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libd/libdecor-0/libdecor-0-dev_0.2.5-1_amd64.deb",
+      "size": 5724,
+      "sha256": "09fce25b2b70cc6c790ddbf8d00cd5611aa7c06aa9efcd04e120d154e72d9840",
+      "depends": "libdecor-0-0 (= 0.2.5-1), libwayland-dev"
+    },
+    {
+      "package": "libxrender-dev",
+      "version": "1:0.9.12-1build1",
+      "architecture": "amd64",
+      "filename": "libxrender-dev_0.9.12-1build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxrender/libxrender-dev_0.9.12-1build1_amd64.deb",
+      "size": 29274,
+      "sha256": "21cf3afb6ca2d83dd959f4a6550720b44f89a32633f62cdac3e63b622e3966f6",
+      "depends": "libxrender1 (= 1:0.9.12-1build1), libx11-dev, x11proto-dev"
+    },
+    {
+      "package": "libxcb1-dev",
+      "version": "1.17.0-2ubuntu1",
+      "architecture": "amd64",
+      "filename": "libxcb1-dev_1.17.0-2ubuntu1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxcb/libxcb1-dev_1.17.0-2ubuntu1_amd64.deb",
+      "size": 86324,
+      "sha256": "9be071fbb1cc4cb311d477456dbe4e1e97ae9b46468cff51b015c76700da9887",
+      "depends": "libxcb1 (= 1.17.0-2ubuntu1), libxau-dev, libxdmcp-dev"
+    },
+    {
+      "package": "libxau-dev",
+      "version": "1:1.0.11-1build2",
+      "architecture": "amd64",
+      "filename": "libxau-dev_1.0.11-1build2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxau/libxau-dev_1.0.11-1build2_amd64.deb",
+      "size": 9712,
+      "sha256": "55a7100aa12d940c41e0735212122cc835192bce385e7bbfe14b234759aad51c",
+      "depends": "libxau6 (= 1:1.0.11-1build2), x11proto-dev"
+    },
+    {
+      "package": "libxdmcp-dev",
+      "version": "1:1.1.5-2",
+      "architecture": "amd64",
+      "filename": "libxdmcp-dev_1.1.5-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxdmcp/libxdmcp-dev_1.1.5-2_amd64.deb",
+      "size": 25666,
+      "sha256": "6f80b42ba84d5a55e4d3cf1850954bc2e37af585d47fc85721c8928f3c4c98e6",
+      "depends": "libxdmcp6 (= 1:1.1.5-2), x11proto-dev"
+    },
+    {
+      "package": "x11proto-dev",
+      "version": "2025.1-1",
+      "architecture": "all",
+      "filename": "x11proto-dev_2025.1-1_all.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/x/xorgproto/x11proto-dev_2025.1-1_all.deb",
+      "size": 607954,
+      "sha256": "a800a05f9e22011add40fe7deef712be53c721d9e23281bfd07ede46e514dd45",
+      "depends": "xorg-sgml-doctools (>= 1:1.5)"
+    },
+    {
+      "package": "xtrans-dev",
+      "version": "1.6.0-1build1",
+      "architecture": "all",
+      "filename": "xtrans-dev_1.6.0-1build1_all.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/x/xtrans/xtrans-dev_1.6.0-1build1_all.deb",
+      "size": 66196,
+      "sha256": "8237f5a3911ec103734ad7636235515df9ba0f1506385f782e264d07d32757c9",
+      "depends": ""
+    },
+    {
+      "package": "libpthread-stubs0-dev",
+      "version": "0.5-2",
+      "architecture": "amd64",
+      "filename": "libpthread-stubs0-dev_0.5-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libp/libpthread-stubs/libpthread-stubs0-dev_0.5-2_amd64.deb",
+      "size": 4956,
+      "sha256": "b992ce7a84ded0b1000f6cb4cc6ceb365860ea08da88cd03679ac05b7c825c69",
+      "depends": ""
+    },
+    {
+      "package": "libglvnd-core-dev",
+      "version": "1.7.0-3",
+      "architecture": "amd64",
+      "filename": "libglvnd-core-dev_1.7.0-3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libg/libglvnd/libglvnd-core-dev_1.7.0-3_amd64.deb",
+      "size": 13710,
+      "sha256": "2c19eed85fb180921281b4b6678c3dda3599c1065ec499a4f1e85d861f88c2ca",
+      "depends": ""
+    },
+    {
+      "package": "libffi-dev",
+      "version": "3.5.2-4",
+      "architecture": "amd64",
+      "filename": "libffi-dev_3.5.2-4_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libf/libffi/libffi-dev_3.5.2-4_amd64.deb",
+      "size": 66458,
+      "sha256": "6f594146dc6f5d77694811c38c6743a99424e5bdd2e955afa82fcd19883f42cc",
+      "depends": "libffi8 (= 3.5.2-4)"
+    },
+    {
+      "package": "zlib1g-dev",
+      "version": "1:1.3.dfsg+really1.3.1-1ubuntu3.2",
+      "architecture": "amd64",
+      "filename": "zlib1g-dev_1.3.dfsg+really1.3.1-1ubuntu3.2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/z/zlib/zlib1g-dev_1.3.dfsg+really1.3.1-1ubuntu3.2_amd64.deb",
+      "size": 895424,
+      "sha256": "2e4663ab8d018aff8351ee949e53971911b2aca3491eefde61e82111ee83cbc3",
+      "depends": "zlib1g (= 1:1.3.dfsg+really1.3.1-1ubuntu3.2), libc6-dev | libc-dev"
+    },
+    {
+      "package": "zlib1g",
+      "version": "1:1.3.dfsg+really1.3.1-1ubuntu3.2",
+      "architecture": "amd64",
+      "filename": "zlib1g_1.3.dfsg+really1.3.1-1ubuntu3.2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/z/zlib/zlib1g_1.3.dfsg+really1.3.1-1ubuntu3.2_amd64.deb",
+      "size": 61786,
+      "sha256": "10084666f747247550c3e82f9a12cbfd9184c19241a42eb34d8893ecb8e03b35",
+      "depends": "libc6 (>= 2.14)"
+    }
+  ]
+}

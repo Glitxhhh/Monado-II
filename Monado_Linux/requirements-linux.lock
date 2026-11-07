@@ -1,0 +1,9 @@
+# LINUX-002: Linux x86-64 / CPython 3.14 binary-wheel baseline.
+# Bootstrap pip from its verified wheel, then install offline with --require-hashes.
+# Wheel origins and licenses: .deps/wheel-manifest.json (local evidence).
+# No optional package extras; Unicorn is build/test tooling, not runtime CPU fallback.
+pip==25.3 --hash=sha256:9655943313a94722b7774661c21049070f6bbb0a1516bf02f7c8d5d9201514cd
+capstone==5.0.7 --hash=sha256:b809a9654844ce0d35099121a851ddd2ab2689df1ff6687037babcedcaae6391
+unicorn==2.1.4 --hash=sha256:9d6e6dea140560de4ebd8446661f7ef84a357d428c14a3ef09dacd306ec8c239
+lz4==4.4.5 --hash=sha256:0bba042ec5a61fa77c7e380351a61cb768277801240249841defd2ff0a10742f
+ziglang==0.14.1 --hash=sha256:6eb9d4d759b292c83810dbee2e9e8e3fbfbf01d864e6e9811bae711fd74e1c2f

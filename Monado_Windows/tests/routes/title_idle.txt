@@ -1,0 +1,5 @@
+# xcde input v1
+# title menu idle: A at 600 (title -> menu), then nothing
+1 0 0 0 0 0
+600 1 0 0 0 0
+606 0 0 0 0 0

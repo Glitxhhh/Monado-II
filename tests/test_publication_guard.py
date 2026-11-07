@@ -1,0 +1,323 @@
+"""Authored scanner fixtures only; no game input, credentials or runtime data."""
+from pathlib import Path
+import hashlib
+import importlib
+import json
+import os
+import stat
+import sys
+import tempfile
+from types import SimpleNamespace
+import unittest
+from unittest import mock
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'tools'))
+guard = importlib.import_module('publication_guard')
+
+
+class PublicationGuardTests(unittest.TestCase):
+    def setUp(self):
+        self.temporary = tempfile.TemporaryDirectory(prefix='monado-publication-guard-')
+        self.addCleanup(self.temporary.cleanup)
+        self.base = Path(self.temporary.name)
+        self.root = self.base / 'source'
+        self.root.mkdir()
+        self.files = {
+            'README.md': b'# Monado II\nAuthored fixture only.\n',
+            'Monado_Linux/runtime/example.c': b'int example(void) { return 1; }\n',
+        }
+        self.policy = dict(schema=1, licensed_media={})
+        self.manifest = dict(schema=1, project='Monado II', files={})
+        self.refresh()
+
+    def refresh(self):
+        self.files[guard.POLICY] = (json.dumps(self.policy, indent=2) + '\n').encode()
+        for name, content in self.files.items():
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+        self.manifest['files'] = {name: dict(sha256=hashlib.sha256(content).hexdigest(), bytes=len(content))
+                                  for name, content in self.files.items()}
+        self.save_manifest()
+
+    def save_manifest(self):
+        (self.root / guard.MANIFEST).write_text(json.dumps(self.manifest, indent=2) + '\n')
+
+    def reject_content(self, content, name='Monado_Linux/runtime/example.c'):
+        self.files[name] = content
+        self.refresh()
+        result = guard.verify_tree(self.root)
+        self.assertTrue(result)
+        return result
+
+    def test_clean_authored_source_passes(self):
+        self.assertEqual(guard.verify_tree(self.root), [])
+
+    def test_platform_trimmed_manifest_and_unused_licensed_font_policy_pass(self):
+        self.policy['licensed_media']['Monado_Windows/fonts/reviewed.ttf'] = '0' * 64
+        self.manifest['platform'] = 'linux'
+        self.refresh()
+        self.assertEqual(guard.verify_tree(self.root), [])
+
+    def test_manifest_schema_and_project_are_strict(self):
+        for field, value in (('schema', True), ('schema', 2), ('project', 'Wrong project'), ('files', [])):
+            with self.subTest(field=field, value=value):
+                original = self.manifest[field]
+                self.manifest[field] = value
+                self.save_manifest()
+                self.assertTrue(guard.verify_tree(self.root))
+                self.manifest[field] = original
+
+    def test_platform_must_be_known(self):
+        self.manifest['platform'] = 'unknown'
+        self.save_manifest()
+        self.assertTrue(guard.verify_tree(self.root))
+
+    def test_manifest_and_policy_require_json_objects(self):
+        for name in (guard.MANIFEST, guard.POLICY):
+            for value in ('[]', 'null', '1', 'true'):
+                with self.subTest(name=name, value=value):
+                    self.refresh()
+                    (self.root / name).write_text(value)
+                    self.assertTrue(guard.verify_tree(self.root))
+
+    def test_duplicate_json_keys_and_nonfinite_constants_are_rejected(self):
+        for name in (guard.MANIFEST, guard.POLICY):
+            for raw in ('{"schema":1,"schema":1}', '{"schema":1,"value":NaN}',
+                        '{"schema":1,"value":Infinity}'):
+                with self.subTest(name=name, raw=raw):
+                    self.refresh()
+                    (self.root / name).write_text(raw)
+                    self.assertTrue(guard.verify_tree(self.root))
+
+    def test_manifest_file_metadata_is_strict(self):
+        for metadata in ({}, {'sha256': '0' * 64, 'bytes': True},
+                         {'sha256': 'not a hash', 'bytes': 0},
+                         {'sha256': '0' * 64, 'bytes': -1},
+                         {'sha256': '0' * 64, 'bytes': guard.MAX_FILE + 1}):
+            with self.subTest(metadata=metadata):
+                self.manifest['files']['README.md'] = metadata
+                self.save_manifest()
+                self.assertTrue(guard.verify_tree(self.root))
+
+    def test_extra_changed_and_missing_files_are_rejected(self):
+        (self.root / 'unreviewed.txt').write_text('outside manifest')
+        self.assertTrue(guard.verify_tree(self.root))
+        (self.root / 'unreviewed.txt').unlink()
+        (self.root / 'README.md').write_text('modified')
+        self.assertTrue(guard.verify_tree(self.root))
+        (self.root / 'README.md').unlink()
+        self.assertTrue(guard.verify_tree(self.root))
+
+    def test_manifest_cannot_hash_itself(self):
+        self.manifest['files'][guard.MANIFEST] = dict(sha256='0' * 64, bytes=0)
+        self.save_manifest()
+        self.assertTrue(guard.verify_tree(self.root))
+
+    def test_policy_must_itself_be_manifested(self):
+        del self.manifest['files'][guard.POLICY]
+        self.save_manifest()
+        self.assertTrue(guard.verify_tree(self.root))
+
+    def test_unsafe_paths_are_rejected_without_outside_reads(self):
+        names = ('../outside', '/absolute', 'a\\b', 'a//b', 'a/./b', 'a/../b',
+                 '.git/config', 'game_files/note.txt', 'Monado_Linux/build/note.txt',
+                 'ROMFS/note.txt', 'source/save_1/note.txt', 'sdk/include/a.h',
+                 'a:drive', 'a/CON', 'a/foo.', 'trailing ', 'a\x01b')
+        for name in names:
+            with self.subTest(name=name):
+                self.manifest['files'][name] = dict(sha256='0' * 64, bytes=0)
+                self.save_manifest()
+                with mock.patch.object(guard, 'read_regular', wraps=guard.read_regular) as reader:
+                    self.assertTrue(guard.verify_tree(self.root))
+                self.assertTrue(all(Path(call.args[0]).is_relative_to(self.root) for call in reader.call_args_list))
+                del self.manifest['files'][name]
+
+    def test_case_colliding_paths_are_rejected(self):
+        self.manifest['files']['readme.MD'] = self.manifest['files']['README.md']
+        self.save_manifest()
+        self.assertTrue(guard.verify_tree(self.root))
+
+    def test_forbidden_empty_directory_is_rejected(self):
+        (self.root / 'game_files').mkdir()
+        self.assertTrue(guard.verify_tree(self.root))
+
+    def test_legacy_distribution_script_and_images_are_rejected(self):
+        for name in ('Monado_Linux/scripts/make_dist.sh', 'artwork.png', 'artwork.svg', 'icon.ico'):
+            with self.subTest(name=name):
+                self.assertIsNotNone(guard.path_problem(name))
+
+    def test_program_container_and_shader_magic_are_rejected_when_renamed(self):
+        examples = (b'NSO' + b'0 AUTHORED MAGIC FIXTURE', b'\x7fELF' + b'fixture',
+                    b'M' + b'Z fixture', b'XC' + b'VC fixture', bytes((3, 2, 35, 7)) + b'fixture')
+        for data in examples:
+            with self.subTest(data=data[:4]):
+                self.assertIsNotNone(guard.content_problem('ordinary.txt', data))
+
+    def test_unknown_binary_non_utf8_and_control_bytes_are_rejected(self):
+        for data in (b'fixture\xff\xfe', b'fixture\x00tail', b'fixture\x01tail', b'fixture\x7ftail'):
+            with self.subTest(data=data):
+                self.assertIsNotNone(guard.content_problem('ordinary.txt', data))
+        self.assertIsNone(guard.content_problem('ordinary.txt', 'UTF-8 text: café\tline\r\n'.encode()))
+
+    def test_key_and_credential_signatures_are_rejected(self):
+        examples = (b'master_' + b'key_00 = ' + b'0' * 32,
+                    b'gh' + b'p_' + b'a' * 36,
+                    b'github_' + b'pat_' + b'a' * 60,
+                    b'-----BE' + b'GIN PRIVATE KEY-----',
+                    b'AK' + b'IA' + b'A' * 16,
+                    b'sk-' + b'proj-' + b'a' * 40)
+        for data in examples:
+            with self.subTest(prefix=data[:8]):
+                self.assertIsNotNone(guard.content_problem('ordinary.txt', data))
+
+    def test_generated_function_signature_is_rejected(self):
+        data = b'void ' + b'f_' + b'7000123456' + b'(Cpu *c) { }\n'
+        self.assertIsNotNone(guard.content_problem('ordinary.c', data))
+
+    def test_authored_extern_and_prototype_declarations_are_allowed(self):
+        signature = b'void ' + b'f_' + b'7000123456' + b'(Cpu *c)'
+        self.assertIsNone(guard.content_problem('patches.py', b'extern ' + signature + b';\n'))
+        self.assertIsNone(guard.content_problem('ordinary.txt', signature + b';\n'))
+        self.assertIsNotNone(guard.content_problem('renamed.txt', signature + b'\n{\n}\n'))
+
+    def test_excluded_font_decoder_constant_is_rejected(self):
+        data = b'const int ' + b'KEY' + b' = 0x' + b'12345678;\n'
+        self.assertIsNotNone(guard.content_problem('Monado_Linux/runtime/hle/pl.c', data))
+
+    def test_personal_home_paths_including_escaped_windows_are_rejected(self):
+        examples = (b'/ho' + b'me/' + b'fixture-owner/.config/private',
+                    b'/Us' + b'ers/' + b'fixture-owner/file',
+                    b'C:' + b'\\Users\\' + b'fixture-owner\\private',
+                    b'C:' + b'\\\\Users\\\\' + b'fixture-owner\\\\private')
+        for data in examples:
+            with self.subTest(data=data[:4]):
+                self.assertIsNotNone(guard.content_problem('ordinary.txt', data))
+
+    def test_manifest_metadata_is_scanned_for_personal_data(self):
+        self.manifest['unreviewed_note'] = ('/ho' + 'me/' + 'fixture-owner/private')
+        self.save_manifest()
+        self.assertTrue(guard.verify_tree(self.root))
+
+    def test_licensed_font_requires_exact_policy_identity(self):
+        name = 'Monado_Linux/fonts/reviewed.ttf'
+        data = bytes((0, 1, 0, 0)) + b'AUTHORED HEADER FIXTURE, NO REAL FONT DATA'
+        self.files[name] = data
+        self.policy['licensed_media'][name] = hashlib.sha256(data).hexdigest()
+        self.refresh()
+        self.assertEqual(guard.verify_tree(self.root), [])
+        self.policy['licensed_media'][name] = '0' * 64
+        self.refresh()
+        self.assertTrue(guard.verify_tree(self.root))
+
+    def test_licensed_font_policy_cannot_allow_other_media_or_bad_hashes(self):
+        for name, identity in (('font.ttf', None), ('font.ttf', 'not a hash'),
+                               ('art.png', '0' * 64), ('../font.ttf', '0' * 64)):
+            with self.subTest(name=name, identity=identity):
+                self.policy['licensed_media'] = {name: identity}
+                self.refresh()
+                self.assertTrue(guard.verify_tree(self.root))
+
+    def test_policy_schema_bool_is_rejected(self):
+        self.policy['schema'] = True
+        self.refresh()
+        self.assertTrue(guard.verify_tree(self.root))
+
+    def test_symlink_files_and_directories_are_rejected_without_following(self):
+        external = self.base / 'external'
+        external.mkdir()
+        (external / 'private').write_text('authored outside fixture')
+        try:
+            (self.root / 'linked-dir').symlink_to(external, target_is_directory=True)
+            (self.root / 'linked-file').symlink_to(external / 'private')
+        except OSError:
+            self.skipTest('host cannot create symlinks')
+        with mock.patch.object(guard, 'read_regular', wraps=guard.read_regular) as reader:
+            self.assertTrue(guard.verify_tree(self.root))
+        self.assertTrue(all(Path(call.args[0]).is_relative_to(self.root) for call in reader.call_args_list))
+
+    def test_root_git_symlink_is_rejected_without_reading_its_target(self):
+        external = self.base / 'external'
+        external.mkdir()
+        try:
+            (self.root / '.git').symlink_to(external, target_is_directory=True)
+        except OSError:
+            self.skipTest('host cannot create symlinks')
+        self.assertTrue(guard.verify_tree(self.root))
+
+    def test_ordinary_git_directory_and_worktree_pointer_are_excluded(self):
+        git = self.root / '.git'
+        git.mkdir()
+        (git / 'metadata').write_bytes(b'authored metadata\xff')
+        self.assertEqual(guard.verify_tree(self.root), [])
+        (git / 'metadata').unlink()
+        git.rmdir()
+        git.write_text('gitdir: authored fixture pointer, never followed')
+        self.assertEqual(guard.verify_tree(self.root), [])
+
+    def test_root_directory_symlink_is_rejected(self):
+        alias = self.base / 'alias'
+        try:
+            alias.symlink_to(self.root, target_is_directory=True)
+        except OSError:
+            self.skipTest('host cannot create symlinks')
+        self.assertTrue(guard.verify_tree(alias))
+
+    def test_walk_errors_fail_closed(self):
+        def inaccessible(*args, **kwargs):
+            kwargs['onerror'](PermissionError('authored failure'))
+            return iter(())
+        with mock.patch.object(guard.os, 'walk', side_effect=inaccessible):
+            result = guard.verify_tree(self.root)
+        self.assertTrue(any('enumerate' in value for value in result))
+
+    def test_regular_reader_rejects_oversize(self):
+        target = self.root / 'README.md'
+        with mock.patch.object(guard, 'MAX_FILE', 4):
+            with self.assertRaises(ValueError):
+                guard.read_regular(target)
+
+    def test_regular_reader_detects_fstat_change(self):
+        target = self.root / 'README.md'
+        actual = target.stat()
+        fields = {name: getattr(actual, name) for name in
+                  ('st_dev', 'st_ino', 'st_mode', 'st_size', 'st_mtime_ns', 'st_ctime_ns')}
+        changed = SimpleNamespace(**{**fields, 'st_mtime_ns': actual.st_mtime_ns + 1})
+        with mock.patch.object(guard.os, 'fstat', side_effect=(actual, changed)):
+            with self.assertRaises(ValueError):
+                guard.read_regular(target)
+
+    def test_regular_reader_detects_path_replacement_after_open(self):
+        target = self.root / 'README.md'
+        original_open = guard.os.open
+
+        def replaced(path, flags):
+            descriptor = original_open(path, flags)
+            target.rename(self.root / 'previous-readme')
+            target.write_text('authored replacement')
+            return descriptor
+
+        with mock.patch.object(guard.os, 'open', side_effect=replaced):
+            with self.assertRaises(ValueError):
+                guard.read_regular(target)
+
+    def test_manifest_change_during_verification_is_rejected(self):
+        original = guard.read_regular
+        count = 0
+
+        def mutate(path):
+            nonlocal count
+            data = original(path)
+            count += 1
+            if count == 3:
+                self.manifest['note'] = 'changed while checking source'
+                self.save_manifest()
+            return data
+
+        with mock.patch.object(guard, 'read_regular', side_effect=mutate):
+            result = guard.verify_tree(self.root)
+        self.assertTrue(any('changed during' in value for value in result))
+
+
+if __name__ == '__main__':
+    unittest.main()

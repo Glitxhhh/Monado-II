@@ -1,0 +1,10 @@
+{
+  "schema": 1,
+  "source_only": true,
+  "licensed_media": {
+    "Monado_Linux/tools/launcher/assets/fonts/DejaVuSans.ttf": "b4c632e3cdf9acc7f28758fb5a323c8524d7fc6660d46904d9b6cbe2809c419c",
+    "Monado_Linux/tools/launcher/assets/fonts/DejaVuSerif-Bold.ttf": "3f704f75238454f68a8202e5098cb0687887480dd63d3dc20b34bdbdfa9d9f3f",
+    "Monado_Linux/tools/launcher/assets/fonts/DejaVuSerif-BoldItalic.ttf": "f2c39b5964cb27d94bd4c02504cc4471f8c80571abb8df7923c51d13afdca989"
+  },
+  "note": "Only exact reviewed DejaVu font identities are binary source assets; complete notices accompany them."
+}

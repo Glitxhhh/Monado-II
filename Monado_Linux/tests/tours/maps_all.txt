@@ -1,0 +1,657 @@
+# ma0101 landmark 1
+warp 1 1 -188 -1 -15 184
+look 240
+# ma0101 landmark 2
+warp 1 1 -655 21 -350 154
+look 240
+# ma0101 landmark 3
+warp 1 1 -333 -1 76 270
+look 240
+# ma0101 landmark 4
+warp 1 1 -235 -1 75 105
+look 240
+# ma0101 landmark 5
+warp 1 1 3 -1 -20 317
+look 240
+# ma0101 landmark 6
+warp 1 1 -13 -1 -120 180
+look 240
+# ma0101 landmark 7
+warp 1 1 -99 -1 197 45
+look 240
+# ma0101 landmark 8
+warp 1 1 -284 57 394 95
+look 240
+# ma0101 landmark 9
+warp 1 1 -830 112 -20 90
+look 240
+# ma0101 landmark 10
+warp 1 1 -827 187 -323 0
+look 240
+# ma0201 landmark 23
+warp 2 1 38 -1 -1 272
+look 240
+# ma0201 landmark 24
+warp 2 1 -157 7 -197 175
+look 240
+# ma0201 landmark 25
+warp 2 1 -12 20 -311 208
+look 240
+# ma0201 landmark 26
+warp 2 1 -242 12 -201 180
+look 240
+# ma0201 landmark 27
+warp 2 1 -384 37 58 304
+look 240
+# ma0201 landmark 28
+warp 2 1 -430 146 -123 276
+look 240
+# ma0201 landmark 29
+warp 2 1 -333 50 -119 180
+look 240
+# ma0201 landmark 30
+warp 2 1 -235 79 -264 335
+look 240
+# ma0301 landmark 46
+warp 3 1 -37 -2 22 135
+look 240
+# ma0301 landmark 47
+warp 3 1 335 44 91 81
+look 240
+# ma0301 landmark 48
+warp 3 1 1066 125 -53 89
+look 240
+# ma0301 landmark 49
+warp 3 1 1135 125 552 12
+look 240
+# ma0301 landmark 50
+warp 3 1 1877 160 430 135
+look 240
+# ma0301 landmark 51
+warp 3 1 2074 160 233 135
+look 240
+# ma0301 landmark 52
+warp 3 1 2801 222 -42 83
+look 240
+# ma0301 landmark 53
+warp 3 1 2466 212 -414 42
+look 240
+# ma0301 landmark 54
+warp 3 1 3103 253 514 216
+look 240
+# ma0301 landmark 55
+warp 3 1 2013 214 -44 345
+look 240
+# ma0301 landmark 56
+warp 3 1 3207 383 -105 298
+look 240
+# ma0401 landmark 72
+warp 4 1 -330 -1 42 274
+look 240
+# ma0401 landmark 73
+warp 4 1 307 -105 -844 345
+look 240
+# ma0401 landmark 74
+warp 4 1 265 -104 -667 283
+look 240
+# ma0401 landmark 75
+warp 4 1 -165 -199 -223 178
+look 240
+# ma0401 landmark 76
+warp 4 1 -31 -90 406 30
+look 240
+# ma0401 landmark 77
+warp 4 1 116 -37 870 195
+look 240
+# ma0401 landmark 78
+warp 4 1 -37 -10 -44 110
+look 240
+# ma0401 landmark 82
+warp 4 1 -185 -97 284 0
+look 240
+# ma0402 landmark 83
+warp 4 2 238 0 -233 0
+look 240
+# ma0402 landmark 84
+warp 4 2 188 10 -165 286
+look 240
+# ma0402 landmark 85
+warp 4 2 40 -6 -29 270
+look 240
+# ma0402 landmark 86
+warp 4 2 75 -38 252 55
+look 240
+# ma0402 landmark 87
+warp 4 2 513 -74 333 180
+look 240
+# ma0402 landmark 88
+warp 4 2 193 -172 402 182
+look 240
+# ma0402 landmark 89
+warp 4 2 524 -333 402 270
+look 240
+# ma0402 landmark 90
+warp 4 2 231 -619 379 132
+look 240
+# ma0402 landmark 91
+warp 4 2 266 1 1074 146
+look 240
+# ma0402 landmark 92
+warp 4 2 161 2 34 17
+look 240
+# ma0501 landmark 104
+warp 5 1 -24 0 -121 0
+look 240
+# ma0501 landmark 105
+warp 5 1 134 43 528 153
+look 240
+# ma0501 landmark 106
+warp 5 1 381 46 961 222
+look 240
+# ma0501 landmark 107
+warp 5 1 852 96 1159 70
+look 240
+# ma0501 landmark 108
+warp 5 1 1227 132 1214 48
+look 240
+# ma0501 landmark 109
+warp 5 1 1468 180 887 200
+look 240
+# ma0501 landmark 110
+warp 5 1 1386 330 662 20
+look 240
+# ma0501 landmark 111
+warp 5 1 699 105 1333 307
+look 240
+# ma0601 landmark 126
+warp 6 1 -805 27 -411 70
+look 240
+# ma0601 landmark 127
+warp 6 1 -562 -55 -143 270
+look 240
+# ma0601 landmark 128
+warp 6 1 -98 -61 -58 99
+look 240
+# ma0601 landmark 129
+warp 6 1 -743 -261 -176 330
+look 240
+# ma0601 landmark 130
+warp 6 1 407 -60 -723 125
+look 240
+# ma0601 landmark 131
+warp 6 1 1110 -69 -676 45
+look 240
+# ma0601 landmark 132
+warp 6 1 1222 -24 -269 147
+look 240
+# ma0601 landmark 133
+warp 6 1 1479 -56 181 60
+look 240
+# ma0601 landmark 134
+warp 6 1 1733 -84 302 90
+look 240
+# ma0601 landmark 135
+warp 6 1 -269 -28 -876 244
+look 240
+# ma0601 landmark 136
+warp 6 1 -541 -9 -1000 65
+look 240
+# ma0601 landmark 137
+warp 6 1 -428 48 424 280
+look 240
+# ma0601 landmark 138
+warp 6 1 497 -259 -1350 137
+look 240
+# ma0601 landmark 139
+warp 6 1 675 -34 -470 287
+look 240
+# ma0601 landmark 140
+warp 6 1 -493 -53 -749 325
+look 240
+# ma0701 landmark 155
+warp 7 1 -1 -14 -130 0
+look 240
+# ma0701 landmark 156
+warp 7 1 2 0 -21 68
+look 240
+# ma0701 landmark 157
+warp 7 1 -1 1 75 359
+look 240
+# ma0701 landmark 158
+warp 7 1 23 74 112 58
+look 240
+# ma0701 landmark 159
+warp 7 1 -29 90 85 270
+look 240
+# ma0701 landmark 160
+warp 7 1 5 137 57 15
+look 240
+# ma0701 landmark 161
+warp 7 1 2 178 92 215
+look 240
+# ma0701 landmark 162
+warp 7 1 26 227 67 306
+look 240
+# ma0901 landmark 177
+warp 9 1 -17 -3 0 90
+look 240
+# ma0901 landmark 178
+warp 9 1 57 -23 0 90
+look 240
+# ma0901 landmark 179
+warp 9 1 600 -60 0 90
+look 240
+# ma0901 landmark 180
+warp 9 1 47 -79 0 90
+look 240
+# ma0901 landmark 181
+warp 9 1 176 -128 0 90
+look 240
+# ma0901 landmark 182
+warp 9 1 416 -128 0 90
+look 240
+# ma1001 landmark 188
+warp 10 1 -14 1 -1585 75
+look 240
+# ma1001 landmark 189
+warp 10 1 1840 57 -13 333
+look 240
+# ma1001 landmark 190
+warp 10 1 2981 36 -2 270
+look 240
+# ma1001 landmark 191
+warp 10 1 525 508 197 54
+look 240
+# ma1001 landmark 192
+warp 10 1 -745 351 40 270
+look 240
+# ma1001 landmark 193
+warp 10 1 -47 511 1007 180
+look 240
+# ma1001 landmark 194
+warp 10 1 38 498 -899 90
+look 240
+# ma1001 landmark 195
+warp 10 1 -1147 540 -798 270
+look 240
+# ma1001 landmark 196
+warp 10 1 -1949 1 1414 94
+look 240
+# ma1101 landmark 215
+warp 11 1 -251 0 0 90
+look 240
+# ma1101 landmark 216
+warp 11 1 128 62 0 90
+look 240
+# ma1101 landmark 217
+warp 11 1 -65 0 262 133
+look 240
+# ma1101 landmark 218
+warp 11 1 -65 0 -262 46
+look 240
+# ma1101 landmark 219
+warp 11 1 465 81 0 90
+look 240
+# ma1101 landmark 220
+warp 11 1 165 152 468 270
+look 240
+# ma1101 landmark 221
+warp 11 1 706 687 -519 198
+look 240
+# ma1201 landmark 227
+warp 12 1 251 -48 -265 335
+look 240
+# ma1201 landmark 228
+warp 12 1 -45 0 0 270
+look 240
+# ma1201 landmark 229
+warp 12 1 -572 1812 -19 90
+look 240
+# ma1202 landmark 232
+warp 12 2 118 -27 0 270
+look 240
+# ma1202 landmark 233
+warp 12 2 -45 0 0 270
+look 240
+# ma1202 landmark 234
+warp 12 2 -302 196 -1 90
+look 240
+# ma1202 landmark 235
+warp 12 2 -343 1172 -28 270
+look 240
+# ma1202 landmark 236
+warp 12 2 -572 1812 -19 90
+look 240
+# ma1301 landmark 251
+warp 13 1 46 2 55 226
+look 240
+# ma1301 landmark 252
+warp 13 1 -619 -463 -83 339
+look 240
+# ma1301 landmark 253
+warp 13 1 -1006 -727 -808 71
+look 240
+# ma1301 landmark 254
+warp 13 1 -996 -995 -883 274
+look 240
+# ma1301 landmark 255
+warp 13 1 -1941 -1233 -853 293
+look 240
+# ma1301 landmark 256
+warp 13 1 -1316 -987 -1323 163
+look 240
+# ma1301 landmark 257
+warp 13 1 -1885 -1384 -37 0
+look 240
+# ma1301 landmark 258
+warp 13 1 -2814 -1750 -347 2
+look 240
+# ma1301 landmark 259
+warp 13 1 -3607 -1858 -458 270
+look 240
+# ma1301 landmark 260
+warp 13 1 -81 127 161 70
+look 240
+# ma1301 landmark 261
+warp 13 1 -1117 -238 -1202 242
+look 240
+# ma1401 landmark 277
+warp 14 1 2301 240 -954 318
+look 240
+# ma1401 landmark 278
+warp 14 1 1995 19 -534 64
+look 240
+# ma1401 landmark 279
+warp 14 1 1484 16 -372 45
+look 240
+# ma1401 landmark 280
+warp 14 1 805 37 -11 90
+look 240
+# ma1401 landmark 281
+warp 14 1 445 -13 170 333
+look 240
+# ma1401 landmark 282
+warp 14 1 -217 -17 556 253
+look 240
+# ma1401 landmark 283
+warp 14 1 -444 -31 759 45
+look 240
+# ma1401 landmark 284
+warp 14 1 -832 -31 925 0
+look 240
+# ma1401 landmark 285
+warp 14 1 -438 -85 309 90
+look 240
+# ma1401 landmark 286
+warp 14 1 -185 0 0 270
+look 240
+# ma1501 landmark 294
+warp 15 1 159 5 17 270
+look 240
+# ma1501 landmark 295
+warp 15 1 -80 -47 0 270
+look 240
+# ma1501 landmark 296
+warp 15 1 -113 -82 0 270
+look 240
+# ma1501 landmark 297
+warp 15 1 -233 -81 0 270
+look 240
+# ma1501 landmark 298
+warp 15 1 -312 -317 39 216
+look 240
+# ma1601 landmark 309
+warp 16 1 -112 -2 -41 327
+look 240
+# ma1601 landmark 310
+warp 16 1 -86 35 218 270
+look 240
+# ma1601 landmark 311
+warp 16 1 -363 72 352 270
+look 240
+# ma1601 landmark 312
+warp 16 1 -428 -5 229 230
+look 240
+# ma1601 landmark 313
+warp 16 1 -694 0 298 119
+look 240
+# ma1601 landmark 314
+warp 16 1 -575 42 475 340
+look 240
+# ma1601 landmark 315
+warp 16 1 -784 2 49 280
+look 240
+# ma1601 landmark 316
+warp 16 1 -850 6 135 330
+look 240
+# ma1601 landmark 317
+warp 16 1 -1060 40 460 274
+look 240
+# ma1601 landmark 318
+warp 16 1 -1470 174 616 270
+look 240
+# ma1601 landmark 319
+warp 16 1 -1046 505 486 135
+look 240
+# ma1701 landmark 337
+warp 17 1 293 -4 -512 272
+look 240
+# ma1701 landmark 338
+warp 17 1 -124 16 -114 28
+look 240
+# ma1701 landmark 339
+warp 17 1 -188 244 74 335
+look 240
+# ma1701 landmark 340
+warp 17 1 -159 570 0 270
+look 240
+# ma1701 landmark 341
+warp 17 1 12 570 0 90
+look 240
+# ma1701 landmark 342
+warp 17 1 353 977 0 270
+look 240
+# ma1701 landmark 343
+warp 17 1 -41 856 -1 270
+look 240
+# ma1701 landmark 344
+warp 17 1 -322 2139 260 0
+look 240
+# ma1701 landmark 345
+warp 17 1 -322 2139 1308 0
+look 240
+# ma1701 landmark 346
+warp 17 1 398 775 -215 233
+look 240
+# ma1701 landmark 347
+warp 17 1 263 869 -398 315
+look 240
+# ma1901 landmark 363
+warp 19 1 -146 0 175 225
+look 240
+# ma1901 landmark 364
+warp 19 1 -59 0 0 90
+look 240
+# ma1901 landmark 365
+warp 19 1 -190 26 -190 313
+look 240
+# ma1901 landmark 366
+warp 19 1 -325 36 -135 338
+look 240
+# ma1901 landmark 367
+warp 19 1 -325 36 135 202
+look 240
+# ma1901 landmark 368
+warp 19 1 -190 26 190 227
+look 240
+# ma1901 landmark 369
+warp 19 1 -275 15 0 90
+look 240
+# ma1901 landmark 370
+warp 19 1 -429 64 0 270
+look 240
+# ma1901 landmark 371
+warp 19 1 -1431 194 0 270
+look 240
+# ma1901 landmark 372
+warp 19 1 -70 117 0 270
+look 240
+# ma2001 landmark 386
+warp 20 1 214 -53 0 270
+look 240
+# ma2001 landmark 387
+warp 20 1 -291 -134 242 300
+look 240
+# ma2001 landmark 388
+warp 20 1 -296 42 112 70
+look 240
+# ma2001 landmark 389
+warp 20 1 -519 38 254 312
+look 240
+# ma2001 landmark 390
+warp 20 1 -473 108 0 270
+look 240
+# ma2001 landmark 391
+warp 20 1 -555 205 0 270
+look 240
+# ma2001 landmark 392
+warp 20 1 -530 160 -210 210
+look 240
+# ma2001 landmark 393
+warp 20 1 -291 800 607 169
+look 240
+# ma2001 landmark 394
+warp 20 1 -311 673 0 90
+look 240
+# ma2101 landmark 410
+warp 21 1 -43 -11 194 160
+look 240
+# ma2101 landmark 411
+warp 21 1 465 542 -7 290
+look 240
+# ma2101 landmark 412
+warp 21 1 -356 -127 -930 46
+look 240
+# ma2101 landmark 413
+warp 21 1 -150 -80 -532 85
+look 240
+# ma2101 landmark 414
+warp 21 1 298 -22 -732 44
+look 240
+# ma2101 landmark 415
+warp 21 1 221 59 -276 -103
+look 240
+# ma2101 landmark 416
+warp 21 1 130 148 -583 45
+look 240
+# ma2201 landmark 425
+warp 22 1 -98 0 317 266
+look 240
+# ma2201 landmark 426
+warp 22 1 -185 -12 108 208
+look 240
+# ma2201 landmark 427
+warp 22 1 153 -20 333 100
+look 240
+# ma2201 landmark 428
+warp 22 1 -213 -13 -286 200
+look 240
+# ma2201 landmark 429
+warp 22 1 0 0 16 180
+look 240
+# ma2401 landmark 431
+warp 24 1 0 0 -12 180
+look 240
+# ma2501 landmark 432
+warp 25 1 -860 9 -138 31
+look 240
+# ma2501 landmark 433
+warp 25 1 -921 19 106 288
+look 240
+# ma2501 landmark 434
+warp 25 1 -993 32 600 0
+look 240
+# ma2501 landmark 435
+warp 25 1 -1462 139 273 282
+look 240
+# ma2501 landmark 436
+warp 25 1 -213 12 12 11
+look 240
+# ma2501 landmark 437
+warp 25 1 4 2 -93 107
+look 240
+# ma2501 landmark 438
+warp 25 1 150 52 -143 82
+look 240
+# ma2501 landmark 439
+warp 25 1 527 62 -529 138
+look 240
+# ma2501 landmark 440
+warp 25 1 355 -13 37 51
+look 240
+# ma2501 landmark 441
+warp 25 1 -599 38 -513 268
+look 240
+# ma2501 landmark 442
+warp 25 1 -829 57 -521 181
+look 240
+# ma2501 landmark 443
+warp 25 1 -622 77 -277 79
+look 240
+# ma2501 landmark 444
+warp 25 1 540 -57 -99 270
+look 240
+# ma2501 landmark 445
+warp 25 1 707 -68 174 73
+look 240
+# ma2501 landmark 446
+warp 25 1 1062 -95 221 131
+look 240
+# ma2501 landmark 447
+warp 25 1 994 -95 592 74
+look 240
+# ma2501 landmark 448
+warp 25 1 1109 -91 637 73
+look 240
+# ma2501 landmark 449
+warp 25 1 1229 -102 1010 25
+look 240
+# ma2501 landmark 450
+warp 25 1 -139 -43 -443 252
+look 240
+# ma2501 landmark 451
+warp 25 1 -523 -49 -757 277
+look 240
+# ma2501 landmark 452
+warp 25 1 -1194 -41 -642 -90
+look 240
+# ma2501 landmark 453
+warp 25 1 -1521 -54 -602 -90
+look 240
+# ma2501 landmark 454
+warp 25 1 1203 74 685 0
+look 240
+# ma2501 landmark 455
+warp 25 1 -562 61 142 352
+look 240
+# ma2601 landmark 477
+warp 26 1 0 0 247 180
+look 240
+# ma2601 landmark 478
+warp 26 1 0 62 -141 180
+look 240
+# ma2601 landmark 479
+warp 26 1 -255 0 59 130
+look 240
+# ma2601 landmark 480
+warp 26 1 255 0 59 210
+look 240
+# ma2601 landmark 481
+warp 26 1 0 67 -350 180
+look 240
+# ma0801 landmark 486
+warp 8 1 0 0 247 180
+look 240
+# ma2701 landmark 487
+warp 27 1 0 0 247 180
+look 240

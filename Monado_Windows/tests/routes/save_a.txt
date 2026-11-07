@@ -1,0 +1,22 @@
+# xcde input v1
+# load the save (as load_a), then save it again from the field: Plus at 2600 (System menu, Save selected),
+# A at 2700 (slot list), A at 2850 (slot), A at 2950 / 3050 (confirm dialogs). Captures 2800 (slots), 3200
+1 0 0 0 0 0
+600 1 0 0 0 0
+606 0 0 0 0 0
+1000 1 0 0 0 0
+1006 0 0 0 0 0
+1400 1 0 0 0 0
+1406 0 0 0 0 0
+1800 1 0 0 0 0
+1806 0 0 0 0 0
+2600 400 0 0 0 0
+2606 0 0 0 0 0
+2700 1 0 0 0 0
+2706 0 0 0 0 0
+2850 1 0 0 0 0
+2856 0 0 0 0 0
+2950 1 0 0 0 0
+2956 0 0 0 0 0
+3050 1 0 0 0 0
+3056 0 0 0 0 0

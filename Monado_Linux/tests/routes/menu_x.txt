@@ -1,0 +1,12 @@
+# xcde input v1
+# load the save (as load_a), then probe the field menu: X at 2600 (main menu with the party portraits) (captures between)
+1 0 0 0 0 0
+600 1 0 0 0 0
+606 0 0 0 0 0
+1000 1 0 0 0 0
+1006 0 0 0 0 0
+1400 1 0 0 0 0
+1406 0 0 0 0 0
+1800 1 0 0 0 0
+1806 0 0 0 0 0
+2600 4 0 0 0 0

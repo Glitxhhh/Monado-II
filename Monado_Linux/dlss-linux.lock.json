@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "task": "LINUX-017",
+  "source": {
+    "repository": "https://github.com/NVIDIA/DLSS",
+    "tag": "v310.9.1",
+    "commit": "374959484e79a640feaba44c93ac8cfb0a03f5b5",
+    "release_date": "2026-09-08"
+  },
+  "license": {
+    "identifier": "LicenseRef-NvidiaProprietary",
+    "path": "LICENSE.txt",
+    "url": "https://github.com/NVIDIA/DLSS/blob/374959484e79a640feaba44c93ac8cfb0a03f5b5/LICENSE.txt",
+    "scope": "Project-local development dependency. NVIDIA terms remain separate from authored MIT source; distribution is not approved by this setup."
+  },
+  "runtime_policy": {
+    "features": [
+      "SuperSampling (SR/DLAA)"
+    ],
+    "excluded": [
+      "RayReconstruction",
+      "FrameGeneration",
+      "DLSS5 neural rendering"
+    ],
+    "ota": "Do not call NVSDK_NGX_UpdateFeature. No public direct-NGX opt-out flag established. Enforce process network denial before vendor loading; absence of this API alone does not prove no network.",
+    "state": "Pass only the private Linux state directory to NGX; never shared game_files or human state.",
+    "vendor_execution": "Setup verifies/copies bytes only. It does not load, execute, compile or initialize vendor code."
+  },
+  "files": [
+    {
+      "path": "LICENSE.txt",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/374959484e79a640feaba44c93ac8cfb0a03f5b5/LICENSE.txt",
+      "size": 26620,
+      "sha256": "d4216e39ebef5f9b50a6712ebb37beeb5379862a67733a9999c651f21592aaf0"
+    },
+    {
+      "path": "include/nvsdk_ngx.h",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/374959484e79a640feaba44c93ac8cfb0a03f5b5/include/nvsdk_ngx.h",
+      "size": 40289,
+      "sha256": "dc38e7467cf415379c9d12ae1b6e4a494c453ed92720fb53e92aecb523e7b848"
+    },
+    {
+      "path": "include/nvsdk_ngx_defs.h",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/374959484e79a640feaba44c93ac8cfb0a03f5b5/include/nvsdk_ngx_defs.h",
+      "size": 44313,
+      "sha256": "ea23f33497cd274860d1c25a97644fce807dcb0037c594547203343103fad03e"
+    },
+    {
+      "path": "include/nvsdk_ngx_defs_vk.h",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/374959484e79a640feaba44c93ac8cfb0a03f5b5/include/nvsdk_ngx_defs_vk.h",
+      "size": 3196,
+      "sha256": "0a24d0861ace7d6b9362a67b7f08bea1b33ea123c5ce730b19133de8a891d031"
+    },
+    {
+      "path": "include/nvsdk_ngx_params.h",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/374959484e79a640feaba44c93ac8cfb0a03f5b5/include/nvsdk_ngx_params.h",
+      "size": 7744,
+      "sha256": "943bc8cc5cdae03b6303016fbad3183636f2335ae27a2d18776798c3b4efabbc"
+    },
+    {
+      "path": "include/nvsdk_ngx_helpers.h",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/374959484e79a640feaba44c93ac8cfb0a03f5b5/include/nvsdk_ngx_helpers.h",
+      "size": 5317,
+      "sha256": "5bcbadfe7478b802cf6d3aca4dc5ddd7d0889b99726e69c63f9e9bd555f44471"
+    },
+    {
+      "path": "include/nvsdk_ngx_helpers_vk.h",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/374959484e79a640feaba44c93ac8cfb0a03f5b5/include/nvsdk_ngx_helpers_vk.h",
+      "size": 19720,
+      "sha256": "c192bff72138f12f770db48e12c1d8f712dfc81ea0e8e055ebb27d8dd1b31623"
+    },
+    {
+      "path": "include/nvsdk_ngx_vk.h",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/374959484e79a640feaba44c93ac8cfb0a03f5b5/include/nvsdk_ngx_vk.h",
+      "size": 38382,
+      "sha256": "2d364ce7132881eb669e9498fd570d74cba563b1fbebc82c235f8e1ad2dd8b6d"
+    },
+    {
+      "path": "lib/Linux_x86_64/libnvsdk_ngx.a",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/374959484e79a640feaba44c93ac8cfb0a03f5b5/lib/Linux_x86_64/libnvsdk_ngx.a",
+      "size": 89002,
+      "sha256": "3321c4ca9adf71f345550d10bf2148ed38003151b03ec5f81c99d00949ab8202"
+    },
+    {
+      "path": "lib/Linux_x86_64/rel/libnvidia-ngx-dlss.so.310.9.1",
+      "url": "https://raw.githubusercontent.com/NVIDIA/DLSS/374959484e79a640feaba44c93ac8cfb0a03f5b5/lib/Linux_x86_64/rel/libnvidia-ngx-dlss.so.310.9.1",
+      "size": 59481944,
+      "sha256": "7561f16cab74e2b7ccf791bf44bb9cc43abb44bcf78f33c5663520ad4e857e02"
+    }
+  ]
+}
