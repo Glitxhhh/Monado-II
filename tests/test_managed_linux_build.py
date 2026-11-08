@@ -93,7 +93,7 @@ class ManagedBuild(unittest.TestCase):
     def runner(self, command, cwd, log):
         self.commands.append(command)
         log.write_text('authored command fixture; never executed')
-        if any(str(value).endswith('/tools/build_launcher_appimage.py') for value in command):
+        if any(Path(str(value)).name == 'build_launcher_appimage.py' for value in command):
             target = Path(command[command.index('--output') + 1])
             target.parent.mkdir(parents=True)
             data = bytearray(64)
@@ -214,7 +214,7 @@ class ManagedBuild(unittest.TestCase):
         original = self.runner
         def mutate(command, cwd, log):
             result = original(command, cwd, log)
-            if any(str(value).endswith('/tools/build_launcher_appimage.py') for value in command):
+            if any(Path(str(value)).name == 'build_launcher_appimage.py' for value in command):
                 self.receipt['finished_utc'] = 'changed receipt fixture'
                 self.save_receipt()
             return result
