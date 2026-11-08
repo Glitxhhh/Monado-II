@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import platform
 import resource
+import signal
 import subprocess
 import time
 
@@ -14,7 +15,60 @@ ROOT = Path(__file__).resolve().parents[1]
 SOURCES = ('scripts/framegen_presentation_tests_linux.py', 'tests/native/test_framegen_pacing_linux.c',
            'runtime/nvn/vulkan/framegen_pacing_linux.h', 'runtime/nvn/vulkan/device.c',
            'tests/native/test_temporal_framegen_linux.c', 'runtime/nvn/vulkan/temporal_fg_linux.inc',
-           'runtime/nvn/vulkan/framegen_linux.h', 'runtime/settings.h', 'runtime/paths.h')
+           'runtime/nvn/vulkan/framegen_linux.h', 'runtime/settings.h', 'runtime/paths.h',
+           'runtime/nvn/vulkan/exec.c')
+
+IDLE_HEURISTIC_HARNESS = r'''
+#include <assert.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+static struct {int fps;} g_settings={30};
+static __thread uint64_t g_blocked_ns;
+static bool pace_slow,deterministic;
+static uint64_t stat_pace_over,virtual_now=1000000000ull;
+static unsigned clock_reads,environment_reads;
+static bool diag_deterministic(void){return deterministic;}
+static uint64_t plat_now_ns(void){clock_reads++;return virtual_now;}
+static char *fixture_getenv(const char *name){
+ assert(!strcmp(name,"LARECOMP_PACE")||!strcmp(name,"XCDE_FPS_INTERVAL")||!strcmp(name,"LARECOMP_LOG_PACE"));
+ environment_reads++;return NULL;
+}
+#define getenv fixture_getenv
+#define LOG(...) do{}while(0)
+#include "PACE_FRAME_SOURCE"
+#undef getenv
+int main(int argc,char **argv){
+ assert(argc==2);
+ bool accounted=!strcmp(argv[1],"accounted-idle")||!strcmp(argv[1],"real-busy");
+ bool real_busy=!strcmp(argv[1],"real-busy");
+ deterministic=!strcmp(argv[1],"deterministic");
+ assert(accounted||deterministic||!strcmp(argv[1],"unaccounted-idle"));
+ uint64_t busy=real_busy?18000000ull:12000000ull,idle=10000000ull;
+ if(deterministic){pace_slow=true;stat_pace_over=7;}
+ vk_pace_frame(); // Establish the actual function's initial timestamp.
+ for(unsigned frame=1;frame<=60;frame++){
+  virtual_now+=busy+idle;
+  if(accounted)g_blocked_ns+=idle;
+  vk_pace_frame();
+  if(!deterministic){
+   bool expected_slow=(!accounted||real_busy)&&frame>=12;
+   assert(pace_slow==expected_slow);
+  }
+ }
+ if(deterministic)assert(pace_slow&&stat_pace_over==7&&!clock_reads&&!environment_reads);
+ else{
+  assert(clock_reads==61&&environment_reads>0);
+  assert(stat_pace_over==((!accounted||real_busy)?60ull:0ull));
+  assert(g_blocked_ns==(accounted?600000000ull:0ull));
+ }
+ printf("actual vk_pace_frame %s: real_work_ns=%llu idle_ns=%llu accounted=%d slow=%d over=%llu clocks=%u\n",argv[1],
+  (unsigned long long)busy,(unsigned long long)idle,accounted,pace_slow,(unsigned long long)stat_pace_over,clock_reads);
+ return 0;
+}
+'''
 
 HARNESS = r'''
 #define _POSIX_C_SOURCE 200809L
@@ -32,13 +86,24 @@ static VkSemaphore done_sem[8];
 static bool fg_present_second,rendering,hash_flag,flicker_flag,make_pair;
 static unsigned scenario,presents,submits,copies,blits,redraws,acquires,records,waits,resumes,shots,hashes,recreates,pace_waits,invalidations;
 static uint64_t fg_submitted_generated,fg_submitted_real;
+static uint64_t fg_second_deadline;
+static __thread uint64_t g_blocked_ns;
 static unsigned colors[8],present_colors[8];
 static uint64_t sequence=1;
+static uint64_t virtual_ns,acquire_ns,copy_ns,gpu_wait_ns,oversleep_ns,slept_ns,present_ns[8];
+static uint64_t expected_half_ns;
+static float measured_frame_ms;
+static int target_fps;
+int xcde_present_fps(void){return target_fps;}
 static char events[256];static unsigned n_events;
 static void event(char c){assert(n_events+1<sizeof events);events[n_events++]=c;events[n_events]=0;}
-static int mock_clock(clockid_t c,struct timespec *t){assert(c==CLOCK_MONOTONIC);*t=(struct timespec){4,0};event('T');return 0;}
+static int mock_clock(clockid_t c,struct timespec *t){assert(c==CLOCK_MONOTONIC);*t=(struct timespec){(time_t)(virtual_ns/1000000000ull),(long)(virtual_ns%1000000000ull)};event('T');return 0;}
 static int mock_sleep(clockid_t c,int flags,const struct timespec *t,struct timespec *remain){
- assert(c==CLOCK_MONOTONIC&&flags==TIMER_ABSTIME&&!remain);assert(t->tv_sec==4&&t->tv_nsec==8000000);pace_waits++;event('D');return 0;}
+ assert(c==CLOCK_MONOTONIC&&flags==TIMER_ABSTIME&&!remain);
+ uint64_t deadline=(uint64_t)t->tv_sec*1000000000ull+(uint64_t)t->tv_nsec;
+ assert(presents==1&&deadline==present_ns[0]+expected_half_ns);
+ uint64_t before=virtual_ns;if(virtual_ns<deadline)virtual_ns=deadline;virtual_ns+=oversleep_ns;slept_ns+=virtual_ns-before;
+ pace_waits++;event('D');return 0;}
 #define clock_gettime mock_clock
 #define clock_nanosleep mock_sleep
 #include "PACING_HEADER"
@@ -49,7 +114,7 @@ static const char *volatile g_rq_where="caller";
 static void vk_rq_at(const char *where){g_rq_where=where;}
 static VkCommandBuffer vk_cmd(void){return (VkCommandBuffer)(uintptr_t)0x10;}
 static uint64_t vk_pending_seq(void){return sequence;}
-static void vk_wait_seq(uint64_t seq){assert(seq>0&&seq<sequence);waits++;event('W');}
+static void vk_wait_seq(uint64_t seq){assert(seq>0&&seq<sequence);waits++;virtual_ns+=gpu_wait_ns;event('W');}
 static void vk_full_barrier(VkCommandBuffer cb){assert(cb==vk_cmd()&&!rendering);}
 static unsigned image_index(VkImage image){for(unsigned i=0;i<8;i++)if(g_vk.sc_images[i]==image)return i;assert(!"unknown image");return 0;}
 static void image_barrier(VkCommandBuffer cb,VkImage im,VkImageLayout from,VkImageLayout to){(void)from;(void)to;assert(cb==vk_cmd()&&!rendering);image_index(im);}
@@ -66,7 +131,7 @@ VKAPI_ATTR void VKAPI_CALL vkCmdEndRendering(VkCommandBuffer cb){assert(cb==vk_c
 VKAPI_ATTR void VKAPI_CALL vkCmdCopyImage(VkCommandBuffer cb,VkImage src,VkImageLayout sl,VkImage dst,VkImageLayout dl,uint32_t count,const VkImageCopy *copy){
  assert(cb==vk_cmd()&&!rendering&&src==(VkImage)(uintptr_t)0x200&&sl==VK_IMAGE_LAYOUT_GENERAL&&dl==VK_IMAGE_LAYOUT_GENERAL&&count==1);
  assert(copy->extent.width<=g_vk.sc_extent.width&&copy->extent.height<=g_vk.sc_extent.height);
- colors[image_index(dst)]=2;copies++;event('C');}
+ colors[image_index(dst)]=2;copies++;virtual_ns+=copy_ns;event('C');}
 static void vk_frame_resume(void){assert(!rendering);rendering=true;resumes++;event('R');}
 void tmp_fg_invalidate(void){invalidations++;}
 void vk_present_redraw(VkCommandBuffer cb){assert(cb==vk_cmd()&&rendering);colors[cur_frame.image]=2;redraws++;event('B');}
@@ -80,13 +145,13 @@ VKAPI_ATTR void VKAPI_CALL vkCmdBlitImage(VkCommandBuffer cb,VkImage src,VkImage
  colors[image_index(dst)]=2;blits++;event('L');}
 bool tmp_fg_record_present(VkCommandBuffer cb,VkImage scene,VkImage *base,float *ms){
  assert(cb==vk_cmd()&&!rendering);records++;event('F');if(!make_pair)return false;
- colors[image_index(scene)]=1;*base=(VkImage)(uintptr_t)0x200;*ms=16.f;return true;}
+ colors[image_index(scene)]=1;*base=(VkImage)(uintptr_t)0x200;*ms=measured_frame_ms;return true;}
 static void vk_submit_extra(VkSemaphore wait,VkSemaphore signal,VkCommandBuffer extra){
  assert(!rendering&&wait==cur_frame.acquired&&signal==done_sem[cur_frame.image]&&!extra);submits++;sequence++;event('S');}
 static VkResult present_mock(VkQueue queue,const VkPresentInfoKHR *p){
  assert(queue==g_vk.queue&&p->waitSemaphoreCount==1&&p->swapchainCount==1&&*p->pSwapchains==g_vk.swapchain);
  assert(*p->pWaitSemaphores==done_sem[*p->pImageIndices]);assert(submits==presents+1);
- present_colors[presents]=colors[*p->pImageIndices];presents++;event('P');
+ present_colors[presents]=colors[*p->pImageIndices];present_ns[presents]=virtual_ns;presents++;event('P');
  if(presents==1&&scenario==2)return VK_ERROR_OUT_OF_DATE_KHR;
  if(presents==1&&scenario==8)return VK_SUBOPTIMAL_KHR;
  return VK_SUCCESS;}
@@ -94,6 +159,7 @@ static PFN_vkQueuePresentKHR sc_present=present_mock;
 static void recreate_swapchain(void){recreates++;g_vk.swapchain=(VkSwapchainKHR)(uintptr_t)0x35;}
 static bool vk_frame_begin(const float clear[4]){
  assert(clear[0]==0&&clear[1]==0&&clear[2]==0&&!cur_frame.ok&&!rendering);acquires++;event('A');
+ virtual_ns+=acquire_ns;
  if(scenario==3)return false;
  cur_frame.image=scenario==9?0:1;cur_frame.acquired=(VkSemaphore)(uintptr_t)(0x71+acquires);cur_frame.ok=true;rendering=true;colors[cur_frame.image]=0;
  if(scenario==4){g_vk.sc_extent=(VkExtent2D){6,6};g_vk.swapchain=(VkSwapchainKHR)(uintptr_t)0x36;}
@@ -106,26 +172,56 @@ static void reset(unsigned mode){
  for(unsigned i=0;i<8;i++)g_vk.sc_images[i]=(VkImage)(uintptr_t)(0x100+i);
  cur_frame.image=0;cur_frame.acquired=(VkSemaphore)(uintptr_t)0x70;cur_frame.ok=true;rendering=true;colors[0]=2;
  scenario=mode;fg_present_second=false;hash_flag=false;flicker_flag=false;make_pair=true;sequence=1;
+ fg_second_deadline=g_blocked_ns=0;virtual_ns=4000000000ull;acquire_ns=copy_ns=gpu_wait_ns=oversleep_ns=slept_ns=0;
+ measured_frame_ms=16.f;target_fps=60;expected_half_ns=8000000ull;
+ memset(present_ns,0,sizeof present_ns);
+ if(mode==3)acquire_ns=6000000ull;
+ if(mode==11||mode==13||mode==14){acquire_ns=4000000ull;copy_ns=2000000ull;}
+ if(mode==12){acquire_ns=10000000ull;copy_ns=2000000ull;}
+ if(mode==13)gpu_wait_ns=5000000ull;
+ if(mode==14)oversleep_ns=3000000ull;
+ if(mode>=15){measured_frame_ms=40.f;target_fps=60;expected_half_ns=8333333ull;}
+ if(mode==16){target_fps=30;expected_half_ns=16666666ull;}
+ if(mode==17){target_fps=120;expected_half_ns=4166666ull;}
+ if(mode==18){target_fps=165;expected_half_ns=3030303ull;}
+ if(mode==19){measured_frame_ms=4.f;target_fps=165;expected_half_ns=2000000ull;}
+ if(mode==20||mode==21){target_fps=mode==20?0:-60;expected_half_ns=20000000ull;}
  presents=submits=copies=blits=redraws=acquires=records=waits=resumes=shots=hashes=recreates=pace_waits=invalidations=n_events=0;
  fg_submitted_generated=fg_submitted_real=0;events[0]=0;
 }
 int main(int argc,char **argv){
- assert(argc==2);unsigned mode=(unsigned)strtoul(argv[1],NULL,10);reset(mode);
+ assert(argc==2||argc==3);unsigned mode=(unsigned)strtoul(argv[1],NULL,10);reset(mode);
+ bool baseline=false;
+#ifdef FRAMEGEN_PACING_BASELINE
+ baseline=argc==2;
+#endif
+ if(argc==3)assert(!strcmp(argv[2],"--expect-fixed"));
  if(mode==1)make_pair=false;if(mode==7)hash_flag=true;
  vk_frame_end(mode==6?"authored.png":NULL);
- assert(!cur_frame.ok&&!rendering&&!fg_present_second);
- if(mode==0||mode==9){assert(presents==2&&submits==2&&records==1&&copies==1&&acquires==1&&pace_waits==1&&waits==1);
-   assert(present_colors[0]==1&&present_colors[1]==2);assert(strchr(events,'W')<strchr(events,'P')&&strchr(events,'D')<strchr(events,'A'));}
+ assert(!cur_frame.ok&&!rendering&&!fg_present_second&&!fg_second_deadline);
+ if(mode==0||mode==9||mode>=11){assert(presents==2&&submits==2&&records==1&&copies==1&&acquires==1&&pace_waits==1&&waits==1);
+   assert(present_colors[0]==1&&present_colors[1]==2);assert(strchr(events,'W')<strchr(events,'P'));}
  else if(mode==1){assert(presents==1&&records==1&&!copies&&!waits&&!pace_waits&&!acquires);assert(present_colors[0]==2);}
  else if(mode==2||mode==8){assert(presents==1&&recreates==1&&!acquires&&!pace_waits);}
- else if(mode==3){assert(presents==1&&acquires==1&&!copies&&pace_waits==1);}
+ else if(mode==3){assert(presents==1&&acquires==1&&!copies&&pace_waits==(baseline?1:0));}
  else if(mode==4||mode==5){assert(presents==2&&blits==1&&!copies&&!redraws&&present_colors[1]==2);}
  else if(mode==10){assert(presents==2&&!blits&&!copies&&redraws==1&&present_colors[1]==2);}
  else if(mode==6){assert(presents==1&&!records&&shots==1&&!copies&&!acquires);}
  else if(mode==7){assert(presents==1&&!records&&hashes==1&&!copies&&!acquires);}
  else assert(!"unknown case");
- if(mode==0||mode==4||mode==5||mode==9||mode==10)assert(fg_submitted_generated==1&&fg_submitted_real==1);
+ if(mode==0||mode==4||mode==5||mode==9||mode==10||mode>=11)assert(fg_submitted_generated==1&&fg_submitted_real==1);
  if(mode==1||mode==6||mode==7)assert(fg_submitted_generated==0&&fg_submitted_real==1);
+ if(presents==2){
+   uint64_t prep=acquire_ns+copy_ns,gap=present_ns[1]-present_ns[0];
+   uint64_t expected_gap=baseline?8000000ull+oversleep_ns+prep:(prep>expected_half_ns?prep:expected_half_ns)+oversleep_ns;
+   printf("PACING mode=%u baseline=%d prep_ns=%llu gap_ns=%llu expected_gap_ns=%llu slept_ns=%llu accounted_idle_ns=%llu\n",mode,baseline,
+     (unsigned long long)prep,(unsigned long long)gap,(unsigned long long)expected_gap,(unsigned long long)slept_ns,(unsigned long long)g_blocked_ns);fflush(stdout);
+   assert(gap==expected_gap);
+   if(baseline)assert(strchr(events,'D')<strchr(events,'A')&&!g_blocked_ns);
+   else assert(strrchr(events,'S')<strchr(events,'D')&&strchr(events,'D')<strrchr(events,'P')&&g_blocked_ns==slept_ns);
+   if(mode==13)assert(present_ns[0]==4005000000ull);
+ }
+ if(mode==3)assert(virtual_ns==4000000000ull+acquire_ns+(baseline?8000000ull:0));
  printf("actual vk_frame_end scenario %u passed: %s\n",mode,events);return 0;
 }
 '''
@@ -139,10 +235,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--pacing-only', action='store_true')
+    parser.add_argument('--baseline-source', type=Path, help='saved authored device.c under this port runs/; reproduce old bubble and require fixed-contract failure')
     args = parser.parse_args()
     out = args.output.absolute()
     if out != out.resolve() or out.exists() or not out.is_relative_to(ROOT / 'runs'):
         parser.error('fresh canonical output below Linux runs/ required')
+    if args.baseline_source and (args.baseline_source.absolute()!=args.baseline_source.resolve() or
+            not args.baseline_source.is_file() or not args.baseline_source.is_relative_to(ROOT/'runs')):
+        parser.error('baseline source must be an ordinary canonical saved file below this port runs/')
     out.mkdir(parents=True); os.umask(0o077); resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
     env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8', 'TMPDIR': str(out)}
     cc = ROOT / '.deps/bin/clang-cc'
@@ -176,6 +276,18 @@ def main():
         if not args.pacing_only:
             run('compile-temporal-adapter', [cc, *flags, ROOT / SOURCES[4], '-lm', '-o', out / 'temporal-adapter'], timeout=30)
             print(run('temporal-adapter', [out / 'temporal-adapter']), end='')
+            pace_source=(ROOT/'runtime/nvn/vulkan/exec.c').read_text()
+            pace_start=pace_source.index('void vk_pace_frame(void) {')
+            pace_end=pace_source.index("\n// a pair's end counter",pace_start)
+            pace_fragment=out/'exec-pace-frame.inc'
+            pace_fragment.write_text(pace_source[pace_start:pace_end])
+            idle_harness=out/'idle-heuristic.c'
+            idle_harness.write_text(IDLE_HEURISTIC_HARNESS.replace('PACE_FRAME_SOURCE',str(pace_fragment)))
+            receipt['idle_heuristic_source']={'path':'runtime/nvn/vulkan/exec.c',
+                'sha256':digest(ROOT/'runtime/nvn/vulkan/exec.c'),'extracted_sha256':digest(pace_fragment)}
+            run('compile-idle-heuristic',[cc,*flags,idle_harness,'-o',out/'idle-heuristic'],timeout=30)
+            for scenario in ('unaccounted-idle','accounted-idle','real-busy','deterministic'):
+                print(run('idle-heuristic-'+scenario,[out/'idle-heuristic',scenario]),end='')
             source = (ROOT / SOURCES[3]).read_text()
             start = source.index('void vk_frame_end(const char *shot_path) {')
             end = source.index('\nvoid vk_save_png(', start)
@@ -185,8 +297,21 @@ def main():
             harness = harness.replace('#include <stdio.h>', '#include <stdio.h>\n#include <stdlib.h>')
             (out / 'presentation.c').write_text(harness)
             run('compile-presentation', [cc, *flags, '-DXCDE_LINUX_FRAMEGEN', out / 'presentation.c', '-lm', '-o', out / 'presentation'], timeout=30)
-            for mode in range(11):
+            for mode in range(22):
                 print(run('presentation-' + str(mode), [out / 'presentation', str(mode)]), end='')
+            if args.baseline_source:
+                baseline=args.baseline_source.read_text()
+                start=baseline.index('void vk_frame_end(const char *shot_path) {')
+                end=baseline.index('\nvoid vk_save_png(',start)
+                (out/'baseline-frame-end.inc').write_text(baseline[start:end])
+                baseline_harness=harness.replace(str(out/'device-frame-end.inc'),str(out/'baseline-frame-end.inc'))
+                (out/'baseline-presentation.c').write_text(baseline_harness)
+                receipt['baseline_source']={'path':str(args.baseline_source),'sha256':digest(args.baseline_source)}
+                run('compile-baseline-presentation',[cc,*flags,'-DXCDE_LINUX_FRAMEGEN','-DFRAMEGEN_PACING_BASELINE',out/'baseline-presentation.c','-lm','-o',out/'baseline-presentation'],timeout=30)
+                for mode in (3,11,12,14):
+                    print(run('baseline-presentation-'+str(mode),[out/'baseline-presentation',str(mode)]),end='')
+                negative=run('baseline-fixed-contract-negative',[out/'baseline-presentation','11','--expect-fixed'],expected=-signal.SIGABRT)
+                assert 'gap_ns=14000000 expected_gap_ns=8000000' in negative, 'negative control failed for a different reason'
         receipt['sources_after'] = {s: digest(ROOT / s) for s in SOURCES}
         if receipt['sources_before'] != receipt['sources_after']:
             raise RuntimeError('sources changed during focused tests')

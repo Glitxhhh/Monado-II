@@ -12,20 +12,24 @@
       "bytes": 1582
     },
     ".github/workflows/source-release.yml": {
-      "sha256": "df957a0ad893c6d735eac552daadd1964cc2223735de2733c53a51891273b942",
-      "bytes": 2630
+      "sha256": "35b275e3ddff59b4948c0c68834a986e40332c86c9e01ab9117fdafb22e2bbdc",
+      "bytes": 2624
     },
     ".gitignore": {
-      "sha256": "7fadf7ceb2ace826ef698f86bcb41470fbdfb87916be4706baf4dba2a0e26a43",
-      "bytes": 914
+      "sha256": "84d085c945c53ef1507cf0a4daea81d4e63aa5d77f5ba0517a5b78320177865e",
+      "bytes": 968
+    },
+    "App_Monado_II.sh": {
+      "sha256": "09bb1d93a9f6e0157e3873af87b872b3c8f7d6cd00e39df581b14c5c536bc71f",
+      "bytes": 4384
     },
     "Build_Monado_II.sh": {
       "sha256": "683d22c20ec62497af0967d7697e5c5b383068a1902226d9dcbb29966e964303",
       "bytes": 458
     },
     "CHANGELOG.md": {
-      "sha256": "4572ca4c07a7ff46c28a13022991b0c583dbc11f7ea19a502d84bbfc74cc4ef6",
-      "bytes": 11406
+      "sha256": "5251379b6d194e85ace76982d054075f941e51eca6913ffb3aec0346d862a14c",
+      "bytes": 13114
     },
     "CONTRIBUTING.md": {
       "sha256": "ac54c5f9662bde82f3a37cd9c7428d5d3326a151606d5910e497689c8227825a",
@@ -72,8 +76,8 @@
       "bytes": 4146
     },
     "Monado_Linux/docs/UPSTREAM.md": {
-      "sha256": "0f44566071b862e45a030208c2f15966f602b941e13e486fae27093dcbd014d4",
-      "bytes": 19623
+      "sha256": "c09ce3902aef1a690dc1988c3f3f879cfbb2e337eb704fdfc258c8c58ae3f793",
+      "bytes": 20322
     },
     "Monado_Linux/docs/adr/0001-base-lasrecomp.md": {
       "sha256": "b30eeb4177a480ae3b6c54338a424395cbf201204e5c612906e2d674154c9bbe",
@@ -408,8 +412,8 @@
       "bytes": 2019
     },
     "Monado_Linux/runtime/nvn/vulkan/device.c": {
-      "sha256": "ac4577aff68f9703aee7e351ad6d6ffa8863046a414bcdec34c74f3be41e2a7b",
-      "bytes": 86622
+      "sha256": "736a0e62e52d70de9a390f2128b0f143f64825de299c025c2f23b4872731612a",
+      "bytes": 87841
     },
     "Monado_Linux/runtime/nvn/vulkan/dlss.cpp": {
       "sha256": "11f258a6fefd9341cfb0ba22458c761ec2a1fba0223913ec3019e9f26a205925",
@@ -448,8 +452,8 @@
       "bytes": 2573
     },
     "Monado_Linux/runtime/nvn/vulkan/framegen_pacing_linux.h": {
-      "sha256": "c6ab06a6c97e293efc5eaab252da72bd4d821b56caad031aa81c268253d28bf1",
-      "bytes": 1098
+      "sha256": "3d3d69ae937049de6af49ac497b7f63e05329c2c900b05e8582321aabb326f4d",
+      "bytes": 2114
     },
     "Monado_Linux/runtime/nvn/vulkan/host_import.c": {
       "sha256": "33782d3988984ab857698a6fad248bfaa2add512bf889d5c365a87727b8d730f",
@@ -496,8 +500,8 @@
       "bytes": 12936
     },
     "Monado_Linux/runtime/nvn/vulkan/temporal_fg_linux.inc": {
-      "sha256": "8368d0d7359d45d4d416dd430d4c81345ddfaea6ccc075812e53a96ba38007df",
-      "bytes": 8105
+      "sha256": "ba963f46121d74bab8bfe8f8f2e7eb21ccb533a5e8c28b53a456f06994a8be94",
+      "bytes": 8730
     },
     "Monado_Linux/runtime/nvn/vulkan/textures.c": {
       "sha256": "5bf5efbb94f865c31c40593554dd552710578e560ff0bd80c81aa451682cc344",
@@ -692,12 +696,12 @@
       "bytes": 6998
     },
     "Monado_Linux/scripts/framegen_presentation_tests_linux.py": {
-      "sha256": "47ac1b402b3dbbe4476dfa596b5240dfe4ba2cbd39b2e81d4fe159d0efeccbc0",
-      "bytes": 13676
+      "sha256": "eed7ce98848af3a54c3c1a4d7980ecbb2a134754663ab922cbba6c4fdeb31caf",
+      "bytes": 21135
     },
     "Monado_Linux/scripts/framegen_tests_linux.py": {
-      "sha256": "3ed2adca634d4a261c45e6677f72cffce4e8a522e68de2e9d3a831b3c5f1ca94",
-      "bytes": 11577
+      "sha256": "e31589c24c6cc6491294d408a4a5561d438f9d6ab59696c1cdcd33fc1cf11c40",
+      "bytes": 15941
     },
     "Monado_Linux/scripts/framepace_tests_linux.py": {
       "sha256": "4fe8d68ba2c65c3985956a9e4ac1ae9e990d6143257f819f43e9155a6ebbfebd",
@@ -892,12 +896,12 @@
       "bytes": 11296
     },
     "Monado_Linux/tests/native/test_framegen_linux.cpp": {
-      "sha256": "fb8e21292d9b5db508e33859420360b16c307961df96684c5e068ca718cb6850",
-      "bytes": 32917
+      "sha256": "39c7e49eaaa6c3415c5c3876fb4b7a8968f26f006c6fdeaa0988d3cd4f8dfddd",
+      "bytes": 42347
     },
     "Monado_Linux/tests/native/test_framegen_pacing_linux.c": {
-      "sha256": "312e203afc87c50e405ad260253aaedb2cc60efd87fad65ff8078049d27f64a8",
-      "bytes": 3964
+      "sha256": "595388acd0f4509307bae0441280218304e0ae3b0bdfb384662b0701e7a6900d",
+      "bytes": 8840
     },
     "Monado_Linux/tests/native/test_framegen_policy_linux.c": {
       "sha256": "47dd1dd6f285578d6a3ddc085838a41c697f5fba973b616a38e3c7f3e2aa21c0",
@@ -1008,8 +1012,8 @@
       "bytes": 3657
     },
     "Monado_Linux/tests/native/test_temporal_framegen_linux.c": {
-      "sha256": "8df720acaf950f1606875fdf8dfe100c61513bc6e168b1d5138e7c60f2c82743",
-      "bytes": 8805
+      "sha256": "bcd701034cfc28113868ccc21ff90512c6e82e4b972cc355bc406b43992bc37b",
+      "bytes": 10863
     },
     "Monado_Linux/tests/native/test_temporal_history_linux.c": {
       "sha256": "758461288779d76049c45d010a470ec7ceb6f66acb18b5256fbfa50ea4e9bfaf",
@@ -1780,8 +1784,8 @@
       "bytes": 876
     },
     "Monado_Linux/tools/launcher/launcher.cpp": {
-      "sha256": "f85ee7c8730c23727c95da26f4920006665bbaa9fcb154f9e730ce648b079729",
-      "bytes": 100120
+      "sha256": "d3e3885ceb2fc8a833d49b832d99d37a2d0a1f012ce2a5f4676cfad738a15985",
+      "bytes": 100176
     },
     "Monado_Linux/tools/launcher/linux_config_test.cpp": {
       "sha256": "8eb5c978b1b12ed28d3078fa9ab722dd2223ab37d07d7666f188cb804d54b71f",
@@ -3272,8 +3276,8 @@
       "bytes": 673
     },
     "README.md": {
-      "sha256": "351c65df5a675ca04547d922c25cb87738e8c1c92bf314ed442b98abb7547955",
-      "bytes": 6504
+      "sha256": "2b3f35dbd0271d30be65fca50d4fb4bfe5bd85887470da944eeff44beff5952c",
+      "bytes": 7559
     },
     "TODO.md": {
       "sha256": "44c0108b8f40ed005a55e2499a3aa09280c86daea4b71d970131a912ad8efe3e",
@@ -3284,20 +3288,24 @@
       "bytes": 635
     },
     "docs/BUILD_LINUX.md": {
-      "sha256": "dd2500b55e63fea0a793e5670973247bdaac0f5b397ed0d57aa8d149696d032a",
-      "bytes": 9841
+      "sha256": "2192a6910183d22f192dd126e76038298b9906a7f3fa46ba8bc03f310337d6a2",
+      "bytes": 11583
     },
     "docs/BUILD_WINDOWS.md": {
-      "sha256": "6d191e5f95f599b3f4ed4d7127fd8dbcd4ce696b31cf037497d3cf0fc6a12f73",
-      "bytes": 2502
+      "sha256": "405f07142a33788d4226427f339c4712d6e05dd9e8007dbc79fd3b4dab4173da",
+      "bytes": 2746
     },
     "docs/PLATFORM_STATUS.md": {
-      "sha256": "a317adc10a4605cf7057c24be4aa0bd8f7d68105a381f842200c8c9396479d72",
-      "bytes": 3401
+      "sha256": "0c1f1b4445abb504067695166396a3cee2084e80865a9ba6a6df213ca9f77c7f",
+      "bytes": 3777
+    },
+    "docs/QUIVER.md": {
+      "sha256": "088e2ef241c4d3159454fba69e4474f14d2ab76cdc1c2f09305170dcd3aa4981",
+      "bytes": 4642
     },
     "docs/RELEASING.md": {
-      "sha256": "b9baf697962df44b8cf7ab1a655420a055160d149a005279e0133a51878a9230",
-      "bytes": 4656
+      "sha256": "1c7050ef4675db22987ab552d880e5ecfc390a5d1f660037905f9be4c942c28f",
+      "bytes": 7455
     },
     "publication-policy.json": {
       "sha256": "8f08c5c695dd1a771a6359d59697019813e29754a2af567ad52e0b79414df6ff",
@@ -3320,8 +3328,8 @@
       "bytes": 15209
     },
     "tests/test_linux_build_app.py": {
-      "sha256": "53964024f8e3e987c4ab65c48b0fb8ed9f2ba5085dc47e011c4c9cc257c1a532",
-      "bytes": 28178
+      "sha256": "3ca9542e40017010c1913d06a42b49e81576c2f7604d14a8a023ef37b249b9e6",
+      "bytes": 33429
     },
     "tests/test_linux_graphics_paths.py": {
       "sha256": "8626814e7a09aa49a58f71a3014860eabc56bb95f58f08df14edfa0b0b4e5934",
@@ -3332,8 +3340,8 @@
       "bytes": 20543
     },
     "tests/test_managed_linux_build.py": {
-      "sha256": "98045005e93f5e7e170477827e82e8fb7bd4fe224c12ff9ec62851374e7f0924",
-      "bytes": 12252
+      "sha256": "c1a3a9d6395ec3e79516c650deee3b8aa0921a5aee05396152cc573c67e924e4",
+      "bytes": 13796
     },
     "tests/test_packaged_launcher.py": {
       "sha256": "098eca4140e9b64fd30956c8fc721b904df666f7bce1b2fb0e3ce38c5205a7e4",
@@ -3344,28 +3352,32 @@
       "bytes": 11354
     },
     "tests/test_publication_guard.py": {
-      "sha256": "e9e8beae1d70844ac06f72b8d9793e2cbb1483adda26ba2ccf130abd58d5f509",
-      "bytes": 26347
+      "sha256": "da2f8bfeda71c5786c89ee94c39b55c7bed465c992f5a6547e5a8907081ebf0a",
+      "bytes": 28024
+    },
+    "tests/test_quiver_bootstrap.py": {
+      "sha256": "1d0d461f14402a3cd78846742218dcd6b295e3f7c5bb19eb9c5bfc2cb14970f1",
+      "bytes": 8494
     },
     "tests/test_source_header_closure.py": {
-      "sha256": "fe23a2a6f8c3b4353815073f04454e10ac9322102ed3c2d8e657322e3f0f78d9",
-      "bytes": 1146
+      "sha256": "1942d80c611fe73ce4e227f067febff94755d3f36424350fd264fa884c5f07ba",
+      "bytes": 3241
     },
     "tests/test_source_releases.py": {
-      "sha256": "bc44edb9abf45a2da40615b9a64a8b6a0f95d3955efae1551810c61705815680",
-      "bytes": 11736
+      "sha256": "ae852d2580c81824d24078e357b4a1884b1f611d4ba9959d5c320a5d08d42b1a",
+      "bytes": 14205
     },
     "tests/test_update_install_safety.py": {
       "sha256": "07d6a9d169cf8dff9d20e97600356973f06fab75ec59b11dae50dccaac69765e",
       "bytes": 5430
     },
     "tests/test_update_linux.py": {
-      "sha256": "d9b33522c85d1b58c5c3308b04bed7ae7895eb1c3815f31f21a02b4868b75533",
-      "bytes": 10633
+      "sha256": "ccaf891ac225c694a78b3dfe02a404ec2a428c6190e2f17e942d9ada65912a2f",
+      "bytes": 11191
     },
     "tests/test_update_release.py": {
-      "sha256": "9ddd87db16387b23948df35c807295abaa9d0b786363f42617e5f60d743ec1f0",
-      "bytes": 18049
+      "sha256": "86846a3f5d31e952b5dd2f6bc6f8c57279641fb810883b1f7074c723cadb83dc",
+      "bytes": 23862
     },
     "tests/test_update_worker.py": {
       "sha256": "3c5cd0078a6f536afd56cba427f161ac7fd0bce2d94402945551b68d19d4cdcb",
@@ -3424,12 +3436,12 @@
       "bytes": 16439
     },
     "tools/build_linux_app.py": {
-      "sha256": "52e8f1e8894af8f2536c32d9a47b64531a5baa79863e15830632f59d8e4d1f56",
-      "bytes": 29224
+      "sha256": "b6ac2b9eb0966e2f1da63a7dacb22dde3e74a7b3a5ad257154e77371b1481653",
+      "bytes": 32018
     },
     "tools/package_source_release.py": {
-      "sha256": "13d8072b5bc8618df58d6a08c645131416735a4b4eda62368e41ccbe10dbda28",
-      "bytes": 17264
+      "sha256": "aa3bbb148a43d23c3169b5804433f9a33494cade171ab30aa907be9b903e0900",
+      "bytes": 18312
     },
     "tools/publication_guard.py": {
       "sha256": "fc71c603c6efce52f4357d7d153230be0030c3b67a16524df9f5d619833607da",
@@ -3440,15 +3452,15 @@
       "bytes": 15410
     },
     "tools/update_linux.py": {
-      "sha256": "fc4eab97ffc1831faadeeb2b584f4b9b5a26c03c39505f27eeaa06f21abcf9c0",
-      "bytes": 25060
+      "sha256": "adb7d81731645df16c2c6f857c3c8e5b77f109cb983054df4bd94da2dd206e62",
+      "bytes": 25342
     },
     "tools/update_release.py": {
-      "sha256": "3c6efd9600e138711e8a948ceb2fe434a0dad3f3daeeaebb30d24c8986fe1f16",
-      "bytes": 17962
+      "sha256": "390e9513aeee7b1bf90558f61cc4d596b01cc4be5ddacd30b494e7baab987add",
+      "bytes": 18754
     },
     "update-version.json": {
-      "sha256": "6488c8b92baf85b49887a89e28fd4291c46c4fb8f8d4f6aaa4f351a4076ae4f9",
+      "sha256": "c93a394daa9c61af863ae899208a4e7ca38b361a8b678bd4e806c8bf32cd097a",
       "bytes": 57
     }
   }

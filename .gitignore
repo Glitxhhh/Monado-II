@@ -1,5 +1,6 @@
 # Monado II: game input, generated output and user state are never source.
-game_files/
+# Shared input may be an ordinary folder or a symlink.
+game_files
 exefs/
 romfs/
 targets/

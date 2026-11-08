@@ -174,7 +174,7 @@ class ManagedBuild(unittest.TestCase):
         self.assertEqual(files(self.state), state_before)
 
     def test_reuse_rejects_feature_mismatch_or_incomplete_receipt_before_commands(self):
-        for key, value in (('dlss_enabled', True), ('generated', {}), ('status', 'failed'),
+        for key, value in (('dlss_enabled', True), ('framegen_enabled', True), ('generated', {}), ('status', 'failed'),
                            ('sources_after', {}), ('errors', ['an original failure'])):
             original = self.receipt[key]
             self.receipt[key] = value
@@ -208,7 +208,27 @@ class ManagedBuild(unittest.TestCase):
     def test_reuse_cli_is_explicitly_forwarded_to_builder(self):
         with mock.patch.object(build, 'build') as operation:
             self.assertEqual(build.main(['--reuse-game', str(self.game), '--without-dlss']), 0)
-        operation.assert_called_once_with(jobs=4, dlss=False, reuse_game=self.game)
+        operation.assert_called_once_with(jobs=4, dlss=False, reuse_game=self.game, framegen=False)
+
+    def test_framegen_reuse_requires_matching_flags_and_retains_old_companions(self):
+        self.receipt['dlss_enabled'] = self.receipt['framegen_enabled'] = True
+        resources = {}
+        for name in ('libmonado-ngx.so', 'libnvidia-ngx-dlss.so.310.9.1', 'NVIDIA-DLSS-LICENSE.txt',
+                     'libmonado-fidelityfx.so', 'FidelityFX-MIT.txt'):
+            path = self.game.parent / name
+            path.write_text('authored never-loaded companion: ' + name)
+            resources[name] = {'path': str(path), 'sha256': sha(path), 'bytes': path.stat().st_size}
+        self.receipt['runtime_resources'] = resources
+        self.save_receipt()
+        with self.assertRaisesRegex(build.BuildError, 'frame-generation flag differs'):
+            build.layout(self.workspace, 2, dlss=True, framegen=False, reuse_game=self.game)
+        original = files(self.game.parent)
+        with mock.patch.object(build, 'existing_framegen_sdk', side_effect=AssertionError('do not rebuild old SDK')), \
+                mock.patch.object(build.run_linux, 'dlss_namespace', side_effect=lambda argv, state: (argv, {'kind': 'authored'})):
+            paths, commands = build.layout(self.workspace, 2, dlss=True, framegen=True, reuse_game=self.game)
+        self.assertEqual(paths['game'], self.game)
+        self.assertFalse(any(name in ('framegen-source', 'native-framegen-dependency', 'generate-game', 'build-game') for name, _ in commands))
+        self.assertEqual(files(self.game.parent), original)
 
     def test_reused_receipt_change_during_launcher_build_stops_before_publication(self):
         original = self.runner

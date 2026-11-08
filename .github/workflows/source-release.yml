@@ -6,7 +6,7 @@ on:
       version:
         description: Source-kit version (letters, digits, dots, underscores and hyphens)
         required: true
-        default: 0.1.4
+        default: 0.1.5
         type: string
 
 permissions:
@@ -62,9 +62,9 @@ jobs:
       - name: Upload only the reviewed source archive and checksum
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: monado-ii-${{ matrix.platform }}-source
+          name: monado-ii-${{ matrix.platform }}-setup
           path: |
-            ${{ runner.temp }}/monado-ii-release-${{ matrix.platform }}/monado-ii-*-${{ matrix.platform }}-source.${{ matrix.archive_extension }}
+            ${{ runner.temp }}/monado-ii-release-${{ matrix.platform }}/monado-ii-*-${{ matrix.platform }}-*.${{ matrix.archive_extension }}
             ${{ runner.temp }}/monado-ii-release-${{ matrix.platform }}/SHA256SUMS
           if-no-files-found: error
           compression-level: 0

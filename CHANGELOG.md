@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.1.5 — November 8, 2026
+
+- Publish Linux and Windows **setup/build kits** with canonical `-setup` download
+  names so Quiver's observed asset filter can recognize them. Keep a Linux
+  compatibility download for installed updaters; game generation remains local.
+- **Linux frame generation is experimental. Performance varies:** it can reduce
+  performance, stutter or show visual glitches. Leave it off for normal play.
+  Maintainer testing found the candidate mostly stable but preferred FG off;
+  these changes do not establish a smoother experience or full-game coverage.
+
+- Add explicit `--framegen` to the Linux local build, with pinned source setup,
+  verified local SDK reuse, matched build-feature receipts and default-off runtime
+  settings. Keep full experimental/diagnostic updater rebuilds manual.
+- Preserve interpolation history through successful warmup instead of resetting it
+  during ordinary repeated presentation. Restore ordinary pacing on failure/off.
+- Prepare and submit the retained real image before the existing presentation
+  deadline, overlapping that work with the wait. Bound deliberate waiting by the
+  selected real-frame interval, keeping the SDK's measured motion timing intact.
+- Count observed deliberate wait time as host idle, so it cannot falsely trigger
+  the game's busy-time adaptation. GPU readiness and resource retirement remain.
+- Add actual-source clock/history/heuristic regressions and authored GPU profiling
+  at 720p/1440p. These are component results, not proof of improved display cadence.
+- Keep shared input links ignored and limit source-header checks to declared
+  shipped files, excluding local dependencies/builds from that source-kit test.
+
 ## 0.1.4 — November 8, 2026
 
 - Fix Linux dependency compiler/linker flags when the installation folder contains

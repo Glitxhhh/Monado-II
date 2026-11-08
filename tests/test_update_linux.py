@@ -126,5 +126,14 @@ class Transactions(unittest.TestCase):
         self.assertIn('--without-dlss',u.build_command(self.candidate,self.game,False));path.write_text('{"dlss_enabled":true,"framegen_enabled":true}')
         with self.assertRaisesRegex(ValueError,'manual rebuild'):u.build_command(self.candidate,self.game,True)
         self.assertIn('--reuse-game',u.build_command(self.candidate,self.game,False))
+        self.assertIn('--framegen',u.build_command(self.candidate,self.game,False))
+
+    def test_invalid_framegen_receipt_is_not_silently_reused(self):
+        path=self.game.parent/'receipt.json'
+        for value in ({'dlss_enabled':True,'framegen_enabled':'false'},
+                      {'dlss_enabled':False,'framegen_enabled':True}):
+            path.write_text(json.dumps(value))
+            with self.subTest(value=value),self.assertRaisesRegex(ValueError,'invalid frame-generation'):
+                u.build_command(self.candidate,self.game,False)
 
 if __name__=='__main__':unittest.main()

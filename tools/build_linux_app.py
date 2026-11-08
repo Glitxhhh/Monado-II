@@ -99,7 +99,27 @@ def image_pair(path):
     return document
 
 
-def validate_reused_game(port, binary, state, *, dlss):
+def validate_features(*, dlss, framegen):
+    if framegen and not dlss:
+        raise BuildError('--framegen requires DLSS/DLAA support; it cannot be combined with --without-dlss')
+
+
+def existing_framegen_sdk(port):
+    """Verify this workspace's SDK without fetching, compiling or loading it."""
+    active = ordinary(port / '.deps/fsr/active-build.txt', missing=True)
+    if not active.exists():
+        return None
+    recipe = ordinary(port / 'scripts/setup_linux_fsr.py')
+    spec = importlib.util.spec_from_file_location('monado_builder_fsr_setup', recipe)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    try:
+        return module.verify_existing()
+    except (OSError, ValueError, RuntimeError) as error:
+        raise BuildError('Existing native frame-generation SDK failed verification; preserve it and inspect before retrying: ' + str(error)) from error
+
+
+def validate_reused_game(port, binary, state, *, dlss, framegen=False):
     """Retain an original successful build; never relocate or rewrite its receipt."""
     binary = ordinary(binary)
     install_layout.build_port(port, binary)
@@ -109,6 +129,8 @@ def validate_reused_game(port, binary, state, *, dlss):
         raise BuildError('--reuse-game requires a successful complete generated-game receipt')
     if type(receipt.get('dlss_enabled')) is not bool or receipt['dlss_enabled'] != dlss:
         raise BuildError('reused game DLSS flag differs from the requested build; preserve the existing feature selection')
+    if type(receipt.get('framegen_enabled', False)) is not bool or receipt.get('framegen_enabled', False) != framegen:
+        raise BuildError('reused game frame-generation flag differs from the requested build; preserve the existing feature selection')
     before = receipt.get('sources_before')
     if not isinstance(before, dict) or not before or before != receipt.get('sources_after'):
         raise BuildError('reused game has no stable native source snapshot')
@@ -139,7 +161,8 @@ def validate_reused_game(port, binary, state, *, dlss):
             'receipt_sha256': digest(binary.parent / 'receipt.json'), 'build_port': launch['build_port']}
 
 
-def layout(root, jobs, *, require_input=True, identity=None, dlss=True, reuse_game=None):
+def layout(root, jobs, *, require_input=True, identity=None, dlss=True, reuse_game=None, framegen=False):
+    validate_features(dlss=dlss, framegen=framegen)
     root = ordinary(root, directory=True)
     port = ordinary(root / 'Monado_Linux', directory=True)
     install_layout.binding(port)
@@ -172,7 +195,7 @@ def layout(root, jobs, *, require_input=True, identity=None, dlss=True, reuse_ga
                  state=install_layout.profile_port(port) / 'play/launcher')
     if reuse_game is not None:
         paths['game'] = ordinary(reuse_game)
-        validate_reused_game(port, paths['game'], paths['state'], dlss=dlss)
+        validate_reused_game(port, paths['game'], paths['state'], dlss=dlss, framegen=framegen)
     for name in ('run', 'generated', 'game', 'launcher', 'image'):
         if reuse_game is not None and name in ('game', 'generated'):
             continue
@@ -191,11 +214,23 @@ def layout(root, jobs, *, require_input=True, identity=None, dlss=True, reuse_ga
     ]
     if dlss:
         commands.append(('native-dlss-dependency', [python, '-B', port / 'scripts/setup_linux_dlss.py']))
+    if framegen and reuse_game is None:
+        sdk = existing_framegen_sdk(port)
+        recipe = port / 'scripts/setup_linux_fsr.py'
+        if sdk is None:
+            paths['framegen_sdk'] = ordinary(port / '.deps/fsr/build' / identity, directory=True, missing=True)
+            if paths['framegen_sdk'].exists():
+                raise BuildError('frame-generation SDK build output must be fresh: ' + str(paths['framegen_sdk']))
+            commands += [('framegen-source', [python, '-B', recipe, '--fetch']),
+                         ('native-framegen-dependency', [python, '-B', recipe, '--build', '--output', paths['framegen_sdk'], '--jobs', jobs])]
+        else:
+            paths['framegen_sdk'] = ordinary(Path(sdk['library_path']).parent, directory=True)
+            commands.append(('native-framegen-dependency', [python, '-B', recipe]))
     if reuse_game is None:
         commands += [
             ('generate-game', [python, '-B', port / 'tools/gen_all.py', '--exefs', source / 'exefs', '--out', paths['generated'], '--simd', 'c']),
             ('build-game', [python, '-B', port / 'scripts/build_linux.py', '--generated', paths['generated'], '--output', paths['game'].parent, '--jobs', jobs,
-                            *(['--dlss'] if dlss else [])]),
+                            *(['--dlss'] if dlss else []), *(['--framegen'] if framegen else [])]),
         ]
     commands += [
         ('build-launcher', [python, '-B', port / 'scripts/build_launcher_linux.py', '--output', paths['launcher'].parent, '--jobs', jobs]),
@@ -485,10 +520,11 @@ def restore(paths, backup, had_previous):
         image_pair(target)
 
 
-def build(root=ROOT, jobs=4, *, runner=execute, locker=build_lock, identity=None, dlss=True, reuse_game=None):
+def build(root=ROOT, jobs=4, *, runner=execute, locker=build_lock, identity=None, dlss=True, reuse_game=None, framegen=False):
+    validate_features(dlss=dlss, framegen=framegen)
     preflight(dlss=dlss)
     prepare_input_layout(root)
-    paths, commands = layout(root, jobs, identity=identity, dlss=dlss, reuse_game=reuse_game)
+    paths, commands = layout(root, jobs, identity=identity, dlss=dlss, reuse_game=reuse_game, framegen=framegen)
     with locker(paths['port']):
         # Recheck after obtaining the lease; another completed build may now be
         # present, but its known pair will be preserved rather than overwritten.
@@ -497,13 +533,14 @@ def build(root=ROOT, jobs=4, *, runner=execute, locker=build_lock, identity=None
         receipt_path = paths['run'] / 'receipt.json'
         receipt = dict(schema=1, status='running', scope='local game build and launcher-only AppImage; no game/UI execution',
                        started_utc=datetime.now(timezone.utc).isoformat(), jobs=jobs,
-                       dlss_enabled=dlss,
-                       reused_game=validate_reused_game(paths['port'], paths['game'], paths['state'], dlss=dlss) if reuse_game is not None else None,
+                       dlss_enabled=dlss, framegen_enabled=framegen,
+                       reused_game=validate_reused_game(paths['port'], paths['game'], paths['state'], dlss=dlss, framegen=framegen) if reuse_game is not None else None,
                        paths={name: str(path) for name, path in paths.items()}, commands=[])
         write_json(receipt_path, receipt)
         print('Downloads: locked Python/compiler and Ubuntu development packages, plus the pinned AppImage runtime.'
               + (' The default DLSS/DLAA build also downloads the pinned official NVIDIA SDK into this workspace.' if dlss else
-                 ' DLSS/DLAA support is explicitly omitted (--without-dlss).') + '\n'
+                 ' DLSS/DLAA support is explicitly omitted (--without-dlss).')
+              + (' Experimental frame-generation support is explicitly requested; a missing SDK is fetched and built locally, while a verified local SDK is reused.' if framegen else '') + '\n'
               'Game files are never downloaded. Existing input and saves are preserved.\n'
               'Fresh build logs: ' + str(paths['run']), flush=True)
         backup = None
@@ -520,7 +557,7 @@ def build(root=ROOT, jobs=4, *, runner=execute, locker=build_lock, identity=None
                 write_json(receipt_path, receipt)
                 if code:
                     raise BuildError(f'{name} failed (exit {code}). Log: {log}')
-            if reuse_game is not None and validate_reused_game(paths['port'], paths['game'], paths['state'], dlss=dlss) != receipt['reused_game']:
+            if reuse_game is not None and validate_reused_game(paths['port'], paths['game'], paths['state'], dlss=dlss, framegen=framegen) != receipt['reused_game']:
                 raise BuildError('reused game receipt or identity changed during launcher build; previous image is preserved')
             backup = publish(paths)
             log = paths['run'] / f'{len(commands) + 1:02d}-check-appimage.log'
@@ -556,19 +593,22 @@ def main(argv=None):
     parser.add_argument('--plan', action='store_true', help='print the local build steps without downloads or writes')
     parser.add_argument('--without-dlss', action='store_true',
                         help='explicitly omit the native NVIDIA DLSS/DLAA provider and SDK download')
+    parser.add_argument('--framegen', action='store_true',
+                        help='opt into experimental native frame-generation support; runtime settings remain off by default')
     parser.add_argument('--reuse-game', type=Path,
                         help='retain an unchanged successful game build from this installation; rebuild only the launcher')
     args = parser.parse_args(argv)
     try:
         if args.plan:
-            paths, commands = layout(ROOT, args.jobs, require_input=False, dlss=not args.without_dlss, reuse_game=args.reuse_game)
+            paths, commands = layout(ROOT, args.jobs, require_input=False, dlss=not args.without_dlss, reuse_game=args.reuse_game, framegen=args.framegen)
             print(json.dumps(dict(mode='plan', paths={name: str(path) for name, path in paths.items()},
                                   commands=[dict(name=name, argv=command) for name, command in commands],
                                   dlss_enabled=not args.without_dlss,
+                                  framegen_enabled=args.framegen,
                                   reuses_game=args.reuse_game is not None,
                                   launches_game=False, launches_gui=False, network='none in plan; explicit build fetches locked dependencies'), indent=2))
         else:
-            build(jobs=args.jobs, dlss=not args.without_dlss, reuse_game=args.reuse_game)
+            build(jobs=args.jobs, dlss=not args.without_dlss, reuse_game=args.reuse_game, framegen=args.framegen)
     except KeyboardInterrupt:
         print('Build cancelled; completed local work and previous AppImage preserved. See the build receipt/logs.', file=sys.stderr)
         return 130

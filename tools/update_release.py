@@ -114,29 +114,31 @@ def _json(raw):
     return result
 
 
-def _archive_name(version):
+def _archive_name(version, *, legacy=False):
     _version(version)
-    return 'monado-ii-' + version + '-linux-source.tar.gz'
+    kind = 'source' if legacy else 'setup'
+    return 'monado-ii-' + version + '-linux-' + kind + '.tar.gz'
 
 
 def _offer(offer):
     if not isinstance(offer, dict):
         raise UpdateError('invalid release offer')
     version = offer.get('version')
-    name = _archive_name(version)
-    expected = 'https://github.com/' + REPOSITORY + '/releases/download/v' + version + '/' + name
-    if (offer.get('tag') != 'v' + version or offer.get('archive_url') != expected
+    names = (_archive_name(version), _archive_name(version, legacy=True))
+    base = 'https://github.com/' + REPOSITORY + '/releases/download/v' + version + '/'
+    matches = [name for name in names if offer.get('archive_url') == base + name]
+    if (offer.get('tag') != 'v' + version or len(matches) != 1
             or not isinstance(offer.get('archive_sha256'), str)
             or not SHA256.fullmatch(offer['archive_sha256'])
             or type(offer.get('archive_bytes')) is not int
             or not 0 < offer['archive_bytes'] <= MAX_ARCHIVE):
         raise UpdateError('invalid pinned source-release offer')
-    _url(expected)
-    return version, name
+    _url(offer['archive_url'])
+    return version, matches[0]
 
 
 def discover(current_version, *, opener=None):
-    """Return the newer stable official source asset, or None when up to date.
+    """Return the newer stable official setup kit, or None when up to date.
 
     GitHub's API digest binds the archive to the HTTPS release metadata. Missing
     asset digests fail closed; this is not an independent publisher signature.
@@ -159,17 +161,22 @@ def discover(current_version, *, opener=None):
         assets = document.get('assets')
         if not isinstance(assets, list) or len(assets) > 32 or any(not isinstance(a, dict) for a in assets):
             raise UpdateError('invalid release asset list')
-        matches = [a for a in assets if a.get('name') == _archive_name(version)]
-        if len(matches) != 1:
-            raise UpdateError('release needs exactly one Linux source-kit asset')
-        asset = matches[0]
+        canonical = [a for a in assets if a.get('name') == _archive_name(version)]
+        legacy = [a for a in assets if a.get('name') == _archive_name(version, legacy=True)]
+        if len(canonical) > 1 or len(legacy) > 1 or not (canonical or legacy):
+            raise UpdateError('release needs an unambiguous Linux setup-kit asset')
+        # A malformed canonical asset must fail closed instead of silently using
+        # the compatibility alias. Older releases have only the legacy name.
+        asset = (canonical or legacy)[0]
         digest = asset.get('digest')
         if (asset.get('state') != 'uploaded' or not isinstance(digest, str)
                 or not digest.startswith('sha256:')):
             raise UpdateError('release asset has no verified SHA-256 digest')
         offer = dict(version=version, tag=tag, archive_url=asset.get('browser_download_url'),
                      archive_sha256=digest[7:], archive_bytes=asset.get('size'))
-        _offer(offer)
+        _, selected_name = _offer(offer)
+        if selected_name != asset['name']:
+            raise UpdateError('release asset name and official URL differ')
         return offer
     except (OSError, urllib.error.URLError, http.client.HTTPException) as error:
         raise UpdateError('could not check the official release: ' + str(error)) from error
@@ -218,6 +225,8 @@ def verified_source(root):
 
 def _unpack(archive_path, destination, offer, progress, cancel):
     version, _ = _offer(offer)
+    # Retain this archive root for installed 0.1.3/0.1.4 clients, including users
+    # who skip a transition release. The setup filename does not change content.
     prefix = 'monado-ii-' + version + '-linux-source/'
     raw_tar = destination / 'archive.tar'
     total = 0

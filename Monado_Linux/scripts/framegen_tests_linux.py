@@ -9,6 +9,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import platform
@@ -49,6 +50,8 @@ def main():
     parser.add_argument('--headless-wsi-probe', action='store_true', help='query actual selected-device headless surface support; no window or visible fallback')
     parser.add_argument('--provider', action='store_true', help='also compile the actual native FidelityFX wrapper')
     parser.add_argument('--sdk-library', type=Path, help='verified native project-local SDK module; actual interpolation requires --provider --real-device')
+    parser.add_argument('--profile', action='store_true', help='also measure same-binary FG off/on/offscreen GPU stages with authored 720p/1440p images; no WSI/frame pacing claim')
+    parser.add_argument('--size', action='append', choices=('720p', '1440p'), help='profile selected output sizes; default profiles both (depth/motion are two-thirds resolution)')
     args = parser.parse_args()
     if sys.platform != 'linux' or platform.machine() != 'x86_64':
         parser.error('native Linux x86-64 required')
@@ -58,6 +61,10 @@ def main():
         parser.error('--headless-wsi-probe requires --real-device')
     if args.sdk_library and (not args.provider or not args.real_device):
         parser.error('--sdk-library requires --provider --real-device')
+    if args.profile and not args.sdk_library:
+        parser.error('--profile requires --sdk-library --provider --real-device')
+    if args.size and (not args.profile or len(set(args.size)) != len(args.size)):
+        parser.error('--size requires --profile and each size may be selected only once')
     if args.sdk_library:
         args.sdk_library = args.sdk_library.absolute()
         if (args.sdk_library != args.sdk_library.resolve() or not args.sdk_library.is_file()
@@ -87,6 +94,13 @@ def main():
         receipt['scope'] = 'Actual native SDK offscreen frame interpolation on authored GPU images; no game/window/physical display pacing'
         receipt['limitations'] = ['Authored scenes do not establish game temporal/HUD quality.',
                                   'Headless support query does not establish physical WSI presentation or pacing.']
+    if args.profile:
+        receipt['profile'] = {'sizes': args.size or ['720p', '1440p'], 'order': ['off', 'on', 'on', 'off'],
+                              'warmup_per_batch': 3, 'measured_per_batch': 8,
+                              'effect_scope': 'GPU SDK recording versus a bit-exact real-image copy, not the complete game presentation path',
+                              'cpu_scope': 'command recording and submit/fence wait are separate from authored pattern, cached readback snapshot and pixel-oracle costs; oracle time includes snapshot time'}
+        receipt['limitations'] += ['Offscreen single-submission/fence timings do not measure physical presentation, latency, throughput or game FPS.',
+                                   'Full input/output readbacks are timed separately; they are fixture correctness costs, not the normal game path.']
 
     def save():
         (out / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
@@ -120,7 +134,8 @@ def main():
         (out / (name + '.stdout.log')).write_bytes(stdout)
         (out / (name + '.stderr.log')).write_bytes(stderr)
         record['metrics'] = [json.loads(line.split(' ', 1)[1]) for line in stdout.decode(errors='replace').splitlines()
-                             if line.startswith(('CAPABILITIES ', 'RESOURCE ', 'FRAMEGEN ', 'HEADLESS ', 'PROCS '))]
+                             if line.startswith(('CAPABILITIES ', 'RESOURCE ', 'FRAMEGEN ', 'HEADLESS ', 'PROCS ',
+                                                 'PROFILE ', 'PROFILE_SUMMARY ', 'PROFILE_CAPABILITIES '))]
         if trace_root:
             traces = sorted(trace_root.glob(name + '.*'))
             record['traces'] = {str(p.relative_to(out)): digest(p) for p in traces}
@@ -175,7 +190,11 @@ def main():
                 receipt['dependencies'][str(args.sdk_library)] = digest(args.sdk_library)
                 receipt['artifacts'][str(companion.relative_to(out))] = digest(companion)
                 argv += ['--sdk-library', companion]
-            stdout = run('resource-probe', argv, state=state)
+            if args.profile:
+                argv.append('--profile')
+                for size in args.size or []:
+                    argv += ['--size', size]
+            stdout = run('resource-probe', argv, state=state, seconds=180 if args.profile else 60)
             if b'NOT frame interpolation or WSI/pacing qualification' not in stdout:
                 raise RuntimeError('resource probe did not report its actual coverage')
             if args.sdk_library:
@@ -185,6 +204,34 @@ def main():
                              if 'scenario' in m and m.get('result') == 2}
                 if generated != {'moving-hud', 'static-hud', 'moving-bgra-hud', 'reset-gap-reenable'}:
                     raise RuntimeError('actual generated-output scenario coverage missing')
+            if args.profile:
+                metrics = receipt['commands'][-1]['metrics']
+                summaries = [m for m in metrics if 'effect_gpu_p50_ms' in m]
+                rows = [m for m in metrics if 'effect_gpu_ms' in m]
+                expected = {'720p': (1280, 720), '1440p': (2560, 1440)}
+                receipt['profile_comparison'] = []
+                for size in args.size or ['720p', '1440p']:
+                    width, height = expected[size]
+                    batches = sorted((m for m in summaries if (m['width'], m['height']) == (width, height)), key=lambda m: m['batch'])
+                    if len(batches) != 4 or [m['enabled'] for m in batches] != [False, True, True, False] or any(m['samples'] != 8 for m in batches):
+                        raise RuntimeError('profile ABBA repetition coverage missing')
+                    selected = [m for m in rows if (m['width'], m['height']) == (width, height)]
+                    if len(selected) != 44 or sum(m['sample'] for m in selected) != 32:
+                        raise RuntimeError('profile measured/warmup coverage missing')
+                    for row in selected:
+                        if row['render_width'] != width * 2 // 3 or row['render_height'] != height * 2 // 3 or row.get('inputs_unchanged') is not True:
+                            raise RuntimeError('profile render-input or immutable-input contract failed')
+                        for key in ('upload_gpu_ms', 'effect_gpu_ms', 'readback_gpu_ms', 'total_gpu_ms', 'submit_wait_cpu_ms', 'record_cpu_ms',
+                                    'pattern_cpu_ms', 'snapshot_cpu_ms', 'oracle_cpu_ms'):
+                            if not isinstance(row.get(key), (int, float)) or not math.isfinite(row[key]) or row[key] < 0:
+                                raise RuntimeError('invalid profile timing')
+                        if row['sample'] and (row['result'] != (2 if row['enabled'] else 0) or row['hud_bad_pixels']):
+                            raise RuntimeError('profile measured frame did not satisfy its output oracle')
+                    off = [batches[i]['effect_gpu_p50_ms'] for i in (0, 3)]
+                    on = [batches[i]['effect_gpu_p50_ms'] for i in (1, 2)]
+                    receipt['profile_comparison'].append({'size': size, 'off_effect_p50_ms': off, 'on_effect_p50_ms': on,
+                        'off_repeat_span_ms': abs(off[0] - off[1]), 'on_repeat_span_ms': abs(on[0] - on[1]),
+                        'mean_effect_delta_ms': sum(on) / 2 - sum(off) / 2})
         receipt['sources_after'] = sources(args.provider)
         if receipt['sources_before'] != receipt['sources_after']:
             raise RuntimeError('source changed during component tests')

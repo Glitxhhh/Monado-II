@@ -16,8 +16,13 @@ The one-command Linux build includes the native DLSS/DLAA provider by default;
 `--without-dlss` explicitly omits it. Selection still requires compatible NVIDIA
 hardware/drivers and the existing runtime capability checks. Build prerequisites
 are listed in the [Linux guide](BUILD_LINUX.md).
-**Frame generation is experimental, slow/glitchy in reported gameplay and should
-normally remain off.** Linux FSR3 Super Resolution is unavailable.
+**Frame generation remains experimental and off by default.** The earlier
+implementation was slow/glitchy in reported gameplay. Version0.1.5 fixes specific
+warmup/history and deliberate pacing problems and adds an explicit local build
+option. Manual testing found it mostly stable with remaining jitter/stutter and
+preferred FG off. **Performance varies and may be worse with FG enabled.** Authored
+tests do not establish improved physical display cadence, latency or all scenes.
+Linux FSR3 Super Resolution is unavailable.
 
 Version 0.1.4 fixes Linux dependency flag handling in installation paths containing
 spaces. It preserves existing input/profile locations and the variable-query
@@ -49,5 +54,5 @@ its origin and limitations. It is not a game screenshot or extracted asset. The
 separate unreviewed sword icon and proprietary-font decoding remain excluded.
 Plain user/system TTF/OTF/TTC font input is supported. Public-only changes require
 further integrated testing. Full-game, save-recovery, long-session, other-GPU and
-clean-machine coverage remain incomplete. A regular 0.1.4 release does not imply
+clean-machine coverage remain incomplete. A regular 0.1.5 release does not imply
 Windows game-build or full-game qualification.

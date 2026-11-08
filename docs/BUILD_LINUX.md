@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-Download and extract the **Linux source/setup kit** from
+Download and extract **`monado-ii-0.1.5-linux-setup.tar.gz`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases). Open a terminal in
 the extracted folder. The supported baseline is **Linux x86-64 with CPython 3.14**,
 bash, pkg-config, dpkg-deb, binutils (`readelf` and `nm`) and squashfs-tools
@@ -11,6 +11,11 @@ libraries are also required.
 The builder reports missing prerequisites; it never runs sudo or changes system
 packages/drivers. This is not yet a distribution-independent build.
 
+For Quiver or another desktop app manager, choose **`App_Monado_II.sh`** after
+extraction. It uses an installed terminal for the initial build, then opens the
+launcher without starting the game. Once built it opens the existing launcher.
+The same prerequisites and input layout below apply; see [Quiver setup](QUIVER.md).
+
 ## 1. Put your own game files beside the build command
 
 Use your own legally dumped **Definitive Edition 2.0.0** files from your own legally
@@ -19,6 +24,7 @@ files, keys, links or dumping instructions are provided.
 
 ```text
 Monado-II/
+├── App_Monado_II.sh
 ├── Build_Monado_II.sh
 ├── Play_Monado_II.sh
 ├── game_files/
@@ -114,6 +120,33 @@ Installation paths containing spaces are supported starting with 0.1.4. An older
 0.1.3 source kit can fail in dependency compiler flags in such a folder; use the
 latest source kit in the same original installation folder. Keep input/profile
 directories in place.
+
+## Experimental frame-generation build
+
+To compile the optional native frame-generation provider into your local build:
+
+```sh
+./Build_Monado_II.sh --framegen
+```
+
+This requires the normal DLSS/DLAA build; `--without-dlss --framegen` is rejected.
+The pinned FidelityFX source is built locally when missing. A verified local SDK
+is reused; an altered SDK stops the build for inspection. No SDK binaries are
+included in source releases or launcher images. Runtime frame generation stays
+**off by default**. In the launcher, select NVIDIA DLSS/DLAA and then enable the
+experimental frame-generation option.
+
+The FPS setting/counter continues to describe real rendered game frames. Generated
+images add GPU work and do not advance gameplay, input or audio. **Performance
+varies: it may run worse, stutter or show visual glitches. Leaving FG off is
+recommended for normal play.** At high native frame rates it may offer little
+benefit. Compare the same scene/settings with
+FG off/on after shader and SDK warmup. Component passes do not qualify physical
+presentation, latency, visual quality or every game scene. Maintainer testing of
+0.1.5 preferred FG off despite mostly stable gameplay; no broad improvement is claimed.
+
+Launcher-only updates preserve a compatible FG game. Automatic full updates of
+FG or diagnostic builds still stop safely for a manual rebuild, as described below.
 
 ## 4. Update and roll back
 

@@ -239,3 +239,15 @@ cleared. Both pkgconf 1.8.1 and 2.5.1 are tested. Real authored pkg-config fixtu
 cover spaces and shell metacharacters, variable queries and a tiny C compile; no
 external implementation copied. Native build flags/dependency pins are unchanged.
 [Build-path repair record](../../docs/PLATFORM_STATUS.md).
+
+
+## LINUX-029 — frame-generation candidate
+
+Adapted device.c, framegen_pacing_linux.h and temporal_fg_linux.inc to preserve
+valid warmup history, overlap retained-image preparation with a bounded absolute
+presentation deadline, and account actual intentional idle without changing SDK
+motion timing or guest/input/audio progression. First GPU readiness and completion-
+bound resource lifetime remain. Added actual-source clock/heuristic regressions
+and optional authored GPU timing/pixel oracles. Public build/update helpers preserve
+explicit opt-in and feature identity; no external implementation copied. This is
+a component-tested candidate, not full-game/physical-presentation qualification.

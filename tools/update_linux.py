@@ -221,9 +221,14 @@ def build_command(workspace, game, rebuild):
     receipt = json_read(Path(game).parent / 'receipt.json')
     if not isinstance(receipt.get('dlss_enabled'), bool):
         raise ValueError('old game has no explicit feature receipt')
+    framegen = receipt.get('framegen_enabled', False)
+    if type(framegen) is not bool or (framegen and not receipt['dlss_enabled']):
+        raise ValueError('old game has an invalid frame-generation feature receipt')
     if not receipt['dlss_enabled']:
         command.append('--without-dlss')
     if not rebuild:
+        if framegen:
+            command.append('--framegen')
         command += ['--reuse-game', str(game)]
     elif receipt.get('framegen_enabled') or receipt.get('foley_trace'):
         raise ValueError('This custom diagnostic/experimental game build requires a manual rebuild; the current version is preserved.')

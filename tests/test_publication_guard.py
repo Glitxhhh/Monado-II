@@ -5,6 +5,8 @@ import hashlib
 import importlib
 import json
 import os
+import shutil
+import subprocess
 import stat
 import struct
 import sys
@@ -64,6 +66,33 @@ class PublicationGuardTests(unittest.TestCase):
         result = guard.verify_tree(self.root)
         self.assertTrue(result)
         return result
+
+    @unittest.skipUnless(os.name == 'posix' and shutil.which('git'), 'POSIX symlink and Git required')
+    def test_shared_input_link_and_directory_are_ignored_before_staging(self):
+        # [XCDE] LINUX-029: a trailing-slash ignore misses the shared input link.
+        checkout = self.base / 'ignore-checkout'
+        checkout.mkdir()
+        (checkout / '.gitignore').write_bytes((ROOT / '.gitignore').read_bytes())
+        (checkout / 'README.md').write_text('Authored ignore fixture only.\n')
+        outside = self.base / 'authored-input'
+        outside.mkdir()
+        (outside / 'fixture.txt').write_text('Authored synthetic bytes.\n')
+        environment = dict(os.environ, GIT_CONFIG_NOSYSTEM='1', GIT_CONFIG_GLOBAL=os.devnull)
+        def git(*args):
+            return subprocess.run(['git', '-C', str(checkout), *args], env=environment,
+                                  capture_output=True, text=True, timeout=10)
+        self.assertEqual(git('init', '-q').returncode, 0)
+        shared = checkout / 'game_files'
+        shared.symlink_to(outside, target_is_directory=True)
+        self.assertEqual(git('check-ignore', '--no-index', 'game_files').returncode, 0)
+        self.assertEqual(git('add', '--all').returncode, 0)
+        self.assertNotIn('game_files', git('ls-files').stdout)
+        shared.unlink()
+        shared.mkdir()
+        (shared / 'fixture.txt').write_text('Authored ordinary-directory fixture.\n')
+        self.assertEqual(git('add', '--all').returncode, 0)
+        self.assertNotIn('game_files', git('ls-files').stdout)
+        self.assertEqual(git('check-ignore', '--no-index', 'README.md').returncode, 1)
 
     def test_clean_authored_source_passes(self):
         self.assertEqual(guard.verify_tree(self.root), [])

@@ -263,8 +263,12 @@ def package(source: Path, platform: str, version: str, output: Path) -> dict:
         raise ReleaseError('manifest has no source files for selected platform')
     if any(name in selected for name in ('RELEASE_README.md', 'source-only-status.json')):
         raise ReleaseError('source already contains generated release-only files')
+    # The user-facing filename describes the setup flow. Existing Linux update
+    # clients require the original internal root and source filename, so retain
+    # that root and publish a byte-identical compatibility alias on every release.
     prefix = f'monado-ii-{version}-{platform}-source'
-    filename = prefix + ('.tar.gz' if platform == 'linux' else '.zip')
+    filename = f'monado-ii-{version}-{platform}-setup' + ('.tar.gz' if platform == 'linux' else '.zip')
+    alias = prefix + '.tar.gz' if platform == 'linux' else None
     output.mkdir(mode=0o700)
     with tempfile.TemporaryDirectory(prefix='.package-', dir=output) as temporary:
         temporary = Path(temporary)
@@ -306,8 +310,16 @@ def package(source: Path, platform: str, version: str, output: Path) -> dict:
         if final_raw != raw or final_document != document:
             raise ReleaseError('source publication manifest changed during packaging')
         identity = digest(archive)
+        aliases = []
+        if alias:
+            legacy = temporary / alias
+            shutil.copyfile(archive, legacy)
+            if legacy.stat().st_size != archive.stat().st_size or digest(legacy) != identity:
+                raise ReleaseError('Linux compatibility alias differs from verified setup archive')
+            aliases.append(dict(archive=alias, sha256=identity, bytes=legacy.stat().st_size))
         receipt = dict(schema=1, project=PROJECT, platform=platform, version=version,
             kind='source-only', archive=filename, sha256=identity, bytes=archive.stat().st_size,
+            archive_aliases=aliases,
             source_manifest_sha256=hashlib.sha256(raw).hexdigest(),
             release_manifest_sha256=digest(stage / MANIFEST),
             archived_files=len(selected) + 1, archive_readback_verified=True,
@@ -315,8 +327,12 @@ def package(source: Path, platform: str, version: str, output: Path) -> dict:
             contains_game_files=False, contains_game_derived_code=False,
             contains_compiled_binaries=False, local_generation_required=True)
         archive.replace(output / filename)
+        for compatibility in aliases:
+            (temporary / compatibility['archive']).replace(output / compatibility['archive'])
         (output / 'release-receipt.json').write_bytes(encoded(receipt))
-        (output / 'SHA256SUMS').write_text(identity + '  ' + filename + '\n', encoding='ascii')
+        checksums = [identity + '  ' + filename]
+        checksums.extend(item['sha256'] + '  ' + item['archive'] for item in aliases)
+        (output / 'SHA256SUMS').write_text('\n'.join(checksums) + '\n', encoding='ascii')
     return receipt
 
 

@@ -87,6 +87,51 @@ class SourceReleaseTests(unittest.TestCase):
     def test_windows_zip_contains_only_windows_and_common_reviewed_sources(self):
         self.assert_contents(self.package('windows'), 'windows')
 
+    def test_linux_setup_and_old_updater_alias_are_identical_with_original_root(self):
+        receipt = self.package(version='0.1.5')
+        self.assertEqual(receipt['archive'], 'monado-ii-0.1.5-linux-setup.tar.gz')
+        self.assertEqual(receipt['kind'], 'source-only')
+        self.assertEqual(receipt['archive_aliases'], [dict(
+            archive='monado-ii-0.1.5-linux-source.tar.gz',
+            sha256=receipt['sha256'], bytes=receipt['bytes'])])
+        output = self.base / 'result'
+        setup = output / receipt['archive']
+        compatibility = output / receipt['archive_aliases'][0]['archive']
+        self.assertEqual(setup.read_bytes(), compatibility.read_bytes())
+        for path in (setup, compatibility):
+            with tarfile.open(path) as archive:
+                self.assertTrue(all(item.name.startswith('monado-ii-0.1.5-linux-source/')
+                                    for item in archive.getmembers()))
+        checksums = (output / 'SHA256SUMS').read_text().splitlines()
+        self.assertEqual(set(checksums), {
+            receipt['sha256'] + '  monado-ii-0.1.5-linux-setup.tar.gz',
+            receipt['sha256'] + '  monado-ii-0.1.5-linux-source.tar.gz'})
+        for line in checksums:
+            sha, name = line.split('  ')
+            self.assertEqual(sha, release.digest(output / name))
+
+    def test_windows_setup_has_no_unsupported_legacy_alias(self):
+        receipt = self.package('windows', version='0.1.5')
+        self.assertEqual(receipt['archive'], 'monado-ii-0.1.5-windows-setup.zip')
+        self.assertEqual(receipt['archive_aliases'], [])
+        output = self.base / 'result'
+        self.assertEqual(sorted(p.name for p in output.iterdir()),
+                         ['SHA256SUMS', receipt['archive'], 'release-receipt.json'])
+        self.assertEqual((output / 'SHA256SUMS').read_text(),
+                         receipt['sha256'] + '  ' + receipt['archive'] + '\n')
+
+    def test_corrupted_linux_alias_never_reaches_final_output(self):
+        copy = release.shutil.copyfile
+
+        def corrupt(source, target):
+            copy(source, target)
+            target.write_bytes(b'authored corrupt alias fixture')
+
+        with mock.patch.object(release.shutil, 'copyfile', side_effect=corrupt):
+            with self.assertRaisesRegex(release.ReleaseError, 'compatibility alias differs'):
+                self.package(version='0.1.5')
+        self.assertEqual(list((self.base / 'result').iterdir()), [])
+
     def test_linux_archive_is_deterministic(self):
         first = self.package(output='first')
         os.chmod(self.source / 'README.md', 0o755)

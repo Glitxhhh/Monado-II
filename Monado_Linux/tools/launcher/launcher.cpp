@@ -210,7 +210,7 @@ static const char *const k_en[][2] = {
     {"Generación de frames (FSR 3, experimental)", "Frame generation (FSR 3, experimental)"},
     {"Generación de frames solo en cinemáticas (experimental)", "Frame generation in cutscenes only (experimental)"},
     {"Experimental: puede funcionar lentamente y mostrar errores visuales. Se recomienda dejarla desactivada por ahora.",
-     "Experimental: may run slowly and show visual glitches. Leaving it off is recommended for now."},
+     "Experimental: performance varies; may run slowly, stutter or show visual glitches. Leaving it off is recommended."},
     {"Inserta un frame interpolado entre cada dos del juego en todo el juego: el doble de imágenes\n"
      "por segundo (p. ej. FPS 30 -> 60 en pantalla). La de AMD: funciona con FSR 3.1 y con DLSS.\n"
      "Añade algo de latencia. Se aplica al iniciar el juego.",
@@ -826,7 +826,7 @@ static void tab_graphics() {
     const bool have_fg = linux_framegen_packaged() && g.upscaler == 3;
     ImGui::BeginDisabled(!have_fg);
     launcher_theme::checkbox(T("Generación de frames (FSR 3, experimental)"), &g.frame_gen);
-    ImGui::SetItemTooltip("Experimental: may run slowly and show visual glitches.\nInterpolates one image between real frames.\nGame/input FPS stays unchanged. Adds latency.\nApplies when starting the game.");
+    ImGui::SetItemTooltip("Experimental: performance varies; may reduce performance, stutter or show visual glitches.\nInterpolates one image between real frames.\nGame/input FPS stays unchanged. Adds latency.\nApplies when starting the game.");
     ImGui::BeginDisabled(g.frame_gen);
     launcher_theme::checkbox(T("Generación de frames solo en cinemáticas (experimental)"), &g.cut_fg);
     ImGui::EndDisabled();

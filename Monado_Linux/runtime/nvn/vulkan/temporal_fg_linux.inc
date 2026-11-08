@@ -5,6 +5,7 @@
 static FgLinux *linux_fg;
 static bool linux_fg_tried, linux_fg_pending, linux_fg_hudless;
 static bool linux_fg_generated, linux_fg_error_logged, linux_fg_rect_valid;
+static bool linux_fg_repeat_ready;
 static int32_t linux_fg_rect[4];
 static Img linux_fg_real, linux_fg_output, linux_fg_hud;
 static FgLinuxFrame linux_fg_frame;
@@ -32,8 +33,16 @@ static bool linux_fg_load(void) {
 }
 bool tmp_fg_supported(void) { return linux_fg_load(); }
 bool tmp_fg_active(void) { return linux_fg_generated; }
+// [XCDE] LINUX-029: an ordinary FIFO redraw would consume the same real frame
+// again and reset interpolation history. Preserve a successful warmup as well
+// as a generated frame; settings alone or a failed SDK dispatch do not qualify.
+bool tmp_fg_repeat_suppressed(void) {
+    return linux_fg_repeat_ready && linux_fg && tmp_frame_gen_wanted() && linux_fg_on() &&
+        linux_fg_quality == g_settings.upscale_quality &&
+        linux_fg_frame.real_frame_id == renderer_present_count();
+}
 static void linux_fg_reset(void) {
-    linux_fg_pending = linux_fg_hudless = linux_fg_generated = linux_fg_rect_valid = false;
+    linux_fg_pending = linux_fg_hudless = linux_fg_generated = linux_fg_rect_valid = linux_fg_repeat_ready = false;
     if (linux_fg) { fg_linux_reset(linux_fg); fg_linux_collect(linux_fg, vk_completed_seq()); }
 }
 void tmp_fg_invalidate(void) { linux_fg_reset(); }
@@ -49,7 +58,7 @@ static FgLinuxImage linux_fg_image(const Img *im) {
 }
 static void linux_fg_prepare(const TmpCamera *cam, const float jitter[2], uint32_t rw, uint32_t rh, float dt, bool reset) {
     linux_fg_pending = linux_fg_hudless = false;
-    linux_fg_generated = false;
+    linux_fg_generated = linux_fg_repeat_ready = false;
     if (!tmp_frame_gen_wanted() || !linux_fg_on()) {
         if (linux_fg) fg_linux_set_enabled(linux_fg, false);
         linux_fg_error_logged = false;
@@ -125,7 +134,7 @@ bool tmp_fg_record_present(VkCommandBuffer cb, VkImage scene, VkImage *base, flo
             LOG("[fg] generation disabled: %s; ordinary frame retained\n", fg_linux_error(linux_fg)); linux_fg_error_logged = true;
         }
         if (result == FG_LINUX_WARMUP) {
-            linux_fg_rect_valid = true;
+            linux_fg_rect_valid = linux_fg_repeat_ready = true;
             linux_fg_rect[0] = linux_fg_frame.rect_x; linux_fg_rect[1] = linux_fg_frame.rect_y;
             linux_fg_rect[2] = (int32_t)linux_fg_frame.rect_width; linux_fg_rect[3] = (int32_t)linux_fg_frame.rect_height;
         }
@@ -134,7 +143,7 @@ bool tmp_fg_record_present(VkCommandBuffer cb, VkImage scene, VkImage *base, flo
     vkCmdCopyImage(cb, linux_fg_output.b.image, VK_IMAGE_LAYOUT_GENERAL, scene, VK_IMAGE_LAYOUT_GENERAL, 1, &copy);
     vk_full_barrier(cb);
     *base = linux_fg_real.b.image; *dt_ms = linux_fg_frame.dt_ms;
-    linux_fg_generated = linux_fg_rect_valid = true;
+    linux_fg_generated = linux_fg_rect_valid = linux_fg_repeat_ready = true;
     linux_fg_rect[0] = linux_fg_frame.rect_x; linux_fg_rect[1] = linux_fg_frame.rect_y;
     linux_fg_rect[2] = (int32_t)linux_fg_frame.rect_width; linux_fg_rect[3] = (int32_t)linux_fg_frame.rect_height;
     return true;

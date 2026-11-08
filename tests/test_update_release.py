@@ -64,13 +64,13 @@ def manifest(files, version='0.1.4'):
                 files={name: identity(data) for name, data in files.items()})
 
 
-def archive_bytes(files=None, *, version='0.1.4', extra=(), document=None):
+def archive_bytes(files=None, *, version='0.1.4', extra=(), document=None, root_kind='source'):
     files = source_files(version) if files is None else files.copy()
     files[update.MANIFEST] = encoded(document or manifest(files, version))
     result = io.BytesIO()
     with tarfile.open(fileobj=result, mode='w:gz', format=tarfile.PAX_FORMAT) as archive:
         for name, data in files.items():
-            info = tarfile.TarInfo('monado-ii-' + version + '-linux-source/' + name)
+            info = tarfile.TarInfo('monado-ii-' + version + '-linux-' + root_kind + '/' + name)
             info.mode = 0o755 if name.endswith('.sh') else 0o644
             info.size = len(data)
             archive.addfile(info, io.BytesIO(data))
@@ -85,23 +85,77 @@ def archive_bytes(files=None, *, version='0.1.4', extra=(), document=None):
     return result.getvalue()
 
 
-def offer(data, version='0.1.4'):
+def offer(data, version='0.1.4', *, kind='source'):
     return dict(version=version, tag='v' + version,
                 archive_url='https://github.com/' + update.REPOSITORY + '/releases/download/v' + version +
-                            '/monado-ii-' + version + '-linux-source.tar.gz',
+                            '/monado-ii-' + version + '-linux-' + kind + '.tar.gz',
                 archive_sha256=hashlib.sha256(data).hexdigest(), archive_bytes=len(data))
 
 
-def release(version='0.1.4'):
-    selected = offer(b'fixture', version)
+def release(version='0.1.4', *, kind='source'):
+    selected = offer(b'fixture', version, kind=kind)
     return dict(tag_name=selected['tag'], draft=False, prerelease=False, assets=[dict(
-        name='monado-ii-' + version + '-linux-source.tar.gz', state='uploaded', size=selected['archive_bytes'],
+        name='monado-ii-' + version + '-linux-' + kind + '.tar.gz', state='uploaded', size=selected['archive_bytes'],
         digest='sha256:' + selected['archive_sha256'], browser_download_url=selected['archive_url'])])
 
 
 class Discovery(unittest.TestCase):
     def test_newer_stable_release_has_exact_pinned_offer(self):
         self.assertEqual(update.discover('0.1.3', opener=response(encoded(release()))), offer(b'fixture'))
+
+    def test_canonical_setup_is_selected_alone_or_with_legacy_alias_in_either_order(self):
+        canonical = release('0.1.5', kind='setup')
+        legacy = release('0.1.5')['assets'][0]
+        for assets in (canonical['assets'], [*canonical['assets'], legacy],
+                       [legacy, *canonical['assets']]):
+            document = {**canonical, 'assets': assets}
+            for current in ('0.1.3', '0.1.4'):
+                with self.subTest(assets=assets, current=current):
+                    self.assertEqual(update.discover(current, opener=response(encoded(document))),
+                                     offer(b'fixture', '0.1.5', kind='setup'))
+
+    def test_legacy_fallback_requires_canonical_to_be_absent(self):
+        legacy = release('0.1.5')
+        self.assertEqual(update.discover('0.1.3', opener=response(encoded(legacy))),
+                         offer(b'fixture', '0.1.5'))
+        for field, value in (('digest', None), ('digest', 'sha256:' + 'f' * 63),
+                             ('size', True), ('state', 'new'),
+                             ('browser_download_url', legacy['assets'][0]['browser_download_url'])):
+            document = release('0.1.5', kind='setup')
+            document['assets'][0][field] = value
+            document['assets'].extend(legacy['assets'])
+            with self.subTest(field=field), self.assertRaises(update.UpdateError):
+                update.discover('0.1.4', opener=response(encoded(document)))
+
+    def test_duplicates_of_either_supported_name_are_rejected(self):
+        canonical = release('0.1.5', kind='setup')['assets'][0]
+        legacy = release('0.1.5')['assets'][0]
+        for assets in ([canonical, canonical], [legacy, legacy],
+                       [canonical, canonical, legacy], [canonical, legacy, legacy]):
+            document = {**release('0.1.5'), 'assets': assets}
+            with self.subTest(assets=assets), self.assertRaises(update.UpdateError):
+                update.discover('0.1.4', opener=response(encoded(document)))
+
+    def test_unrelated_assets_and_invalid_unselected_alias_do_not_change_preference(self):
+        document = release('0.1.5', kind='setup')
+        invalid_alias = release('0.1.5')['assets'][0]
+        invalid_alias['digest'] = None
+        document['assets'].extend([dict(name='SHA256SUMS'),
+                                  dict(name='monado-ii-0.1.5-windows-setup.zip'), invalid_alias])
+        self.assertEqual(update.discover('0.1.4', opener=response(encoded(document))),
+                         offer(b'fixture', '0.1.5', kind='setup'))
+
+    def test_selected_asset_name_must_match_its_url_and_exact_supported_name(self):
+        for kind, other in (('setup', 'source'), ('source', 'setup')):
+            document = release('0.1.5', kind=kind)
+            document['assets'][0]['browser_download_url'] = offer(b'fixture', '0.1.5', kind=other)['archive_url']
+            with self.subTest(kind=kind), self.assertRaises(update.UpdateError):
+                update.discover('0.1.4', opener=response(encoded(document)))
+        for name in ('monado-ii-0.1.4-linux-setup.tar.gz', 'Monado-II-0.1.5-linux-setup.tar.gz',
+                     'monado-ii-0.1.5-linux-setup.tar.gz.extra', 'monado-ii-0.1.5-linux-debug.tar.gz'):
+            document = release('0.1.5', kind='setup'); document['assets'][0]['name'] = name
+            with self.subTest(name=name), self.assertRaises(update.UpdateError):
+                update.discover('0.1.4', opener=response(encoded(document)))
 
     def test_no_newer_release_is_silent(self):
         for current in ('0.1.4', '0.2.0', '1.0.0'):
@@ -167,14 +221,47 @@ class Extraction(unittest.TestCase):
         for name, data in {**files, update.MANIFEST: encoded(manifest(files))}.items():
             path = source / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(data)
         receipt = packager.package(source, 'linux', '0.1.4', self.root / 'package')
+        self.assertEqual(receipt['archive'], 'monado-ii-0.1.4-linux-setup.tar.gz')
         data = (self.root / 'package' / receipt['archive']).read_bytes()
         progress = []
-        extracted = self.fetch(data, progress=progress.append)
+        extracted = self.fetch(data, selected=offer(data, kind='setup'), progress=progress.append)
         self.assertEqual(extracted, self.root / 'stage/source')
         self.assertEqual((extracted / 'README.md').read_bytes(), files['README.md'])
         self.assertEqual(update.verified_source(extracted)['release_version'], '0.1.4')
         self.assertTrue(any(p['phase'] == 'download' for p in progress))
         self.assertTrue(any(p['phase'] == 'extract' for p in progress))
+
+    def test_setup_offer_uses_legacy_archive_root_and_preserves_external_state(self):
+        data = archive_bytes(version='0.1.5')
+        profile = self.root / 'profile'; profile.mkdir()
+        save = profile / 'save.sentinel'; save.write_bytes(b'original save')
+        input_root = self.root / 'game_files'; input_root.mkdir()
+        selected_input = input_root / 'input.sentinel'; selected_input.write_bytes(b'original input')
+        for kind in ('setup', 'source'):
+            extracted = update.fetch_and_extract(offer(data, '0.1.5', kind=kind),
+                self.root / ('stage-' + kind), opener=response(data))
+            self.assertEqual(update.verified_source(extracted)['release_version'], '0.1.5')
+        self.assertEqual(save.read_bytes(), b'original save')
+        self.assertEqual(selected_input.read_bytes(), b'original input')
+
+    def test_setup_named_archive_root_is_not_implicitly_trusted(self):
+        data = archive_bytes(version='0.1.5', root_kind='setup')
+        with self.assertRaisesRegex(update.UpdateError, 'archive root'):
+            update.fetch_and_extract(offer(data, '0.1.5', kind='setup'),
+                                     self.root / 'stage', opener=response(data))
+
+    def test_offers_reject_unsupported_names_versions_and_url_aliases_before_network(self):
+        selected = offer(b'fixture', '0.1.5', kind='setup')
+        malformed = [None, {}, {**selected, 'version': None}]
+        for url in ('https://example.com/monado-ii-0.1.5-linux-setup.tar.gz',
+                    selected['archive_url'] + '?download=1', selected['archive_url'].replace('/v0.1.5/', '/v0.1.4/'),
+                    selected['archive_url'].replace('-setup.tar.gz', '-debug.tar.gz')):
+            malformed.append({**selected, 'archive_url': url})
+        for item in malformed:
+            with self.subTest(item=item), self.assertRaises(update.UpdateError):
+                update.fetch_and_extract(item, self.root / 'stage',
+                    opener=mock.Mock(side_effect=AssertionError('no network')))
+        self.assertFalse((self.root / 'stage').exists())
 
     def test_pinned_size_hash_and_truncation_are_checked(self):
         data = archive_bytes()

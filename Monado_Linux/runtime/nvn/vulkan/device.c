@@ -518,7 +518,14 @@ static int repeat_presents(void) {
     extern int xcde_present_fps(void);  // (FPS setting, or 30 while a cutscene is held at 30: framepace.c)
     int fps = xcde_present_fps();
     float hz = vk_display_hz();
-    if (off || !g_vsync_fifo || tmp_fg_active() || fps <= 0 || !window) return 1;
+    // [XCDE] LINUX-029: warmup/history belongs to one real frame too. A
+    // repeat redraw must not consume its inputs or reset that history.
+    bool fg_owns_interval = tmp_fg_active();
+#if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
+    extern bool tmp_fg_repeat_suppressed(void);
+    fg_owns_interval = tmp_fg_repeat_suppressed();
+#endif
+    if (off || !g_vsync_fifo || fg_owns_interval || fps <= 0 || !window) return 1;
     if (hz <= 0) return 1;
     float r = hz / (float)fps;
     int n = (int)lroundf(r);
@@ -706,6 +713,7 @@ static void save_window_image(VkCommandBuffer cb, VkSpan *out) {
 #if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
 #include "framegen_pacing_linux.h"
 static bool fg_present_second;
+static uint64_t fg_second_deadline; // [XCDE] LINUX-029: absolute spacing, applied after preparing the real image.
 static uint64_t fg_submitted_generated, fg_submitted_real;
 #endif
 void vk_frame_end(const char *shot_path) {
@@ -740,6 +748,14 @@ void vk_frame_end(const char *shot_path) {
 #if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
     // GPU readiness anchors pacing. Queueing two unready images with only a CPU sleep can show them together.
     if (pair) vk_wait_seq(seq);
+    else if (fg_present_second && fg_second_deadline) {
+        // [XCDE] LINUX-029: overlap acquisition/recording/GPU copy with the
+        // existing deadline. The present semaphore still enforces GPU readiness.
+        uint64_t elapsed = 0;
+        fg_pacing_wait_elapsed(fg_second_deadline, &elapsed);
+        extern __thread uint64_t g_blocked_ns;
+        g_blocked_ns += elapsed; // deliberate host idle is not game/GPU busy work
+    }
 #endif
     VkPresentInfoKHR pi = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .waitSemaphoreCount = 1, .pWaitSemaphores = &done_sem[img],
                            .swapchainCount = 1, .pSwapchains = &g_vk.swapchain, .pImageIndices = &img};
@@ -758,14 +774,17 @@ void vk_frame_end(const char *shot_path) {
     } else { extern void tmp_fg_invalidate(void); tmp_fg_invalidate(); }
     if (pair && r == VK_SUCCESS) {
         uint64_t now = fg_pacing_now();
-        if (!fg_pacing_deadline(now, frame_ms, &deadline)) deadline = now;
+        // [XCDE] LINUX-029: SDK motion timing remains measured. Presentation
+        // alone bounds its idle budget by the selected real-frame interval.
+        extern int xcde_present_fps(void);
+        float pacing_ms = fg_pacing_interval_ms(frame_ms, xcde_present_fps());
+        if (!fg_pacing_deadline(now, pacing_ms, &deadline)) deadline = now;
     }
 #endif
     if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) recreate_swapchain();
     cur_frame.ok = false;
 #if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
     if (pair && r == VK_SUCCESS && g_vk.swapchain == pair_swapchain) {
-        if (deadline) fg_pacing_wait(deadline);
         const float clear[4] = {0, 0, 0, 1};
         if (vk_frame_begin(clear)) {
             bool same = g_vk.sc_format == pair_format && g_vk.sc_extent.width == pair_extent.width && g_vk.sc_extent.height == pair_extent.height;
@@ -801,9 +820,11 @@ void vk_frame_end(const char *shot_path) {
                 extern void vk_present_redraw(VkCommandBuffer);
                 vk_present_redraw(vk_cmd());
             }
+            fg_second_deadline = deadline;
             fg_present_second = true;
             vk_frame_end(NULL);
             fg_present_second = false;
+            fg_second_deadline = 0;
         } else { extern void tmp_fg_invalidate(void); tmp_fg_invalidate(); }
     }
 #endif

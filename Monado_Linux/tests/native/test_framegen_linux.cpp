@@ -8,6 +8,7 @@ extern "C" {
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
@@ -33,6 +34,8 @@ static VkCommandPool pool;
 static VkCommandBuffer command;
 static VkFence fence;
 static uint32_t queue_family;
+static uint32_t timestamp_bits;
+static float timestamp_period;
 static uint64_t recording_seq = 1, completed_seq;
 static uint32_t validation_errors;
 
@@ -119,6 +122,8 @@ static void create_device(bool headless_probe) {
     vkGetPhysicalDeviceQueueFamilyProperties(physical, &count, qprops.data()); queue_family = UINT32_MAX;
     for (uint32_t i = 0; i < count; ++i) if ((qprops[i].queueFlags & (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) == (VK_QUEUE_GRAPHICS_BIT | VK_QUEUE_COMPUTE_BIT)) { queue_family = i; break; }
     CHECK(queue_family != UINT32_MAX);
+    timestamp_bits = qprops[queue_family].timestampValidBits;
+    timestamp_period = selected.limits.timestampPeriod;
     if (headless_probe) {
         VkResult result = VK_ERROR_EXTENSION_NOT_PRESENT; VkSurfaceKHR surface{}; VkBool32 supported = VK_FALSE;
         auto make = reinterpret_cast<PFN_vkCreateHeadlessSurfaceEXT>(vkGetInstanceProcAddr(instance, "vkCreateHeadlessSurfaceEXT"));
@@ -232,28 +237,45 @@ static uint16_t half(float f) {
     CHECK(exponent < 143); return static_cast<uint16_t>(sign | (exponent - 112) << 10 | (mantissa + 0x1000) >> 13);
 }
 struct Scene {
-    uint32_t w, h; size_t bytes, scene_offset, motion_offset, depth_offset, read_offset;
+    uint32_t w, h, rw, rh; size_t bytes, scene_offset, motion_offset, depth_offset, read_offset;
     Image present, hudless, motion, depth, generated; Buffer staging;
-    Scene(uint32_t width, uint32_t height,VkFormat color=VK_FORMAT_R8G8B8A8_UNORM) : w(width), h(height), bytes(size_t(w)*h*4), scene_offset(bytes), motion_offset(bytes*2), depth_offset(bytes*3), read_offset(bytes*4),
-        present(color,w,h), hudless(color,w,h), motion(VK_FORMAT_R16G16_SFLOAT,w,h), depth(VK_FORMAT_R32_SFLOAT,w,h), generated(color,w,h), staging(bytes*9) {}
+    std::vector<unsigned char> cached;
+    Scene(uint32_t width, uint32_t height,VkFormat color=VK_FORMAT_R8G8B8A8_UNORM,uint32_t render_w=0,uint32_t render_h=0,bool cache_cpu=false) :
+        w(width), h(height), rw(render_w?render_w:w), rh(render_h?render_h:h), bytes(size_t(w)*h*4),
+        scene_offset(bytes), motion_offset(bytes*2), depth_offset(bytes*3), read_offset(bytes*4),
+        present(color,w,h), hudless(color,w,h), motion(VK_FORMAT_R16G16_SFLOAT,rw,rh), depth(VK_FORMAT_R32_SFLOAT,rw,rh), generated(color,w,h), staging(bytes*9),cached(cache_cpu?bytes*9:0) {
+        CHECK(rw<=w && rh<=h);
+    }
+    unsigned char *cpu(){return cached.empty()?staging.host:cached.data();}
     void pattern(unsigned frame, bool still) {
+        unsigned char *data=cpu();
         const uint32_t box_x = w/4 + (still ? 0 : frame*8), box_y = h/3, side = std::min(w,h)/4;
         CHECK(box_x + side < w);
-        auto *mv = reinterpret_cast<uint16_t *>(staging.host + motion_offset); auto *z = reinterpret_cast<float *>(staging.host + depth_offset);
         for (uint32_t y=0;y<h;y++) for (uint32_t x=0;x<w;x++) {
             const size_t p=size_t(y)*w+x; bool object=x>=box_x && x<box_x+side && y>=box_y && y<box_y+side;
             unsigned char color[4] = {static_cast<unsigned char>(object?240:24+(x/8%2)*6),static_cast<unsigned char>(object?36:36+(y/8%2)*6),static_cast<unsigned char>(object?20:96),255};
             if(present.format==VK_FORMAT_B8G8R8A8_UNORM)std::swap(color[0],color[2]);
-            memcpy(staging.host+4*p,color,4); memcpy(staging.host+scene_offset+4*p,color,4);
-            if (x>=8 && x<88 && y>=8 && y<28) { staging.host[4*p]=present.format==VK_FORMAT_B8G8R8A8_UNORM?32:16;staging.host[4*p+1]=240;staging.host[4*p+2]=present.format==VK_FORMAT_B8G8R8A8_UNORM?16:32; }
+            memcpy(data+4*p,color,4); memcpy(data+scene_offset+4*p,color,4);
+            if (x>=8 && x<88 && y>=8 && y<28) { data[4*p]=present.format==VK_FORMAT_B8G8R8A8_UNORM?32:16;data[4*p+1]=240;data[4*p+2]=present.format==VK_FORMAT_B8G8R8A8_UNORM?16:32; }
+        }
+        auto *mv = reinterpret_cast<uint16_t *>(data + motion_offset); auto *z = reinterpret_cast<float *>(data + depth_offset);
+        for (uint32_t y=0;y<rh;y++) for (uint32_t x=0;x<rw;x++) {
+            const size_t p=size_t(y)*rw+x;
+            const double ox=(x+.5)*w/rw, oy=(y+.5)*h/rh;
+            bool object=ox>=box_x && ox<box_x+side && oy>=box_y && oy<box_y+side;
             mv[2*p]=half(object && frame && !still ? -8.f/w : 0); mv[2*p+1]=0; z[p]=object?.5f:.9f;
+        }
+        if(!cached.empty()){
+            memcpy(staging.host,data,bytes*2);
+            memcpy(staging.host+motion_offset,data+motion_offset,size_t(rw)*rh*4);
+            memcpy(staging.host+depth_offset,data+depth_offset,size_t(rw)*rh*4);
         }
         staging.sync(true);
     }
     void upload() {
         Image *images[] = {&present,&hudless,&motion,&depth}; size_t offsets[] = {0,scene_offset,motion_offset,depth_offset};
         for (unsigned i=0;i<4;i++) {
-            images[i]->dependency(VK_ACCESS_TRANSFER_WRITE_BIT); VkBufferImageCopy copy{}; copy.bufferOffset=offsets[i]; copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.imageExtent={w,h,1};
+            images[i]->dependency(VK_ACCESS_TRANSFER_WRITE_BIT); VkBufferImageCopy copy{}; copy.bufferOffset=offsets[i]; copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.imageExtent={images[i]->width,images[i]->height,1};
             vkCmdCopyBufferToImage(command,staging.buffer,images[i]->image,VK_IMAGE_LAYOUT_GENERAL,1,&copy);
             images[i]->dependency(VK_ACCESS_SHADER_READ_BIT);
         }
@@ -262,13 +284,27 @@ struct Scene {
         vkCmdClearColorImage(command,generated.image,VK_IMAGE_LAYOUT_GENERAL,&sentinel,1,&range);generated.dependency(VK_ACCESS_SHADER_WRITE_BIT);
     }
     void read(Image &image, unsigned slot=0) {
-        CHECK(slot<5);image.dependency(VK_ACCESS_TRANSFER_READ_BIT);VkBufferImageCopy copy{};copy.bufferOffset=read_offset+slot*bytes;copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.imageExtent={w,h,1};
+        CHECK(slot<5);image.dependency(VK_ACCESS_TRANSFER_READ_BIT);VkBufferImageCopy copy{};copy.bufferOffset=read_offset+slot*bytes;copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.imageExtent={image.width,image.height,1};
         vkCmdCopyImageToBuffer(command,image.image,VK_IMAGE_LAYOUT_GENERAL,staging.buffer,1,&copy);
         VkBufferMemoryBarrier b{};b.sType=VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;b.srcAccessMask=VK_ACCESS_TRANSFER_WRITE_BIT;b.dstAccessMask=VK_ACCESS_HOST_READ_BIT;b.srcQueueFamilyIndex=b.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED;b.buffer=staging.buffer;b.offset=read_offset;b.size=bytes;
         b.size=bytes*5;vkCmdPipelineBarrier(command,VK_PIPELINE_STAGE_TRANSFER_BIT,VK_PIPELINE_STAGE_HOST_BIT,0,0,nullptr,1,&b,0,nullptr);
     }
     void read_generated_and_inputs() {
         read(generated);read(present,1);read(hudless,2);read(motion,3);read(depth,4);
+    }
+    void snapshot_readback(){
+        staging.sync(false);
+        if(!cached.empty())for(unsigned slot=0;slot<5;slot++){
+            const size_t size=slot<3?bytes:size_t(rw)*rh*4,offset=read_offset+slot*bytes;
+            memcpy(cached.data()+offset,staging.host+offset,size);
+        }
+    }
+    void check_inputs() {
+        const size_t render_bytes=size_t(rw)*rh*4;const unsigned char *data=cpu();
+        CHECK(!memcmp(data,data+read_offset+bytes,bytes));
+        CHECK(!memcmp(data+scene_offset,data+read_offset+bytes*2,bytes));
+        CHECK(!memcmp(data+motion_offset,data+read_offset+bytes*3,render_bytes));
+        CHECK(!memcmp(data+depth_offset,data+read_offset+bytes*4,render_bytes));
     }
     void check_resource(unsigned frame) {
         staging.sync(false);CHECK(!memcmp(staging.host,staging.host+read_offset,bytes*4));
@@ -291,7 +327,7 @@ static FgLinuxImage fg_image(const Image &image) { return {image.image,image.for
 static FgLinuxFrame fg_frame(Scene &scene,uint64_t frame,bool reset=false) {
     FgLinuxFrame f{};f.commands=command;f.scene=fg_image(scene.present);f.hudless=fg_image(scene.hudless);
     f.depth=fg_image(scene.depth);f.motion=fg_image(scene.motion);f.output=fg_image(scene.generated);
-    f.motion_scale[0]=static_cast<float>(scene.w);f.motion_scale[1]=static_cast<float>(scene.h);
+    f.motion_scale[0]=static_cast<float>(scene.rw);f.motion_scale[1]=static_cast<float>(scene.rh);
     f.dt_ms=1000.f/30;f.camera_near=.1f;f.camera_far=1000;f.camera_fov=.7853982f;f.meters=1;
     f.real_frame_id=frame;f.recording_seq=recording_seq;f.completed_seq=completed_seq;f.reset=reset;return f;
 }
@@ -300,23 +336,25 @@ static void write_pixels(const char *scenario,uint64_t frame,const char *kind,co
     char name[160];CHECK(snprintf(name,sizeof name,"%s-%llu-%s.rgba",scenario,(unsigned long long)frame,kind)<static_cast<int>(sizeof name));
     FILE *f=fopen(name,"wb");CHECK(f);CHECK(fwrite(pixels,1,bytes,f)==bytes);CHECK(!fclose(f));
 }
-static Metric metric(Scene &scene,const char *name,uint64_t frame,FgLinuxResult result) {
-    scene.staging.sync(false);const unsigned char *pixels=scene.staging.host+scene.read_offset;
+static Metric metric(Scene &scene,const char *name,uint64_t frame,FgLinuxResult result,bool save=true,bool emit=true,double *snapshot_ms=nullptr) {
+    auto started=std::chrono::steady_clock::now();scene.snapshot_readback();
+    if(snapshot_ms)*snapshot_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+    const unsigned char *data=scene.cpu(),*pixels=data+scene.read_offset;
     // Interpolation must not replace or mutate the caller's real scene, HUD-less color, depth or motion.
-    CHECK(!memcmp(scene.staging.host,scene.staging.host+scene.read_offset+scene.bytes,scene.bytes*4));
+    scene.check_inputs();
     Metric m{};m.hash=hash(pixels,scene.bytes);m.rgb_hash=rgb_hash(pixels,scene.bytes);double red_x=0;
     for(uint32_t y=0;y<scene.h;y++)for(uint32_t x=0;x<scene.w;x++) {
         const size_t p=size_t(y)*scene.w+x;const unsigned char *color=pixels+4*p;
-        if(memcmp(color,scene.staging.host+4*p,4))m.changed++;
-        if(memcmp(color,scene.staging.host+4*p,3))m.rgb_changed++;
+        if(memcmp(color,data+4*p,4))m.changed++;
+        if(memcmp(color,data+4*p,3))m.rgb_changed++;
         unsigned ri=scene.present.format==VK_FORMAT_B8G8R8A8_UNORM?2:0,bi=2-ri;
         if(color[ri]>180 && color[1]<100 && color[bi]<100) {m.red++;red_x+=x;}
         if(x>=10 && x<86 && y>=10 && y<26)
-            for(unsigned c=0;c<4;c++)if(abs(int(color[c])-int(scene.staging.host[4*p+c]))>2) {m.hud_bad++;break;}
+            for(unsigned c=0;c<4;c++)if(abs(int(color[c])-int(data[4*p+c]))>2) {m.hud_bad++;break;}
     }
     m.centroid=m.red?red_x/m.red:-1;
-    write_pixels(name,frame,"output",pixels,scene.bytes);write_pixels(name,frame,"real",scene.staging.host,scene.bytes);
-    printf("FRAMEGEN {\"scenario\":\"%s\",\"frame\":%llu,\"result\":%d,\"width\":%u,\"height\":%u,\"hash\":\"%016llx\",\"rgb_hash\":\"%016llx\",\"red_pixels\":%zu,\"red_centroid_x\":%.5f,\"changed_from_real\":%zu,\"rgb_changed_from_real\":%zu,\"hud_bad_pixels\":%zu}\n",
+    if(save){write_pixels(name,frame,"output",pixels,scene.bytes);write_pixels(name,frame,"real",data,scene.bytes);}
+    if(emit)printf("FRAMEGEN {\"scenario\":\"%s\",\"frame\":%llu,\"result\":%d,\"width\":%u,\"height\":%u,\"hash\":\"%016llx\",\"rgb_hash\":\"%016llx\",\"red_pixels\":%zu,\"red_centroid_x\":%.5f,\"changed_from_real\":%zu,\"rgb_changed_from_real\":%zu,\"hud_bad_pixels\":%zu}\n",
         name,(unsigned long long)frame,result,scene.w,scene.h,(unsigned long long)m.hash,(unsigned long long)m.rgb_hash,m.red,m.centroid,m.changed,m.rgb_changed,m.hud_bad);
     return m;
 }
@@ -381,6 +419,89 @@ static void recorded_resize(const char *module) {
     CHECK(fg_linux_close(fg,completed_seq));
     printf("PASS recorded resize before submission; old context retained until actual fence completion\n");
 }
+// Optional same-binary cost comparison. Upload includes input barriers and the
+// output sentinel clear; effect is either the actual SDK recording or one
+// bit-exact real-image copy. Readback includes all immutable-input oracles.
+// CPU pattern generation, pixel checks, file output and JSON are outside timing.
+struct ProfileClock {
+    VkQueryPool queries{};
+    ProfileClock(){
+        CHECK(timestamp_bits>0 && timestamp_bits<=64 && std::isfinite(timestamp_period) && timestamp_period>0);
+        VkQueryPoolCreateInfo info{};info.sType=VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO;
+        info.queryType=VK_QUERY_TYPE_TIMESTAMP;info.queryCount=4;
+        VK_OK(vkCreateQueryPool(device,&info,nullptr,&queries));
+    }
+    ~ProfileClock(){vkDestroyQueryPool(device,queries,nullptr);}
+    void start(){vkCmdResetQueryPool(command,queries,0,4);mark(0);}
+    void mark(uint32_t i){vkCmdWriteTimestamp(command,VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,queries,i);}
+    std::array<double,4> times(){
+        uint64_t values[4]{};
+        VK_OK(vkGetQueryPoolResults(device,queries,0,4,sizeof values,values,sizeof(uint64_t),VK_QUERY_RESULT_64_BIT));
+        const uint64_t mask=timestamp_bits==64?UINT64_MAX:(UINT64_C(1)<<timestamp_bits)-1;
+        auto ms=[&](unsigned first,unsigned last){return double((values[last]-values[first])&mask)*timestamp_period/1e6;};
+        return {ms(0,1),ms(1,2),ms(2,3),ms(0,3)};
+    }
+};
+static double percentile(std::vector<double> values,double fraction){
+    CHECK(!values.empty());std::sort(values.begin(),values.end());
+    return values[static_cast<size_t>(std::ceil(fraction*values.size()))-1];
+}
+static void profile(const char *module,uint32_t width,uint32_t height){
+    constexpr unsigned warmup=3,measured=8;
+    FgLinux *fg=open_provider(module);
+    Scene scene(width,height,VK_FORMAT_R8G8B8A8_UNORM,width*2/3,height*2/3,true);
+    ProfileClock timer;
+    printf("PROFILE_CAPABILITIES {\"width\":%u,\"height\":%u,\"render_width\":%u,\"render_height\":%u,\"timestamp_bits\":%u,\"timestamp_period_ns\":%.9g,\"order\":\"off,on,on,off\",\"warmup_per_batch\":%u,\"measured_per_batch\":%u}\n",
+           width,height,scene.rw,scene.rh,timestamp_bits,timestamp_period,warmup,measured);
+    for(unsigned batch=0;batch<4;batch++){
+        const bool enabled=batch==1 || batch==2;
+        fg_linux_set_enabled(fg,enabled);
+        std::array<std::vector<double>,9> samples;
+        for(unsigned frame=0;frame<warmup+measured;frame++){
+            auto pattern_started=std::chrono::steady_clock::now();
+            scene.pattern(frame,false);
+            const double pattern_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-pattern_started).count();
+            auto record_started=std::chrono::steady_clock::now();
+            begin();timer.start();scene.upload();timer.mark(1);
+            auto input=fg_frame(scene,batch*100+frame+1,frame==0);input.depth_infinite=true;
+            FgLinuxResult result=dispatch(fg,input);
+            CHECK(result==(enabled?(frame?FG_LINUX_GENERATED:FG_LINUX_WARMUP):FG_LINUX_DISABLED));
+            if(!enabled){
+                scene.present.dependency(VK_ACCESS_TRANSFER_READ_BIT);scene.generated.dependency(VK_ACCESS_TRANSFER_WRITE_BIT);
+                VkImageCopy copy{};copy.srcSubresource=copy.dstSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.extent={width,height,1};
+                vkCmdCopyImage(command,scene.present.image,VK_IMAGE_LAYOUT_GENERAL,scene.generated.image,VK_IMAGE_LAYOUT_GENERAL,1,&copy);
+            }
+            timer.mark(2);scene.read_generated_and_inputs();timer.mark(3);
+            const double record_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-record_started).count();
+            auto started=std::chrono::steady_clock::now();finish();
+            const double submit_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count();
+            const auto gpu=timer.times();fg_linux_collect(fg,completed_seq);
+            auto oracle_started=std::chrono::steady_clock::now();double snapshot_ms=0;
+            Metric m=metric(scene,"profile-moving",frame,result,false,false,&snapshot_ms);
+            if(!enabled){CHECK(!m.changed && !m.rgb_changed && !m.hud_bad);}
+            else if(frame){
+                const double side=std::min(width,height)/4,current=width/4+frame*8+(side-1)*.5,prior=current-8;
+                CHECK(m.red>100 && !m.hud_bad && m.rgb_changed>100 && m.rgb_hash!=rgb_hash(scene.cpu(),scene.bytes));
+                CHECK(m.centroid>prior+.4 && m.centroid<current-.4 && fabs(m.centroid-(current+prior)*.5)<3);
+            }
+            const double oracle_ms=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-oracle_started).count();
+            const bool sample=frame>=warmup;
+            if(sample){for(unsigned i=0;i<4;i++)samples[i].push_back(gpu[i]);samples[4].push_back(submit_ms);samples[5].push_back(record_ms);samples[6].push_back(pattern_ms);samples[7].push_back(snapshot_ms);samples[8].push_back(oracle_ms);}
+            printf("PROFILE {\"width\":%u,\"height\":%u,\"render_width\":%u,\"render_height\":%u,\"batch\":%u,\"enabled\":%s,\"frame\":%u,\"sample\":%s,\"result\":%d,\"dt_ms\":%.6f,\"upload_gpu_ms\":%.6f,\"effect_gpu_ms\":%.6f,\"readback_gpu_ms\":%.6f,\"total_gpu_ms\":%.6f,\"submit_wait_cpu_ms\":%.6f,\"record_cpu_ms\":%.6f,\"pattern_cpu_ms\":%.6f,\"snapshot_cpu_ms\":%.6f,\"oracle_cpu_ms\":%.6f,\"rgb_hash\":\"%016llx\",\"red_centroid_x\":%.5f,\"hud_bad_pixels\":%zu,\"inputs_unchanged\":true}\n",
+                width,height,scene.rw,scene.rh,batch,enabled?"true":"false",frame,sample?"true":"false",result,input.dt_ms,
+                gpu[0],gpu[1],gpu[2],gpu[3],submit_ms,record_ms,pattern_ms,snapshot_ms,oracle_ms,(unsigned long long)m.rgb_hash,m.centroid,m.hud_bad);
+        }
+        const char *names[]={"upload_gpu","effect_gpu","readback_gpu","total_gpu","submit_wait_cpu","record_cpu","pattern_cpu","snapshot_cpu","oracle_cpu"};
+        printf("PROFILE_SUMMARY {\"width\":%u,\"height\":%u,\"batch\":%u,\"enabled\":%s,\"samples\":%u",width,height,batch,enabled?"true":"false",measured);
+        for(unsigned i=0;i<9;i++)printf(",\"%s_p50_ms\":%.6f,\"%s_p95_ms\":%.6f,\"%s_min_ms\":%.6f,\"%s_max_ms\":%.6f",
+            names[i],percentile(samples[i],.5),names[i],percentile(samples[i],.95),names[i],percentile(samples[i],1./measured),names[i],percentile(samples[i],1));
+        puts("}");
+    }
+    FgLinuxStats stats{};fg_linux_stats(fg,&stats);
+    CHECK(stats.real_frames==2*(warmup+measured) && stats.generated_recordings==2*(warmup+measured-1) && stats.resets==2 && !stats.failures);
+    CHECK(fg_linux_close(fg,completed_seq));
+    printf("PASS authored GPU profile %ux%u with lower-resolution depth/motion, ABBA repeats and pixel/HUD/input oracles; no physical WSI/pacing measurement\n",width,height);
+}
 static void provider_tests(const char *module) {
     char error[256]{};CHECK(!fg_linux_open("/tmp/not-an-installed-framegen-provider.so",physical,device,vkGetDeviceProcAddr,error,sizeof error));CHECK(*error);
     sequence(module,false);sequence(module,true);sequence(module,false,VK_FORMAT_B8G8R8A8_UNORM);history_sequence(module);recorded_resize(module);
@@ -398,17 +519,28 @@ static void shutdown() {
     vkDestroyInstance(instance,nullptr);CHECK(!validation_errors);
 }
 int main(int argc,char **argv) {
-    setvbuf(stdout,nullptr,_IOLBF,0);const char *state{},*module{};bool probe{},headless{};
+    setvbuf(stdout,nullptr,_IOLBF,0);const char *state{},*module{};bool probe{},headless{},profiling{};
+    std::vector<std::array<uint32_t,2>> sizes;
     for(int i=1;i<argc;i++) {
         if(!strcmp(argv[i],"--state-root") && i+1<argc)state=argv[++i];
         else if(!strcmp(argv[i],"--resource-probe"))probe=true;
         else if(!strcmp(argv[i],"--headless-wsi-probe"))headless=true;
         else if(!strcmp(argv[i],"--sdk-library") && i+1<argc)module=argv[++i];
+        else if(!strcmp(argv[i],"--profile"))profiling=true;
+        else if(!strcmp(argv[i],"--size") && i+1<argc){
+            const char *size=argv[++i];
+            if(!strcmp(size,"720p"))sizes.push_back({1280,720});
+            else if(!strcmp(size,"1440p"))sizes.push_back({2560,1440});
+            else CHECK(!"unsupported authored profile size");
+            CHECK(sizes.size()<=2);
+        }
         else CHECK(!"unknown argument");
     }
+    CHECK((!profiling || module) && (profiling || sizes.empty()));
     CHECK(state && probe);private_state(state);create_device(headless);resource_probe();
 #ifdef FG_LINUX_PROVIDER
-    if(module)provider_tests(module);else unavailable_provider_test();
+    if(module){provider_tests(module);if(profiling){if(sizes.empty())sizes={{{1280,720}},{{2560,1440}}};for(auto size:sizes)profile(module,size[0],size[1]);}}
+    else unavailable_provider_test();
 #else
     CHECK(!module);
 #endif

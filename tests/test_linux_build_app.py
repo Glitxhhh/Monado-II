@@ -64,10 +64,10 @@ class LinuxBuildApp(unittest.TestCase):
             make_image(Path(command[command.index('--output') + 1]))
         return 0
 
-    def run_build(self, identity='test-first', *, dlss=True):
+    def run_build(self, identity='test-first', *, dlss=True, framegen=False):
         with contextlib.redirect_stdout(io.StringIO()):
             return build.build(self.root, 3, runner=self.runner,
-                               locker=lambda port: contextlib.nullcontext(), identity=identity, dlss=dlss)
+                               locker=lambda port: contextlib.nullcontext(), identity=identity, dlss=dlss, framegen=framegen)
 
     def test_plan_without_input_is_read_only_and_executes_nothing(self):
         (self.input / 'exefs/authored-input-fixture.txt').unlink()
@@ -81,6 +81,7 @@ class LinuxBuildApp(unittest.TestCase):
         self.assertFalse(document['launches_gui'])
         self.assertEqual(document['mode'], 'plan')
         self.assertTrue(document['dlss_enabled'])
+        self.assertFalse(document['framegen_enabled'])
         stages = {stage['name']: stage['argv'] for stage in document['commands']}
         self.assertIn('native-dlss-dependency', stages)
         self.assertIn('--dlss', stages['build-game'])
@@ -261,6 +262,7 @@ class LinuxBuildApp(unittest.TestCase):
         self.assertTrue((self.root / build.IMAGE).is_file())
         self.assertEqual(build.image_pair(self.root / build.IMAGE)['sha256'], receipt['appimage_sha256'])
         self.assertTrue(receipt['dlss_enabled'])
+        self.assertFalse(receipt['framegen_enabled'])
         self.assertTrue(all('--framegen' not in c for c, _, _ in self.commands))
         self.assertEqual(Path(receipt['commands'][-1]['log']).name,
                          f'{len(receipt["commands"]):02d}-check-appimage.log')
@@ -290,7 +292,92 @@ class LinuxBuildApp(unittest.TestCase):
     def test_without_dlss_cli_is_passed_to_the_builder(self):
         with mock.patch.object(build, 'build') as run:
             self.assertEqual(build.main(['--without-dlss', '--jobs', '2']), 0)
-        run.assert_called_once_with(jobs=2, dlss=False, reuse_game=None)
+        run.assert_called_once_with(jobs=2, dlss=False, reuse_game=None, framegen=False)
+
+    def test_framegen_optin_fetches_and_builds_missing_sdk_before_game(self):
+        state = self.port / 'play/launcher'
+        state.mkdir(parents=True)
+        config = state / 'xcde.ini'
+        config.write_text('[graphics]\nframe_gen = 0\ncutscenes = off\n')
+        before = inventory(state)
+        receipt = self.run_build(framegen=True)
+        self.assertTrue(receipt['framegen_enabled'])
+        stages = {row['name']: row['argv'] for row in receipt['commands']}
+        self.assertIn('--fetch', stages['framegen-source'])
+        dependency = stages['native-framegen-dependency']
+        self.assertIn('--build', dependency)
+        self.assertEqual(Path(dependency[dependency.index('--output') + 1]), self.port / '.deps/fsr/build/test-first')
+        self.assertIn('--framegen', stages['build-game'])
+        self.assertIn('--dlss', stages['build-game'])
+        names = [row['name'] for row in receipt['commands']]
+        self.assertLess(names.index('graphics-dependencies'), names.index('framegen-source'))
+        self.assertLess(names.index('framegen-source'), names.index('native-framegen-dependency'))
+        self.assertLess(names.index('native-framegen-dependency'), names.index('build-game'))
+        self.assertEqual(inventory(state), before)
+
+    def test_framegen_plan_reuses_verified_local_sdk_without_fetch_or_build(self):
+        sdk = self.port / '.deps/fsr/build/verified-sdk'
+        sdk.mkdir(parents=True)
+        library = sdk / 'libmonado-fidelityfx.so'
+        library.write_text('authored never-loaded library identity fixture')
+        with mock.patch.object(build, 'existing_framegen_sdk', return_value={'library_path': str(library)}) as verify:
+            before = inventory(self.root)
+            paths, commands = build.layout(self.root, 2, identity='verify-sdk', framegen=True)
+        verify.assert_called_once_with(self.port)
+        stages = dict(commands)
+        self.assertNotIn('framegen-source', stages)
+        self.assertNotIn('--build', stages['native-framegen-dependency'])
+        self.assertEqual(Path(stages['native-framegen-dependency'][-1]), self.port / 'scripts/setup_linux_fsr.py')
+        self.assertEqual(paths['framegen_sdk'], sdk)
+        self.assertEqual(inventory(self.root), before)
+
+    def test_framegen_stale_sdk_fails_without_overwrite_fetch_or_game_commands(self):
+        active = self.port / '.deps/fsr/active-build.txt'
+        active.parent.mkdir(parents=True)
+        active.write_text('authored stale dependency marker')
+        script = self.port / 'scripts/setup_linux_fsr.py'
+        script.parent.mkdir(parents=True)
+        script.write_text('def verify_existing():\n    raise ValueError("SDK recipe hash changed")\n')
+        before = inventory(self.root)
+        with self.assertRaisesRegex(build.BuildError, 'SDK failed verification.*recipe hash changed'):
+            self.run_build(framegen=True)
+        self.assertEqual(self.commands, [])
+        self.assertEqual(inventory(self.root), before)
+
+    def test_framegen_without_dlss_stops_before_input_layout_or_preflight(self):
+        before = inventory(self.root)
+        with mock.patch.object(build, 'prepare_input_layout') as prepare, \
+                mock.patch.object(build, 'preflight') as preflight, \
+                self.assertRaisesRegex(build.BuildError, 'cannot be combined'):
+            self.run_build(dlss=False, framegen=True)
+        prepare.assert_not_called()
+        preflight.assert_not_called()
+        self.assertEqual(self.commands, [])
+        self.assertEqual(inventory(self.root), before)
+
+    def test_framegen_dependency_failure_preserves_existing_image_before_game(self):
+        make_image(self.root / build.IMAGE, b'previous known image')
+        original = (self.root / build.IMAGE).read_bytes()
+        self.fail_stage = '--build --output'
+        with self.assertRaisesRegex(build.BuildError, 'native-framegen-dependency failed'):
+            self.run_build(framegen=True)
+        receipt = json.loads((self.port / 'runs/local-build/test-first/receipt.json').read_text())
+        self.assertEqual(receipt['status'], 'failed')
+        self.assertTrue(receipt['framegen_enabled'])
+        self.assertEqual(receipt['commands'][-1]['name'], 'native-framegen-dependency')
+        self.assertFalse(any('--generated' in command for command, _, _ in self.commands))
+        self.assertEqual((self.root / build.IMAGE).read_bytes(), original)
+
+    def test_framegen_cli_optin_and_readonly_plan_record_the_feature(self):
+        with mock.patch.object(build, 'build') as operation:
+            self.assertEqual(build.main(['--framegen', '--jobs', '2']), 0)
+        operation.assert_called_once_with(jobs=2, dlss=True, reuse_game=None, framegen=True)
+        before = inventory(self.root)
+        with mock.patch.object(build, 'ROOT', self.root), contextlib.redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(build.main(['--plan', '--framegen']), 0)
+        plan = json.loads(output.getvalue())
+        self.assertTrue(plan['framegen_enabled'])
+        self.assertEqual(inventory(self.root), before)
 
     def test_second_build_is_fresh_and_preserves_verified_previous_pair(self):
         self.run_build()

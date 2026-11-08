@@ -33,8 +33,8 @@ generated locally on each player's machine and must stay out of Git and releases
 | Linux x86-64 | Native SDL/Vulkan port, high-refresh timing fixes, menu-speed preference, native DLSS/DLAA and optional shader preparation | Opening cutscenes/battles through first character control tested by the maintainer; full game, Future Connected and save/recovery coverage remain incomplete |
 | Windows x86-64 | Original Monado implementation retained | Original author reported full-game playability on NVIDIA RTX; this fork has not independently built or validated Windows, and Linux improvements are queued in [TODO](TODO.md) |
 
-**Linux frame generation is experimental. It may run slowly and show visual
-glitches; leaving it off is recommended.** FSR 3.1 Super Resolution remains
+**Linux frame generation is experimental. Performance varies: it may run worse,
+stutter or show visual glitches; leaving it off is recommended.** FSR 3.1 Super Resolution remains
 unavailable on Linux. Windows retains its own vendor integrations. Other GPUs,
 drivers and long sessions need more validation; component tests are not full-game
 qualification. See [platform status](docs/PLATFORM_STATUS.md).
@@ -47,7 +47,14 @@ on the left. Its exact asset and origin are documented in the
 The separate local sword icon remains excluded. Broader gameplay/UI validation
 remains incomplete.
 
-## Source releases and local builds
+## Setup downloads and local builds
+
+Download the [Linux setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.5/monado-ii-0.1.5-linux-setup.tar.gz)
+or [Windows setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.5/monado-ii-0.1.5-windows-setup.zip)
+from the release, and verify its checksum. These contain source and setup tools;
+you provide your own input and build locally. For Linux app launchers such as
+Quiver, select **`App_Monado_II.sh`**: it shows first-build progress in an installed
+terminal, then opens the launcher. See [Quiver setup and limitations](docs/QUIVER.md).
 
 On Linux, put your own extracted input in `game_files/exefs` and `game_files/romfs`
 beside the downloaded kit, then run **`./Build_Monado_II.sh`**. It builds locally and
@@ -61,7 +68,9 @@ The normal Linux build includes native **DLSS Super Resolution / DLAA** support
 for compatible NVIDIA hardware. It fetches the pinned official NVIDIA SDK locally;
 SDK binaries/models are not included in source kits or the launcher image.
 Use `./Build_Monado_II.sh --without-dlss` to explicitly omit that provider.
-Frame generation remains a separate optional experimental build feature.
+Frame generation remains optional and experimental. Compile its native support
+with `./Build_Monado_II.sh --framegen` (requires DLSS/DLAA), then enable it manually
+in the launcher. It remains off by default; see the [build guide](docs/BUILD_LINUX.md#experimental-frame-generation-build).
 
 Starting with **0.1.3**, the Linux launcher quietly checks for newer stable
 releases on startup. A newer release offers **Update** or **Later**. Update
@@ -78,16 +87,18 @@ a new folder is a separate installation and does not import an older profile.
 See [Linux updating and rollback](docs/BUILD_LINUX.md#4-update-and-roll-back).
 Windows does not yet have this updater.
 
-Releases provide separate **Linux source/setup `.tar.gz`** and **Windows
-source/setup `.zip`** kits. They are **not precompiled playable game downloads**.
+Releases provide separate **Linux setup `.tar.gz`** and **Windows setup `.zip`**
+kits containing reviewed source. They are **not precompiled playable game downloads**.
 You build the game locally from your own verified dump. No compiled game binary,
 private vendor SDK binary, game-derived cache or user data is distributed.
-Version 0.1.4 uses the regular release channel; the platform and coverage limits
-above still apply.
+Version 0.1.5 uses the regular release channel; frame generation remains an
+experimental optional feature. A legacy Linux `-source` download remains solely
+for compatibility with installed updaters. New downloads use the `-setup` kit.
 
 - [Linux build instructions](docs/BUILD_LINUX.md)
 - [Windows build instructions](docs/BUILD_WINDOWS.md)
 - [Release contents and verification](docs/RELEASING.md)
+- [Quiver entrypoint and re-review details](docs/QUIVER.md)
 - [Changelog and differences from upstream](CHANGELOG.md)
 
 The source tree keeps `Monado_Linux/` and `Monado_Windows/` separate. Use one

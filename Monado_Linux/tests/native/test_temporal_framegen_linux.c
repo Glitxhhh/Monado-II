@@ -63,7 +63,7 @@ static void reset(void){
  memset(&g_settings,0,sizeof g_settings);g_settings.upscaler=UPSCALE_DLSS;g_settings.frame_gen=true;g_settings.upscale_quality=UQ_QUALITY;
  memset(&provider,0,sizeof provider);memset(&linux_fg_frame,0,sizeof linux_fg_frame);memset(img,0,sizeof img);
  memset(&linux_fg_real,0,sizeof linux_fg_real);memset(&linux_fg_output,0,sizeof linux_fg_output);memset(&linux_fg_hud,0,sizeof linux_fg_hud);
- linux_fg=NULL;linux_fg_tried=linux_fg_pending=linux_fg_hudless=linux_fg_generated=linux_fg_error_logged=linux_fg_rect_valid=false;
+ linux_fg=NULL;linux_fg_tried=linux_fg_pending=linux_fg_hudless=linux_fg_generated=linux_fg_error_logged=linux_fg_rect_valid=linux_fg_repeat_ready=false;
  memset(linux_fg_rect,0,sizeof linux_fg_rect);linux_fg_quality=0;
  cutscene=deterministic=fail_dispatch=no_hud=tmp_off=false;provider_present=true;calls=opens=resource_queries=errors=copies=0;next_image=0x800;real_frame=1;
  g_vk.phys=(VkPhysicalDevice)(uintptr_t)0x11;g_vk.dev=(VkDevice)(uintptr_t)0x22;g_vk.sc_extent=(VkExtent2D){64,32};g_vk.sc_format=VK_FORMAT_R8G8B8A8_UNORM;
@@ -75,8 +75,37 @@ static void prepare_rect(float x,float y,float width,float height){linux_fg_prep
 static void prepare(void){prepare_rect(0,0,64,32);}
 static bool record(void){VkImage base=VK_NULL_HANDLE;float ms=0;bool ok=tmp_fg_record_present(command,(VkImage)(uintptr_t)0x700,&base,&ms);
  if(ok)assert(base&&ms==16.f);else assert(!base&&ms==0);return ok;}
+static bool repeat_suppressed(void){
+#ifdef FG_TEST_LEGACY_REPEAT_GATE
+ // Retain the old device.c predicate as a bounded failing regression reproducer.
+ return tmp_fg_active();
+#else
+ return tmp_fg_repeat_suppressed();
+#endif
+}
+static bool ordinary_repeat(void){
+ if(repeat_suppressed())return false;
+ // An ordinary FIFO redraw re-enters vk_frame_end without a new temporal prepare.
+ assert(!record());return true;
+}
 int main(void){
  unsigned cases=0;
+ reset();assert(!repeat_suppressed());prepare();assert(!repeat_suppressed());assert(!record()&&provider.history&&!tmp_fg_active());
+ bool repeated=ordinary_repeat();real_frame++;prepare();bool generated=record();
+ if(repeated||!generated)fprintf(stderr,"warmup/repeat regression: ordinary_repeat=%d second_generated=%d SDK_calls=%u\n",repeated,generated,calls);
+ assert(!repeated&&generated&&calls==2&&!observed.reset&&repeat_suppressed());cases++;
+ // The helper describes a successful current warmup or generated frame, not a
+ // requested setting alone. Fallback must retain ordinary FIFO frame repetition.
+ g_settings.frame_gen=false;assert(!repeat_suppressed()&&ordinary_repeat());cases++;
+ reset();prepare();assert(!record()&&repeat_suppressed());g_settings.upscaler=UPSCALE_FSR1;
+ assert(!repeat_suppressed()&&ordinary_repeat());cases++;
+ reset();g_settings.frame_gen=false;g_settings.cutscene_mode=2;cutscene=true;prepare();assert(!record()&&repeat_suppressed());
+ cutscene=false;assert(!repeat_suppressed()&&ordinary_repeat());cases++;
+ reset();fail_dispatch=true;prepare();assert(!record()&&calls==1&&!repeat_suppressed()&&ordinary_repeat());
+ real_frame++;prepare();assert(!record()&&calls==2&&!repeat_suppressed()&&ordinary_repeat());cases++;
+ reset();provider_present=false;prepare();assert(!record()&&!calls&&!repeat_suppressed()&&ordinary_repeat());cases++;
+ reset();prepare();assert(!record()&&repeat_suppressed());tmp_fg_invalidate();assert(!repeat_suppressed()&&ordinary_repeat());cases++;
+ reset();prepare();assert(!record()&&repeat_suppressed());real_frame++;assert(!repeat_suppressed());cases++;
  reset();prepare();assert(tmp_fg_hudless_target());assert(!record()&&calls==1&&observed.reset&&observed.hudless.image&&linux_fg_rect_valid&&!tmp_fg_active());cases++;
  real_frame++;prepare();assert(tmp_fg_hudless_target());assert(record()&&calls==2&&!observed.reset&&tmp_fg_active());cases++;
  real_frame++;prepare_rect(4,2,56,28);assert(!record()&&observed.reset&&linux_fg_rect_valid&&!tmp_fg_active());cases++;
