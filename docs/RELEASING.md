@@ -6,7 +6,7 @@ not playable game binaries. Each player generates game code locally from their
 own legally dumped input. No game content, generated code, translated shaders,
 caches, seeds, keys, firmware, saves, mods or private SDK binaries are distributed.
 
-Version 0.1.2 is a regular release, with GitHub's prerelease option disabled.
+Version 0.1.3 is a regular release, with GitHub's prerelease option disabled.
 This channel change does not establish Windows game-build or full-game coverage.
 The exact reviewed generated launcher illustration is included with its
 [provenance](../Monado_Linux/tools/launcher/assets/ARTWORK_PROVENANCE.md) and root
@@ -18,6 +18,29 @@ that image nor its receipt/staging files is a source release asset. Use a fresh
 reviewed export for release checks, not an end-user folder containing input or
 generated builds. Never remove a user's input/state to make a release guard pass.
 
+Version 0.1.3 introduces the Linux stable-release updater. The 0.1.2 launcher has
+no update client, so users must manually apply/build 0.1.3 once. The verified
+source kit can be merged into the same original installation without deleting
+its input/build/profile directories; the Linux guide gives the checksum and
+clean-kit checks. A fresh kit in another folder remains a separate profile.
+Later managed updates leave installed source directories untouched and
+download reviewed source and rebuild locally, retaining a compatible game only
+for conservatively classified launcher-only changes. No precompiled game or
+vendor SDK is delivered by this updater, and it does not update Windows.
+Release-owned source modifications stop automatic installation; user profiles
+remain outside the source manifest. See the
+[Linux update/rollback guide](BUILD_LINUX.md#4-update-and-roll-back).
+
+Managed workspaces, downloads, generated outputs and logs under
+`Monado_Linux/updates/` are runtime artifacts, excluded from tracked source and
+release kits. Never package an end-user update directory. Version paths remain
+fixed after building; activation changes a checked local pointer rather than
+moving or replacing source, game input or saves. Release discovery accepts newer
+stable versions and requires the official Linux source asset's size/SHA-256 plus
+its exact source manifest and policy checks. Publish the matching version metadata
+and Linux source-kit asset together; retaining a stable version tag alone does not
+make an incompatible archive suitable for the updater.
+
 From a reviewed clean public checkout:
 
 ```sh
@@ -25,8 +48,8 @@ From a reviewed clean public checkout:
 MONADO_RELEASE_SOURCE="$(pwd -P)"
 MONADO_RELEASE_PARENT="$(dirname "$MONADO_RELEASE_SOURCE")"
 python -B tools/publication_guard.py "$MONADO_RELEASE_SOURCE"
-python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform linux --version 0.1.2 --output "$MONADO_RELEASE_PARENT/monado-ii-linux-release"
-python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform windows --version 0.1.2 --output "$MONADO_RELEASE_PARENT/monado-ii-windows-release"
+python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform linux --version 0.1.3 --output "$MONADO_RELEASE_PARENT/monado-ii-linux-release"
+python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform windows --version 0.1.3 --output "$MONADO_RELEASE_PARENT/monado-ii-windows-release"
 ```
 
 Outputs must be fresh. The packager verifies the exact publication manifest and

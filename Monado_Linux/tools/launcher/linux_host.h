@@ -17,15 +17,16 @@
 #include <vector>
 #include <string>
 #include "../../runtime/paths.h"
+#include "linux_update.h"
 extern "C" {
 #include "../../runtime/platform/linux_state_guard.h"
 }
 namespace launcher_linux {
-static std::string project, input, game;
+static std::string project, game_project, input, game;
 static std::vector<std::string> test_environment;
 static pid_t game_pid;
 static pid_t precompile_pid;  // [XCDE] LINUX-018: one owned activity at a time
-static bool activity_busy() { return game_pid != 0 || precompile_pid != 0; }
+static bool activity_busy() { return game_pid != 0 || precompile_pid != 0 || update_applying(); }
 static bool game_seen;
 static int last_result;
 static std::string error;
@@ -111,7 +112,7 @@ static pid_t spawn(const std::vector<std::string> &args, const std::string &log_
 }
 static bool start_game(const std::string &state) {
     if (activity_busy()) { error = "A game or shader precompiler is already running"; return false; }
-    std::vector<std::string> args = {"/usr/bin/python3", "-B", project + "/scripts/run_linux.py", "--executable", game,
+    std::vector<std::string> args = {"/usr/bin/python3", "-B", (game_project.empty() ? project : game_project) + "/scripts/run_linux.py", "--executable", game,
         "--state-root", state, "--env", "XCDE_STRICT=1", "--env", "XCDE_NO_ERROR_DIALOG=1", "--env", "XCDE_INI=" + state + "/xcde.ini"};
     for (const auto &entry : test_environment) { args.push_back("--env"); args.push_back(entry); }
     game_pid = spawn(args, state + "/logs/launcher-game.log"); game_seen = false; last_result = 1;

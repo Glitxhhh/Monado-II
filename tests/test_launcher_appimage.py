@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import types
@@ -56,6 +57,10 @@ class FixtureBase(unittest.TestCase):
             path.write_text('Authored license fixture\n')
         self.templates = self.root / 'tools/appimage'
         shutil.copytree(ROOT / 'tools/appimage', self.templates)
+        scripts = self.port / 'scripts'
+        scripts.mkdir()
+        shutil.copyfile(ROOT / 'Monado_Linux/scripts/install_layout.py', scripts / 'install_layout.py')
+        (self.root / 'tools/update_linux.py').write_text('def dispatch_active(workspace, argv):\n    return None\n')
         patch = mock.patch.object(image, 'TEMPLATES', self.templates)
         patch.start()
         self.addCleanup(patch.stop)
@@ -239,7 +244,6 @@ class AppImageFixtures(FixtureBase):
         directory, _ = self.appdir()
         appimage = self.root / 'Monado-II-x86_64.AppImage'
         appimage.write_bytes(elf(runtime=True))
-        (self.port / 'scripts').mkdir()
         called = []
         wrapper = types.SimpleNamespace(main=lambda args: called.append(args) or 0)
         with mock.patch.object(driver, '__file__', str(directory / 'usr/lib/monado-ii/driver.py')), \
@@ -252,15 +256,163 @@ class AppImageFixtures(FixtureBase):
         self.assertFalse((self.port / 'play').exists())
 
     def test_driver_has_no_automatic_play_or_test_input_flags(self):
-        for flag in ('--play', '--ui-script', '--state-root', '--game-executable'):
+        for flag in ('--play', '--ui-script', '--game-executable'):
             with self.subTest(flag=flag), mock.patch('sys.stderr'), self.assertRaises(SystemExit) as failure:
                 driver.main([flag])
             self.assertEqual(failure.exception.code, 2)
+
+    def test_driver_delegates_checked_active_version_and_preserves_explicit_profile(self):
+        directory, _ = self.appdir()
+        appimage = self.root / 'Monado-II-x86_64.AppImage'
+        appimage.write_bytes(elf(runtime=True))
+        active = self.port / 'updates/accepted/workspace/Monado-II-x86_64.AppImage'
+        (self.root / 'tools/update_linux.py').write_text(
+            'def dispatch_active(workspace, argv):\n'
+            '    return [' + repr(str(active)) + ', "--appimage-extract-and-run", *argv]\n')
+        state = self.port / 'runs/isolated/state'
+        args = ['--dry-run', '--state-root', str(state)]
+        with mock.patch.object(driver, '__file__', str(directory / 'usr/lib/monado-ii/driver.py')), \
+                mock.patch.dict(os.environ, {'APPIMAGE': str(appimage)}), \
+                mock.patch.object(driver.os, 'execv') as execute, \
+                mock.patch.object(driver.importlib, 'import_module') as load_launcher:
+            self.assertEqual(driver.main(args), 0)
+        execute.assert_called_once_with(str(active), [str(active), '--appimage-extract-and-run', *args])
+        load_launcher.assert_not_called()
+        self.assertFalse(state.exists())
+
+    def test_driver_rejects_external_profile_before_dispatch_or_launcher(self):
+        directory, _ = self.appdir()
+        appimage = self.root / 'Monado-II-x86_64.AppImage'
+        appimage.write_bytes(elf(runtime=True))
+        (self.root / 'tools/update_linux.py').write_text('raise AssertionError("must not load updater")\n')
+        for state in (self.root / 'game_files/save', self.base / 'outside/save', self.port / 'play'):
+            with self.subTest(state=state), \
+                    mock.patch.object(driver, '__file__', str(directory / 'usr/lib/monado-ii/driver.py')), \
+                    mock.patch.dict(os.environ, {'APPIMAGE': str(appimage)}), \
+                    mock.patch('sys.stderr'), self.assertRaises(SystemExit) as failure:
+                driver.main(['--dry-run', '--state-root', str(state)])
+            self.assertEqual(failure.exception.code, 1)
+        self.assertFalse((self.root / 'game_files').exists())
+
+    def test_driver_explicit_original_profile_reaches_checked_launcher(self):
+        directory, _ = self.appdir()
+        appimage = self.root / 'Monado-II-x86_64.AppImage'
+        appimage.write_bytes(elf(runtime=True))
+        state = self.port / 'runs/private-validation/state'
+        called = []
+        wrapper = types.SimpleNamespace(main=lambda args: called.append(args) or 0)
+        with mock.patch.object(driver, '__file__', str(directory / 'usr/lib/monado-ii/driver.py')), \
+                mock.patch.dict(os.environ, {'APPIMAGE': str(appimage)}), \
+                mock.patch.object(driver.importlib, 'import_module', return_value=wrapper):
+            self.assertEqual(driver.main(['--state-root', str(state), '--dry-run']), 0)
+        self.assertIn(str(state), called[0])
+        self.assertFalse(state.exists())
+
+    def test_driver_rejects_malformed_dispatch_command(self):
+        directory, _ = self.appdir()
+        appimage = self.root / 'Monado-II-x86_64.AppImage'
+        appimage.write_bytes(elf(runtime=True))
+        for command in ([], ['relative-image'], ['/' + 'authored', 42], ['/' + 'authored\x00']):
+            (self.root / 'tools/update_linux.py').write_text(
+                'def dispatch_active(workspace, argv):\n    return ' + repr(command) + '\n')
+            with self.subTest(command=command), \
+                    mock.patch.object(driver, '__file__', str(directory / 'usr/lib/monado-ii/driver.py')), \
+                    mock.patch.dict(os.environ, {'APPIMAGE': str(appimage)}), \
+                    mock.patch.object(driver.os, 'execv') as execute, \
+                    mock.patch('sys.stderr'), self.assertRaises(SystemExit) as failure:
+                driver.main(['--dry-run'])
+            self.assertEqual(failure.exception.code, 1)
+            execute.assert_not_called()
+
+    def test_bound_game_selection_uses_only_the_marker_selected_port(self):
+        workspace = self.port / 'updates/accepted/workspace'
+        candidate = workspace / 'Monado_Linux'
+        (candidate / 'scripts').mkdir(parents=True)
+        shutil.copyfile(ROOT / 'Monado_Linux/scripts/install_layout.py', candidate / 'scripts/install_layout.py')
+        (workspace / 'installation.json').write_text(json.dumps({'schema': 1,
+            'owner': str(self.root), 'workspace': str(workspace), 'game_port': str(self.port)}))
+        gui = candidate / 'build/new-gui/monado-launcher'
+        gui.parent.mkdir(parents=True)
+        gui.write_bytes(elf())
+        directory, _ = self.appdir()
+        selection = directory / 'usr/share/monado-ii/selection.json'
+        selection.write_bytes(image.encoded({'schema': 1, 'project': 'Monado II',
+            'launcher': 'Monado_Linux/build/new-gui/monado-launcher',
+            'game': 'Monado_Linux/build/game/xcde-linux', 'game_port': 'bound'}))
+        self.assertEqual(driver.selection_paths(directory, workspace), {'launcher': gui, 'game': self.game})
+        (workspace / 'installation.json').unlink()
+        with self.assertRaisesRegex(ValueError, 'separate bound'):
+            driver.selection_paths(directory, workspace)
+
+    def test_managed_driver_keeps_original_profile_and_bound_game(self):
+        workspace = self.port / 'updates/accepted/workspace'
+        candidate = workspace / 'Monado_Linux'
+        (candidate / 'scripts').mkdir(parents=True)
+        shutil.copyfile(ROOT / 'Monado_Linux/scripts/install_layout.py', candidate / 'scripts/install_layout.py')
+        (workspace / 'installation.json').write_text(json.dumps({'schema': 1,
+            'owner': str(self.root), 'workspace': str(workspace), 'game_port': str(self.port)}))
+        (workspace / 'tools').mkdir()
+        (workspace / 'tools/update_linux.py').write_text('def dispatch_active(workspace, argv):\n    return None\n')
+        gui = candidate / 'build/new-gui/monado-launcher'
+        gui.parent.mkdir(parents=True)
+        gui.write_bytes(elf())
+        appimage = workspace / 'Monado-II-x86_64.AppImage'
+        appimage.write_bytes(elf(runtime=True))
+        directory, files = self.appdir()
+        selection = 'usr/share/monado-ii/selection.json'
+        files[selection] = (image.encoded({'schema': 1, 'project': 'Monado II',
+            'launcher': 'Monado_Linux/build/new-gui/monado-launcher',
+            'game': 'Monado_Linux/build/game/xcde-linux', 'game_port': 'bound'}), 0o644)
+        files[image.MANIFEST] = (image.encoded({'schema': 1, 'project': 'Monado II',
+            'files': image.identity_map({name: value for name, value in files.items() if name != image.MANIFEST})}), 0o644)
+        for name in (selection, image.MANIFEST):
+            (directory / name).write_bytes(files[name][0])
+        called = []
+        wrapper = types.SimpleNamespace(main=lambda args: called.append(args) or 0)
+        state = self.port / 'runs/preserved-profile/state'
+        with mock.patch.object(driver, '__file__', str(directory / 'usr/lib/monado-ii/driver.py')), \
+                mock.patch.dict(os.environ, {'APPIMAGE': str(appimage)}), \
+                mock.patch.object(driver.importlib, 'import_module', return_value=wrapper):
+            self.assertEqual(driver.main(['--dry-run', '--state-root', str(state)]), 0)
+        self.assertEqual(called, [['--launcher-executable', str(gui), '--game-executable', str(self.game),
+            '--packaged-launcher', str(directory / 'usr/bin/monado-launcher'), '--state-root', str(state), '--dry-run']])
+        self.assertFalse(state.exists())
+        self.assertFalse((candidate / 'play').exists())
 
 
 @unittest.skipUnless(sys.platform == 'linux' and shutil.which('mksquashfs') and shutil.which('unsquashfs'),
                      'native Linux squashfs-tools required for archive readback fixtures')
 class ActualSquashfsFixtures(FixtureBase):
+    def test_private_caller_umask_roundtrip_preserves_caller_and_parent_masks(self):
+        def current_mask():
+            return int(next(line.split(':', 1)[1].strip() for line in
+                Path('/proc/self/status').read_text().splitlines() if line.startswith('Umask:')), 8)
+        before = current_mask()
+        script = '''import importlib.util,json,pathlib,sys
+root=pathlib.Path(sys.argv[1])
+spec=importlib.util.spec_from_file_location("monado_private_umask_fixture",root/"tests/test_launcher_appimage.py")
+fixture_module=importlib.util.module_from_spec(spec)
+spec.loader.exec_module(fixture_module)
+def mask():
+    return int(next(line.split(":",1)[1].strip() for line in pathlib.Path("/proc/self/status").read_text().splitlines() if line.startswith("Umask:")),8)
+fixture=fixture_module.ActualSquashfsFixtures("test_actual_archive_bytes_deterministic_for_same_local_selection")
+fixture.setUp()
+try:
+    before=mask()
+    assert before==0o077,before
+    receipt=fixture.package("private-caller-mask")
+    after=mask()
+    assert after==before,(before,after)
+    print(json.dumps({"before":before,"after":after,"readback":receipt["archive_readback_verified"]}))
+finally:
+    fixture.doCleanups()
+'''
+        result = subprocess.run([sys.executable, '-I', '-B', '-c', script, str(ROOT)],
+            capture_output=True, text=True, timeout=180, umask=0o077)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(json.loads(result.stdout), {'before': 0o077, 'after': 0o077, 'readback': True})
+        self.assertEqual(current_mask(), before)
+
     def test_actual_archive_readback_contains_only_launcher_and_authored_metadata(self):
         receipt = self.package()
         output = Path(receipt['output'])
@@ -291,6 +443,34 @@ class ActualSquashfsFixtures(FixtureBase):
         with mock.patch.object(image, 'command', side_effect=corrupt), self.assertRaises(image.AppImageError):
             self.package()
         self.assertFalse((self.port / 'build/result/Monado-II-x86_64.AppImage').exists())
+
+    def test_managed_archive_records_bound_game_without_copying_its_bytes(self):
+        workspace = self.port / 'updates/reuse/workspace'
+        candidate = workspace / 'Monado_Linux'
+        candidate.mkdir(parents=True)
+        (workspace / 'installation.json').write_text(json.dumps({'schema': 1,
+            'owner': str(self.root), 'workspace': str(workspace), 'game_port': str(self.port)}))
+        for name in ('LICENSE', 'CREDITS.md', 'NOTICE.md',
+                'Monado_Linux/third_party/imgui/LICENSE.txt',
+                'Monado_Linux/tools/launcher/assets/fonts/LICENSE-DejaVu.txt'):
+            target = workspace / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(self.root / name, target)
+        gui = candidate / 'build/new-gui/monado-launcher'
+        gui.parent.mkdir(parents=True)
+        gui.write_bytes(elf())
+        gui.chmod(0o755)
+        provider = lambda launcher, game, root: {'launcher_sha256': image.digest(gui.read_bytes()),
+                                                'game_sha256': image.digest(self.game.read_bytes())}
+        output = candidate / 'build/image/Monado-II-x86_64.AppImage'
+        original = self.game.read_bytes()
+        receipt = image.package(gui, self.game, output, root=workspace,
+            selection_provider=provider, runtime_provider=lambda port: elf(runtime=True))
+        self.assertEqual(receipt['game_port'], 'bound')
+        self.assertEqual(receipt['game'], 'Monado_Linux/build/game/xcde-linux')
+        self.assertTrue(receipt['archive_readback_verified'])
+        self.assertNotIn(original, output.read_bytes())
+        self.assertEqual(self.game.read_bytes(), original)
 
 
 if __name__ == '__main__':

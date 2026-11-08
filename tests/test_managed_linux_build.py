@@ -1,0 +1,228 @@
+"""Managed source/build reuse fixtures; all executable bytes are authored mocks."""
+import contextlib
+import hashlib
+import importlib.util
+import io
+import json
+from pathlib import Path
+import tempfile
+import unittest
+from unittest import mock
+
+ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location('monado_managed_build_test', ROOT / 'tools/build_linux_app.py')
+build = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(build)
+
+
+def sha(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def files(root):
+    return {p.relative_to(root).as_posix(): p.read_bytes() for p in root.rglob('*')
+            if p.is_file() and not p.is_symlink()}
+
+
+def write_elf(path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    data = bytearray(64)
+    data[:6] = b'\x7fELF\x02\x01'
+    data[18:20] = (62).to_bytes(2, 'little')
+    path.write_bytes(data)
+    path.chmod(0o700)
+
+
+class ManagedBuild(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix='monado-managed-build-')
+        self.addCleanup(temporary.cleanup)
+        self.owner = Path(temporary.name).resolve() / 'original with spaces'
+        self.original = self.owner / 'Monado_Linux'
+        self.workspace = self.original / 'updates/release-2/workspace'
+        self.port = self.workspace / 'Monado_Linux'
+        self.port.mkdir(parents=True)
+        self.input = self.owner / 'game_files'
+        (self.input / 'exefs').mkdir(parents=True)
+        (self.input / 'romfs').mkdir()
+        (self.input / 'exefs/authored-fixture.txt').write_text('authored input fixture, no game content')
+        try:
+            (self.workspace / 'game_files').symlink_to(self.input, target_is_directory=True)
+        except OSError as error:
+            self.skipTest('directory link unavailable: ' + str(error))
+        (self.workspace / 'installation.json').write_text(json.dumps({'schema': 1,
+            'owner': str(self.owner), 'workspace': str(self.workspace), 'game_port': str(self.original)}))
+        self.state = self.original / 'play/launcher'
+        (self.state / 'saves').mkdir(parents=True)
+        (self.state / 'saves/authored-save.txt').write_text('preserve authored save fixture')
+        (self.state / 'xcde.ini').write_text('[fixture]\nvalue=preserve\n')
+        self.game = self.original / 'build/accepted-game/xcde-linux'
+        write_elf(self.game)
+        names = ['scripts/build_linux.py', 'graphics-deps-linux.lock.json', 'requirements-linux.lock',
+                 'tools/gen_smaa_inc.py', 'dlss-linux.lock.json', 'scripts/setup_linux_dlss.py',
+                 'fsr-linux.lock.json', 'scripts/setup_linux_fsr.py', 'runtime/authored.c']
+        snapshot = {}
+        for name in names:
+            for port in (self.original, self.port):
+                path = port / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text('authored source fixture: ' + name)
+            snapshot[name] = sha(self.port / name)
+        self.sysroot = self.original / '.deps/graphics/sysroots/authored'
+        self.marker(self.sysroot, snapshot['graphics-deps-linux.lock.json'])
+        self.receipt = {'schema': 1, 'status': 'passed', 'errors': [], 'dlss_enabled': False,
+            'framegen_enabled': False, 'precompile_protocol': 1,
+            'executable': {'path': str(self.game), 'sha256': sha(self.game)},
+            'generated': {'generated/authored/main/main_table.c': 'authored generation identity'},
+            'sources_before': snapshot, 'sources_after': dict(snapshot),
+            'dependencies': {'sysroot': str(self.sysroot)},
+            'input': {'path': str(self.input), 'exefs': {'authored-fixture.txt': sha(self.input / 'exefs/authored-fixture.txt')}}}
+        self.save_receipt()
+        self.commands = []
+        patch = mock.patch.object(build, 'preflight')
+        patch.start()
+        self.addCleanup(patch.stop)
+
+    def marker(self, sysroot, lock):
+        (sysroot / 'usr/lib/x86_64-linux-gnu').mkdir(parents=True)
+        (sysroot / '.monado-deps.json').write_text(json.dumps({'lock_sha256': lock}))
+
+    def save_receipt(self):
+        (self.game.parent / 'receipt.json').write_text(json.dumps(self.receipt))
+
+    def runner(self, command, cwd, log):
+        self.commands.append(command)
+        log.write_text('authored command fixture; never executed')
+        if any(str(value).endswith('/tools/build_launcher_appimage.py') for value in command):
+            target = Path(command[command.index('--output') + 1])
+            target.parent.mkdir(parents=True)
+            data = bytearray(64)
+            data[:4] = b'\x7fELF'
+            data[8:11] = b'AI\x02'
+            target.write_bytes(data)
+            target.chmod(0o700)
+            Path(str(target) + '.receipt.json').write_text(json.dumps({'status': 'passed', 'sha256': sha(target)}))
+        return 0
+
+    def test_bound_game_plan_uses_original_sysroot_input_and_stable_state(self):
+        before = files(self.state)
+        result = build.run_linux.plan(self.game, self.state, port=self.port)
+        self.assertEqual(result['build_port'], str(self.original))
+        self.assertEqual(result['library_path'], str(self.sysroot / 'usr/lib/x86_64-linux-gnu'))
+        self.assertEqual(result['input'], str(self.input))
+        self.assertEqual(result['argv'], [str(self.game), '--state-root', str(self.state), str(self.input)])
+        self.assertEqual(files(self.state), before)
+
+    def test_current_gui_can_use_owner_state_and_local_test_runs(self):
+        gui = self.port / 'build/gui/monado-launcher'
+        write_elf(gui)
+        sysroot = self.port / '.deps/graphics/sysroots/authored'
+        self.marker(sysroot, 'gui-lock')
+        receipt = {'status': 'passed', 'executable': {'path': str(gui), 'sha256': sha(gui)},
+            'dependencies': {'sysroot': str(sysroot)}, 'sources_before': {'graphics-deps-linux.lock.json': 'gui-lock'}}
+        (gui.parent / 'receipt.json').write_text(json.dumps(receipt))
+        for state in (self.state, self.port / 'runs/private-test'):
+            self.assertEqual(build.run_linux.plan(gui, state, port=self.port)['build_port'], str(self.port))
+        with self.assertRaisesRegex(ValueError, 'allowed Linux'):
+            build.run_linux.plan(gui, self.port / 'play/split-profile', port=self.port)
+
+    def test_bound_game_cannot_borrow_the_candidate_sysroot(self):
+        sysroot = self.port / '.deps/graphics/sysroots/not-the-original'
+        self.marker(sysroot, self.receipt['sources_before']['graphics-deps-linux.lock.json'])
+        self.receipt['dependencies']['sysroot'] = str(sysroot)
+        self.save_receipt()
+        with self.assertRaisesRegex(ValueError, 'valid local graphics sysroot'):
+            build.run_linux.plan(self.game, self.state, port=self.port)
+
+    def test_substituted_input_and_unbound_original_game_are_rejected(self):
+        (self.workspace / 'game_files').unlink()
+        (self.workspace / 'game_files').mkdir()
+        with self.assertRaisesRegex(ValueError, 'input must match'):
+            build.run_linux.plan(self.game, self.state, port=self.port)
+        (self.workspace / 'installation.json').unlink()
+        with self.assertRaisesRegex(ValueError, 'current or bound'):
+            build.run_linux.plan(self.game, self.state, port=self.port)
+
+    def test_reuse_plan_omits_game_generation_and_compilation_only(self):
+        before = files(self.owner)
+        paths, commands = build.layout(self.workspace, 2, identity='reuse-plan', dlss=False, reuse_game=self.game)
+        stages = dict(commands)
+        self.assertNotIn('generate-game', stages)
+        self.assertNotIn('build-game', stages)
+        self.assertIn('install-tools', stages)
+        self.assertIn('graphics-dependencies', stages)
+        self.assertIn('build-launcher', stages)
+        self.assertEqual(paths['game'], self.game)
+        self.assertEqual(paths['state'], self.state)
+        self.assertEqual(files(self.owner), before)
+
+    def test_reuse_build_publishes_only_inside_candidate_and_preserves_old_receipt_state_input(self):
+        active = self.owner / build.IMAGE
+        active.write_text('original active bootstrap fixture')
+        original_receipt = (self.game.parent / 'receipt.json').read_bytes()
+        input_before, state_before = files(self.input), files(self.state)
+        with contextlib.redirect_stdout(io.StringIO()):
+            receipt = build.build(self.workspace, 2, runner=self.runner,
+                locker=lambda port: contextlib.nullcontext(), identity='retained', dlss=False, reuse_game=self.game)
+        self.assertEqual(receipt['status'], 'passed')
+        self.assertEqual(receipt['reused_game']['sha256'], sha(self.game))
+        self.assertEqual(active.read_text(), 'original active bootstrap fixture')
+        self.assertTrue((self.workspace / build.IMAGE).is_file())
+        self.assertEqual(self.commands[-1], [str(self.workspace / build.IMAGE), '--appimage-extract-and-run', '--dry-run'])
+        self.assertEqual((self.game.parent / 'receipt.json').read_bytes(), original_receipt)
+        self.assertEqual(files(self.input), input_before)
+        self.assertEqual(files(self.state), state_before)
+
+    def test_reuse_rejects_feature_mismatch_or_incomplete_receipt_before_commands(self):
+        for key, value in (('dlss_enabled', True), ('generated', {}), ('status', 'failed'),
+                           ('sources_after', {}), ('errors', ['an original failure'])):
+            original = self.receipt[key]
+            self.receipt[key] = value
+            self.save_receipt()
+            with self.subTest(key=key), self.assertRaises(build.BuildError):
+                build.layout(self.workspace, 2, dlss=False, reuse_game=self.game)
+            self.assertEqual(self.commands, [])
+            self.receipt[key] = original
+        self.save_receipt()
+
+    def test_reuse_rejects_changed_and_new_native_sources(self):
+        source = self.port / 'runtime/authored.c'
+        original = source.read_bytes()
+        source.write_text('changed authored source')
+        with self.assertRaisesRegex(build.BuildError, 'native source differs'):
+            build.layout(self.workspace, 2, dlss=False, reuse_game=self.game)
+        source.write_bytes(original)
+        (self.port / 'runtime/new_source.c').write_text('new authored source')
+        with self.assertRaisesRegex(build.BuildError, 'source closure differs'):
+            build.layout(self.workspace, 2, dlss=False, reuse_game=self.game)
+
+    def test_reuse_rejects_tampered_game_and_changed_selected_input(self):
+        self.game.write_bytes(self.game.read_bytes() + b'tampered')
+        with self.assertRaisesRegex(ValueError, 'successful build receipt'):
+            build.layout(self.workspace, 2, dlss=False, reuse_game=self.game)
+        write_elf(self.game)
+        (self.input / 'exefs/authored-fixture.txt').write_text('changed input fixture')
+        with self.assertRaisesRegex(build.BuildError, 'input differs'):
+            build.layout(self.workspace, 2, dlss=False, reuse_game=self.game)
+
+    def test_reuse_cli_is_explicitly_forwarded_to_builder(self):
+        with mock.patch.object(build, 'build') as operation:
+            self.assertEqual(build.main(['--reuse-game', str(self.game), '--without-dlss']), 0)
+        operation.assert_called_once_with(jobs=4, dlss=False, reuse_game=self.game)
+
+    def test_reused_receipt_change_during_launcher_build_stops_before_publication(self):
+        original = self.runner
+        def mutate(command, cwd, log):
+            result = original(command, cwd, log)
+            if any(str(value).endswith('/tools/build_launcher_appimage.py') for value in command):
+                self.receipt['finished_utc'] = 'changed receipt fixture'
+                self.save_receipt()
+            return result
+        with contextlib.redirect_stdout(io.StringIO()), self.assertRaisesRegex(build.BuildError, 'identity changed'):
+            build.build(self.workspace, 2, runner=mutate, locker=lambda port: contextlib.nullcontext(),
+                        identity='changed-receipt', dlss=False, reuse_game=self.game)
+        self.assertFalse((self.workspace / build.IMAGE).exists())
+
+
+if __name__ == '__main__':
+    unittest.main()

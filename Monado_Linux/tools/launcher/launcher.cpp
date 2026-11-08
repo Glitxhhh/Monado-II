@@ -1218,10 +1218,47 @@ static LONG WINAPI crash_filter(EXCEPTION_POINTERS *e) {
 
 #endif
 
+#ifdef __linux__
+static void linux_update_popup() {
+    auto &s = launcher_linux::update_snapshot;
+    if (launcher_linux::game_pid || launcher_linux::precompile_pid) return;
+    const char *title = "Monado II update###linux-update";
+    if ((s.offered || s.applying) && !ImGui::IsPopupOpen(title)) ImGui::OpenPopup(title);
+    ImGui::SetNextWindowSize(ImVec2(540 * g_scale, 0), ImGuiCond_Appearing);
+    if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 500 * g_scale);
+    if (s.offered) {
+        ImGui::Text("A newer stable release is available: %s", s.version.c_str());
+        ImGui::TextWrapped("%s", s.message.c_str());
+        if (s.rebuild) ImGui::TextWrapped("Game rebuilding uses your existing local game files. This can take a while.");
+        ImGui::TextWrapped("Settings will be saved before updating. The launcher restarts when the update is ready; the game will not start automatically.");
+        if (ImGui::Button("Update now")) {
+            if (!save()) s.message = g_status = "Could not save settings; the update has not started.";
+            else launcher_linux::update_apply();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Later")) { launcher_linux::update_defer(); ImGui::CloseCurrentPopup(); }
+    } else {
+        ImGui::TextWrapped("%s", s.message.c_str());
+        if (s.applying) {
+            ImGui::ProgressBar(s.fraction < 0 ? 0 : s.fraction, ImVec2(500 * g_scale, 0), s.phase.c_str());
+            if (!s.ready) {
+                ImGui::BeginDisabled(s.cancelling);
+                if (ImGui::Button("Cancel update")) launcher_linux::update_cancel();
+                ImGui::EndDisabled();
+            }
+        } else if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::EndPopup();
+}
+#endif
+
 int main(int argc, char **argv) {
     int result = 0;
 #ifdef __linux__
-    const char *project = nullptr, *input = nullptr, *game = nullptr, *state = nullptr, *shot = nullptr, *script = nullptr;
+    const char *project = nullptr, *game_project = nullptr, *input = nullptr, *game = nullptr, *state = nullptr, *shot = nullptr, *script = nullptr;
+    int update_channel = -1;
     int shot_tab = 0, shot_frame = 5, frame_no = 0;
     bool shot_pc = false, exit_after_child = false, child_started = false;
     for (int i = 1; i < argc; ++i) {
@@ -1230,6 +1267,7 @@ int main(int argc, char **argv) {
         if (i + 1 == argc) { fprintf(stderr, "Missing value for %s\n", arg); return 2; }
         const char *value = argv[++i];
         if (!strcmp(arg, "--project-root")) project = value;
+        else if (!strcmp(arg, "--game-project-root")) game_project = value;
         else if (!strcmp(arg, "--input-root")) input = value;
         else if (!strcmp(arg, "--game-executable")) game = value;
         else if (!strcmp(arg, "--state-root")) state = value;
@@ -1239,6 +1277,9 @@ int main(int argc, char **argv) {
         else if (!strcmp(arg, "--ui-script")) script = value;
         else if (!strcmp(arg, "--lock-fd")) { char *end = nullptr; long fd = strtol(value, &end, 10);
             if (!end || *end || fd < 3 || fd > INT_MAX || fcntl((int)fd, F_GETFD) < 0) { fprintf(stderr, "Invalid lock descriptor\n"); return 2; } }
+        else if (!strcmp(arg, "--update-fd")) { char *end = nullptr; long fd = strtol(value, &end, 10);
+            if (!end || *end || fd < 3 || fd > INT_MAX || update_channel >= 0) { fprintf(stderr, "Invalid update descriptor\n"); return 2; }
+            update_channel = (int)fd; }
         else if (!strcmp(arg, "--test-child-env")) {
             std::string entry = value, key = entry.substr(0, entry.find('='));
             const char *allowed[] = {"XCDE_SHOTS", "XCDE_EXIT_AFTER_SHOTS", "LARECOMP_NO_USER_INPUT", "LARECOMP_AUDIO_GAIN", "XCDE_USAGE", "XCDE_HLE_COVERAGE", "XCDE_STALL", "XCDE_PRESENT_STATS", "XCDE_TRACE_PRESENT", "XCDE_DUP_CHECK"};
@@ -1248,10 +1289,14 @@ int main(int argc, char **argv) {
     }
     if (!script && (exit_after_child || !launcher_linux::test_environment.empty())) { fprintf(stderr, "Test child controls require --ui-script\n"); return 2; }
     if (!launcher_linux::canonical(project, launcher_linux::project, true) ||
+        !launcher_linux::canonical(game_project ? game_project : project, launcher_linux::game_project, true) ||
         !launcher_linux::canonical(input, launcher_linux::input, true) ||
         !launcher_linux::canonical(game, launcher_linux::game, false) || !state || state[0] != '/' ||
         shot_tab < 0 || shot_tab > 3 || shot_frame < 1 || shot_frame > 10000) {
         fprintf(stderr, "Supply canonical absolute project/input/game paths, absolute private state and valid capture options\n"); return 2;
+    }
+    if (update_channel >= 0 && (shot || script || !launcher_linux::update_adopt_fd(update_channel))) {
+        fprintf(stderr, "Update IPC requires a valid host channel and an ordinary unscripted launcher\n"); return 2;
     }
     char error[1024]; umask(0077);
     if (!rt_paths_init_linux(input, state, error, sizeof error) || !rt_linux_state_guard(rt_data_root(), error, sizeof error)) {
@@ -1356,6 +1401,14 @@ int main(int argc, char **argv) {
             if ((exit_after_child && child_started) || result) { result = result ? result : launcher_linux::last_result; run = false; }
             else reload_after_game();
         }
+        launcher_linux::update_poll(launcher_linux::game_pid || launcher_linux::precompile_pid);
+        static unsigned update_revision;
+        const auto &update = launcher_linux::update_snapshot;
+        if (update.revision != update_revision) {
+            update_revision = update.revision;
+            if (update.failed || update.phase == "cancelled") g_status = update.message;
+        }
+        if (update.ready && !launcher_linux::game_pid && !launcher_linux::precompile_pid) { result = 75; run = false; }
         if (script && !launcher_linux::push_events(frame_no, win)) {
             result = 1; script = nullptr; run = launcher_linux::activity_busy();
             if (pc_running()) { g_pc_quit = true; pc_stop(); }
@@ -1370,6 +1423,7 @@ int main(int argc, char **argv) {
 #ifdef __linux__
                 if (launcher_linux::game_pid) g_status = "Close the game window before quitting the launcher.";
                 else if (pc_running()) { g_pc_quit = true; pc_stop(); }
+                else if (launcher_linux::update_applying()) launcher_linux::update_cancel();
                 else run = false;
 #else
                 run = false;
@@ -1510,12 +1564,16 @@ int main(int argc, char **argv) {
 #ifdef __linux__
             if (launcher_linux::game_pid) g_status = "Close the game window before quitting the launcher.";
             else if (pc_running()) { g_pc_quit = true; pc_stop(); }
+            else if (launcher_linux::update_applying()) launcher_linux::update_cancel();
             else run = false;
 #else
             run = false;
 #endif
         }
         ImGui::End();
+#ifdef __linux__
+        linux_update_popup();
+#endif
         ImGui::Render();
         SDL_SetRenderDrawColor(ren, 10, 20, 32, 255);
         SDL_RenderClear(ren);

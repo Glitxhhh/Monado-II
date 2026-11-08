@@ -63,11 +63,26 @@ SDK binaries/models are not included in source kits or the launcher image.
 Use `./Build_Monado_II.sh --without-dlss` to explicitly omit that provider.
 Frame generation remains a separate optional experimental build feature.
 
+Starting with **0.1.3**, the Linux launcher quietly checks for newer stable
+releases on startup. A newer release offers **Update** or **Later**. Update
+downloads the source kit, builds it locally with progress and cancellation, then
+restarts the launcher; it never presses Play. Compatible launcher-only updates
+retain the verified game build. Other updates rebuild the game locally. Saves,
+settings and the shared input stay in the original installation; failed or
+cancelled preparation keeps the previous version selected.
+
+**0.1.2 has no updater:** first apply the verified 0.1.3 Linux source kit to the
+same original installation folder and rebuild once, preserving its input and
+profile directories. Follow the safe manual-upgrade steps below. A fresh kit in
+a new folder is a separate installation and does not import an older profile.
+See [Linux updating and rollback](docs/BUILD_LINUX.md#4-update-and-roll-back).
+Windows does not yet have this updater.
+
 Releases provide separate **Linux source/setup `.tar.gz`** and **Windows
 source/setup `.zip`** kits. They are **not precompiled playable game downloads**.
 You build the game locally from your own verified dump. No compiled game binary,
 private vendor SDK binary, game-derived cache or user data is distributed.
-Version 0.1.2 uses the regular release channel; the platform and coverage limits
+Version 0.1.3 uses the regular release channel; the platform and coverage limits
 above still apply.
 
 - [Linux build instructions](docs/BUILD_LINUX.md)

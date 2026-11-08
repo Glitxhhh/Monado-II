@@ -19,10 +19,25 @@ are listed in the [Linux guide](BUILD_LINUX.md).
 **Frame generation is experimental, slow/glitchy in reported gameplay and should
 normally remain off.** Linux FSR3 Super Resolution is unavailable.
 
+Version 0.1.3 adds a Linux stable-release updater with source verification, local
+build progress/cancellation and checked launcher restart. Presentation-only
+updates can retain the compatible game; other source changes trigger a full local
+rebuild. Original input and profile paths remain stable across managed versions.
+Failure/cancellation during preparation preserves the previous selection, and
+edited release-owned source stops installation. Full automated rebuilds of custom
+frame-generation/footstep-diagnostic builds are currently refused safely.
+The 0.1.2 launcher needs a one-time manual 0.1.3 source upgrade/build to gain
+update support. The verified source kit can be applied to the same original
+folder while keeping its profile/input/build directories; fresh kits in another
+folder do not import old profiles. See [updating/rollback](BUILD_LINUX.md#4-update-and-roll-back).
+This implementation does not establish broad clean-machine or interrupted-update
+qualification; coverage limits below remain applicable.
+
 Windows retains the original Monado implementation. Its original author reported
 whole-game playability on NVIDIA RTX, including Future Connected. This fork has
 not independently built or run that Windows source. The Linux improvements listed
 in [TODO](../TODO.md) have not been backported.
+There is no Windows updater in this release.
 
 The public launcher restores the exact original generated landscape artwork;
 [provenance](../Monado_Linux/tools/launcher/assets/ARTWORK_PROVENANCE.md) records
@@ -30,5 +45,5 @@ its origin and limitations. It is not a game screenshot or extracted asset. The
 separate unreviewed sword icon and proprietary-font decoding remain excluded.
 Plain user/system TTF/OTF/TTC font input is supported. Public-only changes require
 further integrated testing. Full-game, save-recovery, long-session, other-GPU and
-clean-machine coverage remain incomplete. A regular 0.1.2 release does not imply
+clean-machine coverage remain incomplete. A regular 0.1.3 release does not imply
 Windows game-build or full-game qualification.

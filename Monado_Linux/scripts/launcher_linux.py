@@ -67,7 +67,7 @@ def validate_state(state, source):
     state = ordinary_path(state)
     if len(os.fsencode(state)) >= 1024:
         raise ValueError('state root exceeds native path limit')
-    if not any(state != ROOT / name and state.is_relative_to(ROOT / name) for name in ('play', 'runs')):
+    if not any(state != root and state.is_relative_to(root) for root in run_linux.install_layout.state_roots(ROOT)):
         raise ValueError('state must be a child of Monado_Linux/play or runs')
     if state == source or state.is_relative_to(source) or source.is_relative_to(state):
         raise ValueError('input and state roots must be disjoint')
@@ -190,7 +190,8 @@ def prepare(args):
     if (args.shot_tab is not None or args.shot_frame is not None) and not args.shot:
         raise ValueError('--shot-tab and --shot-frame require --shot')
     controls = test_controls(args.test_child_env, state)
-    argv = [launcher['argv'][0], '--project-root', str(ROOT), '--input-root', game['input'],
+    game_port = run_linux.install_layout.build_port(ROOT, Path(game['argv'][0]))
+    argv = [launcher['argv'][0], '--project-root', str(ROOT), '--game-project-root', str(game_port), '--input-root', game['input'],
             '--game-executable', game['argv'][0], '--state-root', str(state)]
     packaged = getattr(args, 'packaged_launcher', None)
     if packaged is not None:
@@ -285,7 +286,7 @@ def acquire_lock(state):
         os.close(state_fd)
 
 
-def wait_session(argv, environment, lock_fd, log_fd):
+def wait_session(argv, environment, lock_fd, log_fd, updates=None):
     """Keep the lock until the GUI and adopted descendants exit naturally.
 
     The GUI retains an inherited lock as protection if this wrapper dies. The
@@ -309,11 +310,33 @@ def wait_session(argv, environment, lock_fd, log_fd):
             pass
     handlers = {number: signal.signal(number, keep_game) for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
     child = None
+    updates_finished = False
     try:
-        child = subprocess.Popen([*argv, '--lock-fd', str(lock_fd)], cwd=ROOT, env=environment,
+        command = [*argv, '--lock-fd', str(lock_fd)]
+        descriptors = (lock_fd,)
+        if updates is not None:
+            command += ['--update-fd', str(updates.child_fd())]
+            descriptors += (updates.child_fd(),)
+        child = subprocess.Popen(command, cwd=ROOT, env=environment,
                                  stdin=subprocess.DEVNULL, stdout=log_fd, stderr=log_fd,
-                                 start_new_session=True, pass_fds=(lock_fd,))
-        code = child.wait()
+                                 start_new_session=True, pass_fds=descriptors)
+        if updates is None:
+            code = child.wait()
+        else:
+            import time
+            updates.child_started()
+            while child.poll() is None:
+                try:
+                    updates.poll(child.pid)
+                except Exception as error:
+                    os.write(log_fd, ('[updates] disabled: ' + str(error) + '\n').encode('utf-8', errors='replace'))
+                    updates.disconnect()
+                time.sleep(0.03)
+            code = child.returncode
+            # A worker owns and reaps its own subprocesses. Join it before the
+            # generic adopted-child loop, which must never steal those statuses.
+            updates.activation_ready = updates.finish(code)
+            updates_finished = True
         while True:
             try:
                 os.waitpid(-1, 0)
@@ -325,10 +348,14 @@ def wait_session(argv, environment, lock_fd, log_fd):
     finally:
         # There is deliberately no kill/terminate path. The child inherits the
         # lock if this wrapper is forcibly terminated or cannot continue.
-        for number, handler in handlers.items():
-            signal.signal(number, handler)
-        if libc.prctl(36, previous.value, 0, 0, 0):
-            raise OSError(ctypes.get_errno(), 'cannot restore child subreaper')
+        try:
+            if updates is not None and not updates_finished:
+                updates.finish(1)
+        finally:
+            for number, handler in handlers.items():
+                signal.signal(number, handler)
+            if libc.prctl(36, previous.value, 0, 0, 0):
+                raise OSError(ctypes.get_errno(), 'cannot restore child subreaper')
 
 
 def arguments(argv=None):
@@ -337,7 +364,8 @@ def arguments(argv=None):
     parser.add_argument('--game-executable', type=Path, default=ROOT / 'build/linux-20261107-023-experimental/xcde-linux')
     parser.add_argument('--packaged-launcher', type=Path,
                         help='byte-identical AppImage GUI copy; original build receipts remain required')
-    parser.add_argument('--state-root', type=Path, default=ROOT / 'play/launcher')
+    parser.add_argument('--state-root', type=Path, default=run_linux.install_layout.profile_port(ROOT) / 'play/launcher')
+    parser.add_argument('--no-updates', action='store_true', help='disable host release checks and update IPC')
     parser.add_argument('--dry-run', action='store_true')
     parser.add_argument('--shot', type=Path)
     parser.add_argument('--shot-tab', type=int, choices=range(4))
@@ -351,6 +379,9 @@ def arguments(argv=None):
 def main(argv=None):
     parser, args = arguments(argv)
     lock_fd = log_fd = None
+    updates = None
+    restart = None
+    result = 1
     try:
         launch = prepare(args)
         launch['input_check'] = check_input(launch['input'])
@@ -373,15 +404,36 @@ def main(argv=None):
             log.write('[launcher-selection] ' + json.dumps(selection, sort_keys=True) + '\n')
         if 'namespace' in launch:
             run_linux.prepare_namespace_state(launch)
-        return wait_session(launch.get('execution_argv', launch['argv']),
-                            launch.get('runtime_environment', clean_environment(launch['library_path'])), lock_fd, log_fd)
+        if not args.no_updates and not args.shot and not args.ui_script and (ROOT.parent / 'update-version.json').exists():
+            # Load only the local authored updater, on the host side of bwrap.
+            import importlib.util
+            path = ROOT / 'scripts/launcher_updates.py'
+            try:
+                spec = importlib.util.spec_from_file_location('_monado_launcher_updates', path)
+                module = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(module)
+                updates = module.UpdateBroker.from_workspace(ROOT.parent, state, Path(launch['argv'][0]), Path(selection['game_executable']))
+            except Exception as error:
+                os.write(log_fd, ('[updates] unavailable: ' + str(error) + '\n').encode('utf-8', errors='replace'))
+        params = (launch.get('execution_argv', launch['argv']),
+                  launch.get('runtime_environment', clean_environment(launch['library_path'])), lock_fd, log_fd)
+        result = wait_session(*params, updates=updates) if updates is not None else wait_session(*params)
+        # The original OFD lease is still held here, and every GUI/game/compiler
+        # descendant has exited naturally. Only this host may now activate.
+        if updates is not None and result == 75 and updates.activation_ready:
+            restart = updates.activate()
     except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as error:
         parser.exit(1, str(error) + '\n')
     finally:
+        if updates is not None and restart is None:
+            updates._close_staging()
         if log_fd is not None:
             os.close(log_fd)
         if lock_fd is not None:
             os.close(lock_fd)
+    if restart is not None:
+        os.execv(restart[0], restart)
+    return result
 
 
 if __name__ == '__main__':

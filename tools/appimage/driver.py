@@ -3,6 +3,7 @@
 import argparse
 import hashlib
 import importlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -87,16 +88,38 @@ def validate_image(appdir):
         relative(name)
 
 
-def selection_paths(appdir, workspace):
+def installation(workspace):
+    scripts = workspace / 'Monado_Linux/scripts'
+    path = scripts / 'install_layout.py'
+    regular(path)
+    spec = importlib.util.spec_from_file_location('monado_image_install_layout', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    module.binding(workspace / 'Monado_Linux')
+    return module
+
+
+def selection_paths(appdir, workspace, layout=None):
     selection = document(appdir / 'usr/share/monado-ii/selection.json')
     if selection.get('schema') != 1 or selection.get('project') != 'Monado II':
         raise ValueError('Invalid AppImage workspace selection')
+    if set(selection) not in ({'schema', 'project', 'launcher', 'game'}, {'schema', 'project', 'launcher', 'game', 'game_port'}):
+        raise ValueError('Unexpected AppImage workspace selection fields')
+    game_workspace = workspace
+    if 'game_port' in selection:
+        if selection['game_port'] != 'bound':
+            raise ValueError('Invalid AppImage bound game selection')
+        layout = layout or installation(workspace)
+        selected = layout.game_port(workspace / 'Monado_Linux')
+        if selected == workspace / 'Monado_Linux':
+            raise ValueError('AppImage has no separate bound game port')
+        game_workspace = selected.parent
     result = {}
     for field in ('launcher', 'game'):
         name = relative(selection.get(field))
         if len(name.parts) < 4 or name.parts[0] != 'Monado_Linux' or name.parts[1] not in ('build', 'runs', 'accepted'):
             raise ValueError('AppImage may select only local Monado II builds')
-        path = workspace / name
+        path = (game_workspace if field == 'game' else workspace) / name
         if path.resolve() != path:
             raise ValueError('Build paths moved or contain links; rebuild the AppImage')
         result[field] = path
@@ -106,6 +129,7 @@ def selection_paths(appdir, workspace):
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Open Monado II using this folder’s verified local builds. Keep the AppImage beside Monado_Linux; rebuild after moving the folder.')
     parser.add_argument('--dry-run', action='store_true', help='verify the workspace and print the launch plan without opening a window')
+    parser.add_argument('--state-root', type=Path, help='explicit private profile below the original installation play or runs directory')
     args = parser.parse_args(argv)
     try:
         appdir = Path(__file__).resolve().parents[3]
@@ -116,7 +140,29 @@ def main(argv=None):
         port = workspace / 'Monado_Linux'
         if port.resolve() != port or not port.is_dir():
             raise ValueError('Keep this AppImage beside Monado_Linux and run Build_Monado_II.sh')
-        selected = selection_paths(appdir, workspace)
+        layout = installation(workspace)
+        profile = layout.profile_port(port)
+        state = args.state_root if args.state_root is not None else profile / 'play/launcher'
+        state = layout.canonical(state, exists=False)
+        if not any(state != parent and state.is_relative_to(parent) for parent in (profile / 'play', profile / 'runs')):
+            raise ValueError('AppImage state must belong to the original installation play or runs directory')
+        # The stable original image remains a bootstrap. Managed images validate
+        # and run their own selection, including staged checks and rollback.
+        updater_path = workspace / 'tools/update_linux.py'
+        regular(updater_path)
+        updater_spec = importlib.util.spec_from_file_location('monado_image_update_linux', updater_path)
+        updater = importlib.util.module_from_spec(updater_spec)
+        sys.modules[updater_spec.name] = updater
+        updater_spec.loader.exec_module(updater)
+        delegated = updater.dispatch_active(workspace, list(argv) if argv is not None else sys.argv[1:])
+        if delegated is not None:
+            if (not isinstance(delegated, list) or not delegated or
+                    any(not isinstance(value, str) or '\x00' in value for value in delegated) or
+                    not Path(delegated[0]).is_absolute()):
+                raise ValueError('Invalid checked active-version command')
+            os.execv(delegated[0], delegated)
+            return 0
+        selected = selection_paths(appdir, workspace, layout)
         # Isolated Python ignores inherited paths; only the explicit, ordinary
         # workspace scripts directory is added for the checked launch wrappers.
         scripts = port / 'scripts'
@@ -127,7 +173,7 @@ def main(argv=None):
         command = ['--launcher-executable', str(selected['launcher']),
                    '--game-executable', str(selected['game']),
                    '--packaged-launcher', str(appdir / 'usr/bin/monado-launcher'),
-                   '--state-root', str(port / 'play/launcher')]
+                   '--state-root', str(state)]
         if args.dry_run:
             command.append('--dry-run')
         return launcher.main(command)

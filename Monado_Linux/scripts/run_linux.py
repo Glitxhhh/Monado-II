@@ -8,6 +8,7 @@ prints the launch plan without executing the ELF or creating state.
 """
 import argparse
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -16,6 +17,9 @@ import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parent.parent
+_layout_spec = importlib.util.spec_from_file_location('monado_install_layout', ROOT / 'scripts/install_layout.py')
+install_layout = importlib.util.module_from_spec(_layout_spec)
+_layout_spec.loader.exec_module(install_layout)
 BWRAP = Path('/usr/bin/bwrap')
 NGX_UPDATER = Path('/usr/bin/nvidia-ngx-updater')
 X11_SOCKETS = Path('/tmp/.X11-unix')
@@ -180,9 +184,11 @@ def prepare_namespace_state(launch):
         os.close(fd)
 
 
-def plan(executable, state, precompile=False):
-    binary = checked_path(executable, [ROOT / 'build', ROOT / 'runs', ROOT / 'accepted'], exists=True)
-    state = checked_path(state, [ROOT / 'runs', ROOT / 'play'], exists=False)
+def plan(executable, state, precompile=False, *, port=None):
+    root = Path(port) if port is not None else ROOT
+    owning_port = install_layout.build_port(root, executable)
+    binary = checked_path(executable, [owning_port / name for name in ('build', 'runs', 'accepted')], exists=True)
+    state = checked_path(state, install_layout.state_roots(root), exists=False)
     if binary.is_relative_to(state) or state.is_relative_to(binary.parent):
         raise ValueError('runtime state must be separate from the selected build output')
     receipt = json.loads((binary.parent / 'receipt.json').read_text())
@@ -202,21 +208,21 @@ def plan(executable, state, precompile=False):
     # receipted development sysroot for those too (not an inherited search path).
     sysroot = Path(receipt.get('dependencies', {}).get('sysroot', ''))
     expected_lock = receipt.get('sources_before', {}).get('graphics-deps-linux.lock.json')
-    if not sysroot.is_absolute() or sysroot.resolve() != sysroot or not sysroot.is_relative_to(ROOT / '.deps/graphics/sysroots'):
+    if not sysroot.is_absolute() or sysroot.resolve() != sysroot or not sysroot.is_relative_to(owning_port / '.deps/graphics/sysroots'):
         raise ValueError('build receipt has no valid local graphics sysroot')
     marker = json.loads((sysroot / '.monado-deps.json').read_text())
     library_path = sysroot / 'usr/lib/x86_64-linux-gnu'
     if not expected_lock or marker.get('lock_sha256') != expected_lock or not library_path.is_dir():
         raise ValueError('graphics sysroot identity differs from the build receipt')
-    source = (ROOT.parent / 'game_files').resolve(strict=True)
+    source = install_layout.shared_input(root)
     if source == state or state.is_relative_to(source) or source.is_relative_to(state):
         raise ValueError('shared input and runtime state must be disjoint')
     argv = [str(binary), '--state-root', str(state)]
     if precompile:
         argv.append('--precompile')
     argv.append(str(source))
-    launch = {'argv': argv, 'cwd': str(ROOT), 'input': str(source), 'state': str(state),
-              'binary_sha256': identity, 'library_path': str(library_path)}
+    launch = {'argv': argv, 'cwd': str(root), 'input': str(source), 'state': str(state),
+              'binary_sha256': identity, 'library_path': str(library_path), 'build_port': str(owning_port)}
     dlss = receipt.get('dlss_enabled', False)
     if not isinstance(dlss, bool):
         raise ValueError('invalid DLSS build receipt flag')

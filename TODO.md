@@ -21,6 +21,7 @@ Unchecked items are planned work, not implemented or validated features.
   commits and explicit retry to Windows process/filesystem APIs.
 - [ ] Preserve custom/unknown launcher settings, atomically save configuration,
   and review post-game reload/process behavior.
+- [ ] Design and validate a Windows updater; the 0.1.3 updater is Linux-only.
 - [ ] Regenerate/build on Windows and run focused regression tests in isolated
   state, then manual gameplay. Keep original Windows fiber/vendor implementations.
 
@@ -45,6 +46,11 @@ Linux FG presentation. No Windows backport is implied by publication preparation
   keeps game data outside its payload and preserves checked workspace state.
 - [x] Restore the exact generated launcher illustration with provenance and
   default DLSS/DLAA support, with an explicit `--without-dlss` build option.
+- [x] Add Linux stable-release offers, verified source downloads, local update
+  builds, progress/cancellation, stable profiles and explicit pointer rollback.
+- [ ] Expand real-system update/restart/interruption and rollback validation.
+- [ ] Support automated full rebuilds of custom frame-generation or
+  footstep-diagnostic builds without dropping their selected features.
 - [ ] Validate the workspace launcher AppImage on more distributions/desktops;
   it currently requires the complete local build folder and its absolute receipts.
 

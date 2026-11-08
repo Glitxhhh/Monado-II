@@ -12,6 +12,7 @@ import contextlib
 import ctypes
 from datetime import datetime, timezone
 import hashlib
+import importlib.util
 import json
 import os
 from pathlib import Path
@@ -31,6 +32,10 @@ REQUIRED_TOOLS = ('bash', 'pkg-config', 'dpkg-deb', 'readelf', 'mksquashfs', 'un
 DLSS_REQUIRED_TOOLS = ('nm',)
 BWRAP = Path('/usr/bin/bwrap')
 GNU_CXX_RUNTIME = Path('/usr/lib/x86_64-linux-gnu/libstdc++.so.6')
+_run_spec = importlib.util.spec_from_file_location('monado_builder_run_linux', ROOT / 'Monado_Linux/scripts/run_linux.py')
+run_linux = importlib.util.module_from_spec(_run_spec)
+_run_spec.loader.exec_module(run_linux)
+install_layout = run_linux.install_layout
 
 
 class BuildError(RuntimeError):
@@ -94,9 +99,50 @@ def image_pair(path):
     return document
 
 
-def layout(root, jobs, *, require_input=True, identity=None, dlss=True):
+def validate_reused_game(port, binary, state, *, dlss):
+    """Retain an original successful build; never relocate or rewrite its receipt."""
+    binary = ordinary(binary)
+    install_layout.build_port(port, binary)
+    receipt = json_file(binary.parent / 'receipt.json')
+    if (receipt.get('status') != 'passed' or receipt.get('artifact_kind') == 'linux-launcher' or
+            not isinstance(receipt.get('generated'), dict) or not receipt['generated'] or receipt.get('errors')):
+        raise BuildError('--reuse-game requires a successful complete generated-game receipt')
+    if type(receipt.get('dlss_enabled')) is not bool or receipt['dlss_enabled'] != dlss:
+        raise BuildError('reused game DLSS flag differs from the requested build; preserve the existing feature selection')
+    before = receipt.get('sources_before')
+    if not isinstance(before, dict) or not before or before != receipt.get('sources_after'):
+        raise BuildError('reused game has no stable native source snapshot')
+    # The release classifier separately checks generator/profile/launch protocol
+    # changes. This builder also refuses changed or newly added native inputs.
+    required = {'scripts/build_linux.py', 'graphics-deps-linux.lock.json', 'requirements-linux.lock',
+                'tools/gen_smaa_inc.py', 'dlss-linux.lock.json', 'scripts/setup_linux_dlss.py',
+                'fsr-linux.lock.json', 'scripts/setup_linux_fsr.py'}
+    native = {p.relative_to(port).as_posix() for name in ('runtime', 'third_party')
+              for p in (port / name).rglob('*') if p.is_file() and
+              p.suffix in ('.c', '.cpp', '.h', '.hpp', '.inc', '.hlsl')}
+    icon = port / 'local_assets/monado-icon.png'
+    if icon.exists() or icon.is_symlink():
+        required.add('local_assets/monado-icon.png')
+    if set(before) != required | native:
+        raise BuildError('reused game native source closure differs; a full local game build is required')
+    for name, expected in before.items():
+        source = ordinary(port / name)
+        if not source.is_relative_to(port) or digest(source) != expected:
+            raise BuildError('reused game native source differs: ' + name + '; a full local game build is required')
+    launch = run_linux.plan(binary, state, port=port)
+    selected = Path(launch['input'])
+    expected_input = receipt.get('input', {})
+    exefs = {p.name: digest(p) for p in sorted((selected / 'exefs').iterdir()) if p.is_file()}
+    if expected_input.get('path') != str(selected) or expected_input.get('exefs') != exefs:
+        raise BuildError('reused game input differs from its build receipt')
+    return {'path': str(binary), 'sha256': launch['binary_sha256'],
+            'receipt_sha256': digest(binary.parent / 'receipt.json'), 'build_port': launch['build_port']}
+
+
+def layout(root, jobs, *, require_input=True, identity=None, dlss=True, reuse_game=None):
     root = ordinary(root, directory=True)
     port = ordinary(root / 'Monado_Linux', directory=True)
+    install_layout.binding(port)
     for name in ('build', 'generated', 'runs', '.deps'):
         ordinary(port / name, directory=True, missing=True)
     for name in ('runs/local-build', '.deps/metadata'):
@@ -114,6 +160,8 @@ def layout(root, jobs, *, require_input=True, identity=None, dlss=True):
                          'No files will be moved or downloaded.')
     if source == port or source.is_relative_to(port) or port.is_relative_to(source):
         raise BuildError('game input must be disjoint from Linux build and runtime directories')
+    if require_input:
+        install_layout.shared_input(port)
     identity = identity or ('local-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ-') + uuid.uuid4().hex[:8])
     if not identity or any(c not in 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_' for c in identity):
         raise BuildError('unsafe build identity')
@@ -121,8 +169,13 @@ def layout(root, jobs, *, require_input=True, identity=None, dlss=True):
                  generated=port / 'generated' / identity, game=port / 'build' / (identity + '-game') / 'xcde-linux',
                  launcher=port / 'build' / (identity + '-launcher') / 'monado-launcher',
                  image=port / 'build' / (identity + '-appimage') / IMAGE, published=root / IMAGE,
-                 state=port / 'play/launcher')
+                 state=install_layout.profile_port(port) / 'play/launcher')
+    if reuse_game is not None:
+        paths['game'] = ordinary(reuse_game)
+        validate_reused_game(port, paths['game'], paths['state'], dlss=dlss)
     for name in ('run', 'generated', 'game', 'launcher', 'image'):
+        if reuse_game is not None and name in ('game', 'generated'):
+            continue
         path = paths[name]
         if name in ('game', 'launcher', 'image'):
             path = path.parent
@@ -138,10 +191,13 @@ def layout(root, jobs, *, require_input=True, identity=None, dlss=True):
     ]
     if dlss:
         commands.append(('native-dlss-dependency', [python, '-B', port / 'scripts/setup_linux_dlss.py']))
+    if reuse_game is None:
+        commands += [
+            ('generate-game', [python, '-B', port / 'tools/gen_all.py', '--exefs', source / 'exefs', '--out', paths['generated'], '--simd', 'c']),
+            ('build-game', [python, '-B', port / 'scripts/build_linux.py', '--generated', paths['generated'], '--output', paths['game'].parent, '--jobs', jobs,
+                            *(['--dlss'] if dlss else [])]),
+        ]
     commands += [
-        ('generate-game', [python, '-B', port / 'tools/gen_all.py', '--exefs', source / 'exefs', '--out', paths['generated'], '--simd', 'c']),
-        ('build-game', [python, '-B', port / 'scripts/build_linux.py', '--generated', paths['generated'], '--output', paths['game'].parent, '--jobs', jobs,
-                        *(['--dlss'] if dlss else [])]),
         ('build-launcher', [python, '-B', port / 'scripts/build_launcher_linux.py', '--output', paths['launcher'].parent, '--jobs', jobs]),
         ('check-launcher', [python, '-B', port / 'scripts/launcher_linux.py', '--launcher-executable', paths['launcher'], '--game-executable', paths['game'], '--state-root', paths['state'], '--dry-run']),
         ('package-appimage', [sys.executable, '-I', '-B', root / 'tools/build_launcher_appimage.py', '--launcher-executable', paths['launcher'], '--game-executable', paths['game'], '--output', paths['image']]),
@@ -429,10 +485,10 @@ def restore(paths, backup, had_previous):
         image_pair(target)
 
 
-def build(root=ROOT, jobs=4, *, runner=execute, locker=build_lock, identity=None, dlss=True):
+def build(root=ROOT, jobs=4, *, runner=execute, locker=build_lock, identity=None, dlss=True, reuse_game=None):
     preflight(dlss=dlss)
     prepare_input_layout(root)
-    paths, commands = layout(root, jobs, identity=identity, dlss=dlss)
+    paths, commands = layout(root, jobs, identity=identity, dlss=dlss, reuse_game=reuse_game)
     with locker(paths['port']):
         # Recheck after obtaining the lease; another completed build may now be
         # present, but its known pair will be preserved rather than overwritten.
@@ -442,6 +498,7 @@ def build(root=ROOT, jobs=4, *, runner=execute, locker=build_lock, identity=None
         receipt = dict(schema=1, status='running', scope='local game build and launcher-only AppImage; no game/UI execution',
                        started_utc=datetime.now(timezone.utc).isoformat(), jobs=jobs,
                        dlss_enabled=dlss,
+                       reused_game=validate_reused_game(paths['port'], paths['game'], paths['state'], dlss=dlss) if reuse_game is not None else None,
                        paths={name: str(path) for name, path in paths.items()}, commands=[])
         write_json(receipt_path, receipt)
         print('Downloads: locked Python/compiler and Ubuntu development packages, plus the pinned AppImage runtime.'
@@ -463,6 +520,8 @@ def build(root=ROOT, jobs=4, *, runner=execute, locker=build_lock, identity=None
                 write_json(receipt_path, receipt)
                 if code:
                     raise BuildError(f'{name} failed (exit {code}). Log: {log}')
+            if reuse_game is not None and validate_reused_game(paths['port'], paths['game'], paths['state'], dlss=dlss) != receipt['reused_game']:
+                raise BuildError('reused game receipt or identity changed during launcher build; previous image is preserved')
             backup = publish(paths)
             log = paths['run'] / f'{len(commands) + 1:02d}-check-appimage.log'
             command = [str(paths['published']), '--appimage-extract-and-run', '--dry-run']
@@ -497,16 +556,19 @@ def main(argv=None):
     parser.add_argument('--plan', action='store_true', help='print the local build steps without downloads or writes')
     parser.add_argument('--without-dlss', action='store_true',
                         help='explicitly omit the native NVIDIA DLSS/DLAA provider and SDK download')
+    parser.add_argument('--reuse-game', type=Path,
+                        help='retain an unchanged successful game build from this installation; rebuild only the launcher')
     args = parser.parse_args(argv)
     try:
         if args.plan:
-            paths, commands = layout(ROOT, args.jobs, require_input=False, dlss=not args.without_dlss)
+            paths, commands = layout(ROOT, args.jobs, require_input=False, dlss=not args.without_dlss, reuse_game=args.reuse_game)
             print(json.dumps(dict(mode='plan', paths={name: str(path) for name, path in paths.items()},
                                   commands=[dict(name=name, argv=command) for name, command in commands],
                                   dlss_enabled=not args.without_dlss,
+                                  reuses_game=args.reuse_game is not None,
                                   launches_game=False, launches_gui=False, network='none in plan; explicit build fetches locked dependencies'), indent=2))
         else:
-            build(jobs=args.jobs, dlss=not args.without_dlss)
+            build(jobs=args.jobs, dlss=not args.without_dlss, reuse_game=args.reuse_game)
     except KeyboardInterrupt:
         print('Build cancelled; completed local work and previous AppImage preserved. See the build receipt/logs.', file=sys.stderr)
         return 130

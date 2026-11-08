@@ -106,9 +106,83 @@ Do not upload local generated outputs as a project release.
 
 Frame generation remains a separate optional experimental build feature. Enabling
 DLSS in the normal build does not enable it; reported slow/glitchy behavior remains
-unresolved. Version 0.1.2 is a regular source/setup release requiring local game
+unresolved. Version 0.1.3 is a regular source/setup release requiring local game
 generation. See [platform status](PLATFORM_STATUS.md) and
 [remaining work](../TODO.md) for features and validation limits.
+
+## 4. Update and roll back
+
+**The 0.1.2 launcher cannot update itself.** Enable the updater with one manual
+0.1.3 source upgrade/build. You can preserve your current profile in the same
+original installation folder:
+
+1. Close its launcher, game and shader precompiler. Download the official 0.1.3
+   Linux source/setup kit and compare its SHA-256 with the published release
+   checksum. Extract it into a separate temporary folder first.
+2. From that clean extracted kit, run
+   `python3.14 -I -B tools/publication_guard.py .`. This checks the source-only
+   manifest and contents. Do not run this clean-tree check against your live
+   installation, which contains private builds and state.
+3. Merge the verified kit's **source-file contents** into your existing original
+   installation root, replacing corresponding source files while retaining its
+   directories. The kit contains no `game_files`, `Monado_Linux/play`, build,
+   generated, dependency or cache directories. Leave those existing directories
+   and any input link untouched. Do not delete/replace the installation folder
+   or `Monado_Linux`, and do not use `rsync --delete`. If you edited release-owned
+   source, merge those changes manually before rebuilding.
+4. Run `./Build_Monado_II.sh` from that original root, then
+   `./Play_Monado_II.sh`. The build uses fresh outputs and keeps the original
+   `Monado_Linux/play/launcher` saves/settings in place.
+
+Alternatively, a fresh kit in a new folder is a separate installation: it does
+not automatically import an older folder's saves/settings. Its game-input link
+can still point at your existing extracted files. No save/profile copying is
+needed for the same-folder upgrade above.
+
+After that bootstrap, normal Linux launcher startup quietly checks the official
+GitHub stable release. Only a newer supported stable release opens an offer with
+**Update** and **Later**. Later leaves the current installation usable. Update
+downloads and verifies the source kit, then builds locally with progress and a
+**Cancel** action. Download/build/validation failure or cancellation keeps the
+previous version selected. A successful update restarts the launcher after its
+current session exits; it never launches the game automatically. Updates cannot
+be applied while the game or shader precompiler is running.
+
+Presentation-only updates retain a compatible verified game build and rebuild
+the launcher. Runtime, generator or other unrecognized source changes require a
+full local game rebuild. The existing DLSS build choice is preserved; standard
+builds keep DLSS/DLAA enabled. Automated full rebuilds currently refuse custom
+frame-generation or footstep-diagnostic builds rather than silently dropping
+those options; those builds require a manual rebuild. Frame generation remains
+experimental. Edited release-owned source files also stop automatic installation
+so local changes can be merged manually. Normal settings changes do not modify
+the release-owned source.
+
+Subsequent managed updates leave installed sources in place. Each new version
+stays at a fixed path under
+`Monado_Linux/updates/<id>/workspace`, with separate generated code, dependencies,
+builds and logs. Once a build starts, its source/build/image paths must never be
+moved or renamed. The original root AppImage remains the entry point and selects
+the checked active version. Managed updates keep the original installation's
+`game_files` read-only and leave saves/settings in its
+`Monado_Linux/play/launcher` profile; they do not copy or replace that profile.
+Keep the original folder and retained version directories together. Update
+downloads and runtime artifacts under `Monado_Linux/updates` are local only and
+must not be committed or included in source releases.
+
+To select the previous version, close the launcher, game and shader precompiler
+using the original default profile. From the **original installation root**, run:
+
+```sh
+Monado_Linux/.venv/bin/python -I -B tools/update_linux.py --rollback
+./Play_Monado_II.sh
+```
+
+Rollback changes the active-version pointer, including returning to the original
+bootstrap after the first managed update. It does not restore or delete game
+builds, input, saves or settings. This command uses the original default profile;
+it is not a profile migration or save-recovery tool. The updater is Linux-only;
+no Windows updater or backport is included.
 
 If a stage fails, use the log path printed by the builder. A successful local build
 and AppImage check do not establish full-game or other-GPU compatibility. The

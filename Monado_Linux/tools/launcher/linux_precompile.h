@@ -31,7 +31,7 @@ static bool start_precompile(const std::string &state) {
     const char hex[] = "0123456789abcdef";
     precompile_session.clear();
     for (unsigned char b : bytes) { precompile_session += hex[b >> 4]; precompile_session += hex[b & 15]; }
-    std::vector<std::string> args = {"/usr/bin/python3", "-B", project + "/scripts/precompile_linux.py",
+    std::vector<std::string> args = {"/usr/bin/python3", "-B", (game_project.empty() ? project : game_project) + "/scripts/precompile_linux.py",
         "--executable", game, "--state-root", state, "--session", precompile_session};
     precompile_pid = spawn(args, state + "/logs/launcher-precompile.log", true);
     if (!precompile_pid) return false;

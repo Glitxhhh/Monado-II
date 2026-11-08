@@ -24,11 +24,11 @@ FORBIDDEN_DIRS = {
     'game_files', 'exefs', 'romfs', 'targets', 'extracted', 'generated', 'dump',
     'build', 'cache', 'caches', 'runs', 'accepted', 'save', 'saves', 'backup',
     'backups', 'play', 'crash', 'logs', 'mods', 'reports', 'captures', 'screenshots',
-    'keys', 'sdk', '.deps', '.venv', '__pycache__', 'node_modules', 'local_assets',
+    'updates', 'keys', 'sdk', '.deps', '.venv', '__pycache__', 'node_modules', 'local_assets',
     '.codex', '.agents', '.aws', '.ssh',
 }
 FORBIDDEN_NAMES = {
-    'xcde.ini', 'prod.keys', 'title.keys', 'dev.keys', 'variants_seed.bin',
+    'installation.json', 'xcde.ini', 'prod.keys', 'title.keys', 'dev.keys', 'variants_seed.bin',
     'variants.bin', 'spirv.pack', 'spirv.idx', 'vk_pipelines.bin',
     'make_dist.sh', 'gaur_plain.png', 'monado-icon.png',
     'project_memory.md', 'monado_linux_handoff.md', 'game_input_ready.md',

@@ -11,6 +11,7 @@ import argparse
 from datetime import datetime, timezone
 import hashlib
 import importlib
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
@@ -26,6 +27,9 @@ import urllib.request
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
+_layout_spec = importlib.util.spec_from_file_location('monado_appimage_install_layout', ROOT / 'Monado_Linux/scripts/install_layout.py')
+install_layout = importlib.util.module_from_spec(_layout_spec)
+_layout_spec.loader.exec_module(install_layout)
 TEMPLATES = ROOT / 'tools/appimage'
 LOCK = ROOT / 'appimage-runtime.lock.json'
 RUNTIME_SHA = '617aa77314d57c8b8e4fae9c3f0b35af7b30d5529cb69e98f64f92510ed98a46'
@@ -158,7 +162,7 @@ def verified_selection(launcher, game, root):
         sys.path.insert(0, str(scripts))
         module = importlib.import_module('launcher_linux')
         _, arguments = module.arguments(['--launcher-executable', str(launcher),
-            '--game-executable', str(game), '--state-root', str(port / 'play/launcher'), '--dry-run'])
+            '--game-executable', str(game), '--state-root', str(install_layout.profile_port(port) / 'play/launcher'), '--dry-run'])
         plan = module.prepare(arguments)
     finally:
         sys.path[:] = previous
@@ -225,8 +229,10 @@ def check_tree(directory, files):
 
 
 def command(argv, commands):
+    # The launcher supervisor keeps its private 0077 mask. Squashfs readback
+    # must retain the reviewed 0644/0755 payload modes; change only this child.
     result = subprocess.run(list(map(str, argv)), capture_output=True, text=True, timeout=180,
-        env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8'})
+        env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8'}, umask=0o022)
     commands.append({'argv': list(map(str, argv)), 'exit': result.returncode,
                      'stdout': result.stdout[-6000:], 'stderr': result.stderr[-6000:]})
     if result.returncode:
@@ -237,8 +243,13 @@ def command(argv, commands):
 def package(launcher, game, output, *, root=ROOT, selection_provider=None, runtime_provider=None):
     root = ordinary(root)
     launcher, game, output = map(ordinary, (launcher, game, output))
-    launcher_name, game_name = relative_build(launcher, root), relative_build(game, root)
     port = root / 'Monado_Linux'
+    launcher_name = relative_build(launcher, root)
+    selected_game_port = install_layout.build_port(port, game)
+    game_name = relative_build(game, selected_game_port.parent)
+    selection_data = {'schema': 1, 'project': 'Monado II', 'launcher': launcher_name, 'game': game_name}
+    if selected_game_port != port:
+        selection_data['game_port'] = 'bound'
     if not output.is_relative_to(port / 'build') or output.suffix != '.AppImage':
         raise AppImageError('AppImage output must be a fresh .AppImage below Monado_Linux/build')
     receipt_path = output.with_name(output.name + '.receipt.json')
@@ -257,8 +268,7 @@ def package(launcher, game, output, *, root=ROOT, selection_provider=None, runti
     # Existing plan/receipt guards hash the game; its bytes are never staged or included.
     files = source_files(root)
     files['usr/bin/monado-launcher'] = (gui, 0o755)
-    files['usr/share/monado-ii/selection.json'] = (encoded({'schema': 1, 'project': 'Monado II',
-        'launcher': launcher_name, 'game': game_name}), 0o644)
+    files['usr/share/monado-ii/selection.json'] = (encoded(selection_data), 0o644)
     files[MANIFEST] = (encoded({'schema': 1, 'project': 'Monado II',
         'files': identity_map(files)}), 0o644)
     runtime = (runtime_provider or runtime_bytes)(port)
@@ -302,6 +312,7 @@ def package(launcher, game, output, *, root=ROOT, selection_provider=None, runti
     receipt = {'schema': 1, 'project': 'Monado II', 'status': 'passed',
         'artifact_kind': 'local-launcher-appimage', 'sha256': digest(data), 'bytes': len(data),
         'output': str(output), 'launcher': launcher_name, 'game': game_name,
+        'game_port': 'bound' if selected_game_port != port else 'current',
         'launcher_sha256': selection['launcher_sha256'], 'game_sha256': selection['game_sha256'],
         'runtime_sha256': digest(runtime), 'runtime_bytes': len(runtime),
         'appdir_files': identity_map(files), 'archive_readback_verified': True,

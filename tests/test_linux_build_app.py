@@ -290,7 +290,7 @@ class LinuxBuildApp(unittest.TestCase):
     def test_without_dlss_cli_is_passed_to_the_builder(self):
         with mock.patch.object(build, 'build') as run:
             self.assertEqual(build.main(['--without-dlss', '--jobs', '2']), 0)
-        run.assert_called_once_with(jobs=2, dlss=False)
+        run.assert_called_once_with(jobs=2, dlss=False, reuse_game=None)
 
     def test_second_build_is_fresh_and_preserves_verified_previous_pair(self):
         self.run_build()

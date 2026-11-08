@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.1.3 — November 7, 2026
+
+- Add a **Linux stable-release updater**. Normal startup quietly checks the
+  official release; a newer version offers **Update** or **Later**. Update
+  verifies/downloads the source kit, builds locally with progress and Cancel,
+  then restarts the launcher without pressing Play.
+- Keep every managed version at a fixed path under `Monado_Linux/updates/`.
+  Compatible presentation-only updates retain the verified game; other changes
+  rebuild it locally. Preserve the existing DLSS build choice and the original
+  shared input, saves and settings. Download/build/validation failure or
+  cancellation leaves the previous selection active. Edited release-owned source
+  stops automatic installation so local changes can be merged manually.
+- Add explicit previous-version selection with
+  `Monado_Linux/.venv/bin/python -I -B tools/update_linux.py --rollback` from the
+  original installation root while its default profile is closed. This changes
+  the active pointer; it does not restore/delete builds, input or saves.
+- Bootstrap requires one manual **0.1.3 source upgrade/build**: 0.1.2 has no
+  updater. Merge the verified source kit into the same original folder and rebuild
+  to retain its profile; fresh kits elsewhere do not import old profiles. Full
+  automated rebuilds of custom
+  experimental frame-generation or footstep-diagnostic builds currently stop
+  safely and require a manual rebuild. No Windows updater/backports are included.
+- Retain the existing native Linux port, high-refresh animation/menu/footstep
+  corrections, menu-speed preference, shader preparation, default DLSS/DLAA and
+  generated launcher artwork. Frame generation remains optional and experimental.
+  Continue **TheMonadoGuy / Monado contributors' Monado** and **Peiikai's
+  LASRecomp**, with their notices preserved; see [credits](CREDITS.md).
+- Publish regular Linux and Windows **source/setup kits**, requiring the player's
+  own legally dumped DE 2.0.0 input and local game generation. No game files,
+  compiled game binary, private SDK or runtime update directory is distributed.
+  Existing Windows/full-game validation limits remain unchanged.
+
 ## 0.1.2 — November 7, 2026
 
 - Restore the original generated landscape artwork to the launcher's left panel,

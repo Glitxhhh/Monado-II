@@ -67,3 +67,7 @@ xcde.ini
 *.[Aa][Pp][Pp][Ii][Mm][Aa][Gg][Ee].receipt.json
 *.[Aa][Pp][Pp][Dd][Ii][Rr]/
 *.squashfs
+
+# Local immutable update workspaces, downloads, journals and activation records.
+updates/
+installation.json
