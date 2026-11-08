@@ -27,6 +27,13 @@ class GraphicsPaths(unittest.TestCase):
         temporary = tempfile.TemporaryDirectory(prefix='monado-pkg-paths-')
         self.addCleanup(temporary.cleanup)
         self.base = Path(temporary.name).resolve()
+        # Optional test-only backend selection exercises another pkgconf version
+        # without replacing the host tool or changing production wrapper policy.
+        self.backend = os.environ.get('MONADO_TEST_PKG_CONFIG', '/usr/bin/pkg-config')
+        self.environment = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8'}
+        library_path = os.environ.get('MONADO_TEST_PKG_CONFIG_LIBRARY_PATH')
+        if library_path:
+            self.environment['LD_LIBRARY_PATH'] = library_path
 
     def fixture(self, name='My Games/Monado II'):
         port = self.base / name / 'Monado_Linux'
@@ -56,11 +63,15 @@ class GraphicsPaths(unittest.TestCase):
             'Name: Monado authored path fixture\nDescription: No game data\nVersion: 1.0.0\n'
             'Cflags: -I${includedir}/monado_fixture -DMONADO_PC_DEFINE=1\n'
             'Libs: -L${libdir} -lm\n')
-        return port, target, port / '.deps/bin/pkg-config-graphics'
+        wrapper = port / '.deps/bin/pkg-config-graphics'
+        if self.backend != '/usr/bin/pkg-config':
+            wrapper.write_text(wrapper.read_text().replace('exec /usr/bin/pkg-config "$@"',
+                'exec ' + shlex.quote(self.backend) + ' "$@"'))
+        return port, target, wrapper
 
-    def run_query(self, wrapper, *flags):
+    def run_query(self, wrapper, *flags, environment=None):
         result = subprocess.run([str(wrapper), *flags, 'monado-path-fixture'],
-            cwd=wrapper.parents[2], env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8'},
+            cwd=wrapper.parents[2], env=dict(self.environment, **(environment or {})),
             capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         return result.stdout
@@ -92,12 +103,17 @@ class GraphicsPaths(unittest.TestCase):
         self.assertEqual(self.run_query(wrapper, '--modversion').strip(), '1.0.0')
         self.assertEqual(self.run_query(wrapper, '--exists'), '')
 
+    def test_metadata_query_does_not_inherit_flag_only_sysroot_rules(self):
+        _, target, wrapper = self.fixture()
+        inherited = {'PKG_CONFIG_FDO_SYSROOT_RULES': '1'}
+        self.assertEqual(self.run_query(wrapper, '--variable=pc_sysrootdir', environment=inherited).strip(), str(target))
+        self.assertEqual(self.run_query(wrapper, '--variable=includedir', environment=inherited).strip(), str(target / 'usr/include'))
+
     def test_raw_sysroot_reproduces_fragment_corruption_on_affected_pkgconf(self):
         _, target, _ = self.fixture()
-        result = subprocess.run(['/usr/bin/pkg-config', '--cflags', '--libs', 'monado-path-fixture'],
-            env={'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
-                 'PKG_CONFIG_SYSROOT_DIR': str(target),
-                 'PKG_CONFIG_LIBDIR': str(target / 'usr/lib/x86_64-linux-gnu/pkgconfig')},
+        result = subprocess.run([self.backend, '--cflags', '--libs', 'monado-path-fixture'],
+            env=dict(self.environment, PKG_CONFIG_SYSROOT_DIR=str(target),
+                     PKG_CONFIG_LIBDIR=str(target / 'usr/lib/x86_64-linux-gnu/pkgconfig')),
             capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr)
         expected = {'-I' + str(target / 'usr/include/monado_fixture'), '-DMONADO_PC_DEFINE=1',

@@ -232,9 +232,10 @@ full gameplay and broad distribution compatibility are separate validation gates
 
 ## November 8, 2026 — LINUX-028 spaced installation paths
 
-`scripts/setup_linux_graphics.py` now quotes the sysroot for pkg-config flag
-fragment expansion separately from the shell export. Literal variable/metadata
-queries keep their existing raw path contract. Real authored pkg-config fixtures
+`scripts/setup_linux_graphics.py` enables FDO sysroot rules only for pkg-config
+flag requests, so spaced paths are prefixed after fragment parsing. Literal
+variable/metadata queries keep their raw path contract; inherited FDO rules are
+cleared. Both pkgconf 1.8.1 and 2.5.1 are tested. Real authored pkg-config fixtures
 cover spaces and shell metacharacters, variable queries and a tiny C compile; no
 external implementation copied. Native build flags/dependency pins are unchanged.
 [Build-path repair record](../../docs/PLATFORM_STATUS.md).

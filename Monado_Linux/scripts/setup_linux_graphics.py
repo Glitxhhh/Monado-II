@@ -167,13 +167,14 @@ def main():
     write_managed_text(wrapper, '#!/usr/bin/env bash\nset -euo pipefail\n' +
                        'export PKG_CONFIG_SYSROOT_DIR=' + shlex.quote(str(target)) + '\n' +
                        'export PKG_CONFIG_LIBDIR=' + shlex.quote(str(target / 'usr/lib/x86_64-linux-gnu/pkgconfig') + ':' + str(target / 'usr/share/pkgconfig')) + '\n' +
-                       # [XCDE] LINUX-028: pkgconf reparses expanded sysroot flag fragments.
-                       # Quote that value for flags, then quote its shell literal
-                       # separately. Variable queries must retain the raw value.
+                       # [XCDE] LINUX-028: FDO flag rooting preserves literal paths
+                       # on tested pkgconf 1.8.1/2.5.1; embedded quotes differ.
+                       # Keep ordinary variable-query behavior unchanged.
+                       'unset PKG_CONFIG_FDO_SYSROOT_RULES\n' +
                        'for monado_pkg_arg in "$@"; do\n' +
                        '  case "$monado_pkg_arg" in\n' +
                        '    --cflags|--cflags-only-*|--libs|--libs-only-*)\n' +
-                       '      export PKG_CONFIG_SYSROOT_DIR=' + shlex.quote(shlex.quote(str(target))) + '\n' +
+                       '      export PKG_CONFIG_FDO_SYSROOT_RULES=1\n' +
                        '      break;;\n' +
                        '  esac\ndone\n' +
                        'unset PKG_CONFIG_PATH\nexec /usr/bin/pkg-config "$@"\n', mode=0o755)
