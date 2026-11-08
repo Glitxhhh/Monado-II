@@ -708,8 +708,8 @@
       "bytes": 6635
     },
     "Monado_Linux/scripts/install_layout.py": {
-      "sha256": "5b8d0f311fc8aabe477209701cf78f25f68ad454c8141e47c7db916b6c59b748",
-      "bytes": 6898
+      "sha256": "a50d8767a9e2f6ef26b3b3c463841491dbc436efe728df5804b427ff04156976",
+      "bytes": 7883
     },
     "Monado_Linux/scripts/launcher_linux.py": {
       "sha256": "2a3060cc5191b3049a8c6caeace415bfd936e2b58e905bda98891cdc78d3514d",
@@ -3308,8 +3308,8 @@
       "bytes": 4399
     },
     "tests/test_install_layout.py": {
-      "sha256": "0a99247e429738f1d6b3a6e9d28cf687d96a9416dafe0c1578af834b512c69eb",
-      "bytes": 6945
+      "sha256": "f76d386af1f0e0ebaddb6625bfe7e179674be7010ea1bb0e3298c60e6b60fe2c",
+      "bytes": 9940
     },
     "tests/test_launcher_appimage.py": {
       "sha256": "fa67c7592098bdfc982a210d3f236812540172b13ed9fc400df12be84fefedd8",
@@ -3352,16 +3352,16 @@
       "bytes": 11736
     },
     "tests/test_update_install_safety.py": {
-      "sha256": "086bb0ea26378d37d360d446ad7619aaf01a9a3a7b1a8f24e5e69a6b164cb26c",
-      "bytes": 5334
+      "sha256": "07d6a9d169cf8dff9d20e97600356973f06fab75ec59b11dae50dccaac69765e",
+      "bytes": 5430
     },
     "tests/test_update_linux.py": {
       "sha256": "d9b33522c85d1b58c5c3308b04bed7ae7895eb1c3815f31f21a02b4868b75533",
       "bytes": 10633
     },
     "tests/test_update_release.py": {
-      "sha256": "22652df17066be268780d339234c8293b88162a0182d11d7a25059bb0532cd8e",
-      "bytes": 17883
+      "sha256": "9ddd87db16387b23948df35c807295abaa9d0b786363f42617e5f60d743ec1f0",
+      "bytes": 18049
     },
     "tests/test_update_worker.py": {
       "sha256": "3c5cd0078a6f536afd56cba427f161ac7fd0bce2d94402945551b68d19d4cdcb",

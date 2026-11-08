@@ -3,8 +3,11 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import stat
 import tempfile
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('monado_install_layout_test', ROOT / 'Monado_Linux/scripts/install_layout.py')
@@ -81,6 +84,54 @@ class InstallationLayout(unittest.TestCase):
             self.marker.write_text(value)
             with self.subTest(length=len(value)), self.assertRaises(ValueError):
                 layout.binding(self.candidate)
+
+    def metadata(self, info, **changes):
+        values = {name: getattr(info, name) for name in ('st_dev', 'st_ino', 'st_mode',
+            'st_nlink', 'st_size', 'st_mtime_ns', 'st_ctime_ns')}
+        if hasattr(info, 'st_birthtime_ns'):
+            values['st_birthtime_ns'] = info.st_birthtime_ns
+        values.update(changes)
+        return SimpleNamespace(**values)
+
+    def test_marker_accepts_stable_path_and_descriptor_metadata_variants(self):
+        self.write()
+        before = self.marker.lstat()
+        descriptor = self.metadata(before, st_mode=before.st_mode ^ 0o111,
+                                   st_ctime_ns=before.st_ctime_ns + 1000)
+        with mock.patch.object(layout.os, 'fstat', return_value=descriptor):
+            self.assertEqual(layout._marker(self.candidate), self.value)
+
+    def test_marker_still_rejects_within_api_mode_and_timestamp_changes(self):
+        self.write()
+        before = self.marker.lstat()
+        descriptor = self.metadata(before, st_mode=before.st_mode ^ 0o111,
+                                   st_ctime_ns=before.st_ctime_ns + 1000)
+        for change in ({'st_mode': descriptor.st_mode ^ 0o020},
+                       {'st_ctime_ns': descriptor.st_ctime_ns + 1},
+                       {'st_nlink': 2}):
+            after = self.metadata(descriptor, **change)
+            with self.subTest(change=change), mock.patch.object(layout.os, 'fstat', side_effect=[descriptor, after]), \
+                    self.assertRaisesRegex(ValueError, 'changed while reading'):
+                layout._marker(self.candidate)
+        for change in ({'st_mode': before.st_mode ^ 0o020}, {'st_ctime_ns': before.st_ctime_ns + 1}):
+            after = self.metadata(before, **change)
+            with self.subTest(path_change=change), \
+                    mock.patch.object(Path, 'lstat', side_effect=[before, after]), \
+                    mock.patch.object(layout.os, 'fstat', return_value=descriptor), \
+                    self.assertRaisesRegex(ValueError, 'changed while reading'):
+                layout._marker(self.candidate)
+
+    def test_marker_still_rejects_cross_api_identity_type_size_and_birth_changes(self):
+        self.write()
+        before = self.metadata(self.marker.lstat(), st_birthtime_ns=100)
+        for change in ({'st_dev': before.st_dev + 1}, {'st_ino': before.st_ino + 1},
+                       {'st_mode': stat.S_IFDIR | 0o700}, {'st_size': before.st_size + 1},
+                       {'st_mtime_ns': before.st_mtime_ns + 1}, {'st_birthtime_ns': 101}, {'st_nlink': 2}):
+            descriptor = self.metadata(before, **change)
+            with self.subTest(change=change), mock.patch.object(Path, 'lstat', return_value=before), \
+                    mock.patch.object(layout.os, 'fstat', return_value=descriptor), \
+                    self.assertRaisesRegex(ValueError, 'changed while reading'):
+                layout._marker(self.candidate)
 
     def test_marker_symlink_and_hardlink_are_rejected(self):
         target = self.root / 'authored-marker.json'

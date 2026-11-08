@@ -64,8 +64,23 @@ def _marker(port):
         last = os.fstat(fd)
         after = path.lstat()
         snapshot = lambda value: (value.st_dev, value.st_ino, value.st_mode, value.st_nlink,
-                                  value.st_size, value.st_mtime_ns, value.st_ctime_ns)
-        if snapshot(before) != snapshot(first) or snapshot(first) != snapshot(last) or snapshot(last) != snapshot(after) or len(data) != first.st_size:
+                                  value.st_size, value.st_mtime_ns, value.st_ctime_ns,
+                                  getattr(value, 'st_birthtime_ns', None))
+        def same_object(left, right):
+            # Windows lstat/fstat can disagree on executable bits and ctime
+            # semantics (CPython issue157671). Keep full snapshots within each
+            # API; compare their shared file identity across the two APIs.
+            def identity(value):
+                return (value.st_dev, value.st_ino, stat.S_IFMT(value.st_mode),
+                        value.st_size, value.st_mtime_ns)
+            left_birth = getattr(left, 'st_birthtime_ns', None)
+            right_birth = getattr(right, 'st_birthtime_ns', None)
+            return (identity(left) == identity(right) and
+                    (left_birth is None or right_birth is None or left_birth == right_birth))
+        if (not stat.S_ISREG(first.st_mode) or first.st_nlink != 1 or
+                snapshot(before) != snapshot(after) or snapshot(first) != snapshot(last) or
+                not same_object(before, first) or not same_object(after, last) or
+                len(data) != first.st_size or len(data) > MAX_MARKER or path.resolve() != path):
             raise ValueError('installation marker changed while reading')
     finally:
         os.close(fd)

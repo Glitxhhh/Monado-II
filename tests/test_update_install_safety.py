@@ -38,7 +38,8 @@ class InstallSafety(unittest.TestCase):
     def setUp(self):
         context = tempfile.TemporaryDirectory(prefix='monado-update-safety-')
         self.addCleanup(context.cleanup)
-        self.owner = Path(context.name)
+        # Resolve Windows short-name temp aliases before applying strict path checks.
+        self.owner = Path(context.name).resolve()
 
     def test_corrupt_candidate_helper_cannot_execute_before_source_verification(self):
         original = self.owner / 'Monado_Linux'

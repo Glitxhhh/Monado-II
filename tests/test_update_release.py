@@ -150,7 +150,8 @@ class Extraction(unittest.TestCase):
     def setUp(self):
         context = tempfile.TemporaryDirectory(prefix='monado-update-release-')
         self.addCleanup(context.cleanup)
-        self.root = Path(context.name)
+        # Windows temp roots may use a short-name alias; product paths are canonical.
+        self.root = Path(context.name).resolve()
 
     def fetch(self, data, *, selected=None, **kwargs):
         return update.fetch_and_extract(selected or offer(data), self.root / 'stage',
@@ -184,8 +185,8 @@ class Extraction(unittest.TestCase):
                 self.addCleanup(context.cleanup)
                 selected = offer(data); selected[field] = value
                 with self.assertRaises(update.UpdateError):
-                    update.fetch_and_extract(selected, Path(context.name) / 'stage', opener=response(data))
-                self.assertFalse((Path(context.name) / 'stage/source').exists())
+                    update.fetch_and_extract(selected, Path(context.name).resolve() / 'stage', opener=response(data))
+                self.assertFalse((Path(context.name).resolve() / 'stage/source').exists())
 
     def test_links_traversal_duplicates_collisions_and_other_roots_are_rejected(self):
         prefix = 'monado-ii-0.1.4-linux-source/'
@@ -201,7 +202,7 @@ class Extraction(unittest.TestCase):
                 context = tempfile.TemporaryDirectory(dir=self.root); self.addCleanup(context.cleanup)
                 data = archive_bytes(extra=[member])
                 with self.assertRaises(update.UpdateError):
-                    update.fetch_and_extract(offer(data), Path(context.name) / 'stage', opener=response(data))
+                    update.fetch_and_extract(offer(data), Path(context.name).resolve() / 'stage', opener=response(data))
         self.assertFalse((self.root / 'escape').exists())
 
     def test_reserved_installation_marker_is_rejected_even_when_manifested(self):
@@ -216,8 +217,8 @@ class Extraction(unittest.TestCase):
                 files = source_files(); files[first] = b'# authored\n'; files[second] = b'# authored\n'
                 data = archive_bytes(files)
                 with self.assertRaisesRegex(update.UpdateError, 'collide'):
-                    update.fetch_and_extract(offer(data), Path(context.name) / 'stage', opener=response(data))
-                self.assertFalse((Path(context.name) / 'stage/source').exists())
+                    update.fetch_and_extract(offer(data), Path(context.name).resolve() / 'stage', opener=response(data))
+                self.assertFalse((Path(context.name).resolve() / 'stage/source').exists())
 
     def test_malformed_gzip_is_reported_as_an_update_error(self):
         with self.assertRaises(update.UpdateError):
@@ -240,7 +241,7 @@ class Extraction(unittest.TestCase):
             with self.subTest(digest=hashlib.sha256(data).hexdigest()):
                 context = tempfile.TemporaryDirectory(dir=self.root); self.addCleanup(context.cleanup)
                 with self.assertRaises(update.UpdateError):
-                    update.fetch_and_extract(offer(data), Path(context.name) / 'stage', opener=response(data))
+                    update.fetch_and_extract(offer(data), Path(context.name).resolve() / 'stage', opener=response(data))
 
     def test_installed_guard_rejects_disguised_binary_content(self):
         files = source_files(); files['README.md'] = b'NSO0AUTHORED NEGATIVE FIXTURE'
@@ -260,7 +261,7 @@ class Extraction(unittest.TestCase):
                 context = tempfile.TemporaryDirectory(dir=self.root); self.addCleanup(context.cleanup)
                 data = archive_bytes()
                 with self.assertRaises(update.UpdateError):
-                    update.fetch_and_extract(offer(data), Path(context.name) / 'stage', opener=response(data))
+                    update.fetch_and_extract(offer(data), Path(context.name).resolve() / 'stage', opener=response(data))
 
     def test_existing_linked_or_noncanonical_staging_is_refused(self):
         data = archive_bytes()
