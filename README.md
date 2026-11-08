@@ -49,8 +49,8 @@ remains incomplete.
 
 ## Setup downloads and local builds
 
-Download the [Linux setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.5/monado-ii-0.1.5-linux-setup.tar.gz)
-or [Windows setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.5/monado-ii-0.1.5-windows-setup.zip)
+Download the [Linux setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.6/monado-ii-0.1.6-linux-setup.tar.gz)
+or [Windows setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.6/monado-ii-0.1.6-windows-setup.zip)
 from the release, and verify its checksum. These contain source and setup tools;
 you provide your own input and build locally. For Linux app launchers such as
 Quiver, select **`App_Monado_II.sh`**: it shows first-build progress in an installed
@@ -68,9 +68,11 @@ The normal Linux build includes native **DLSS Super Resolution / DLAA** support
 for compatible NVIDIA hardware. It fetches the pinned official NVIDIA SDK locally;
 SDK binaries/models are not included in source kits or the launcher image.
 Use `./Build_Monado_II.sh --without-dlss` to explicitly omit that provider.
-Frame generation remains optional and experimental. Compile its native support
-with `./Build_Monado_II.sh --framegen` (requires DLSS/DLAA), then enable it manually
-in the launcher. It remains off by default; see the [build guide](docs/BUILD_LINUX.md#experimental-frame-generation-build).
+Starting with 0.1.6, normal Linux builds also include **frame-generation support**.
+It remains **experimental and disabled in settings by default**: select DLSS/DLAA
+and enable the checkbox if you want to try it. No extra build flag is needed.
+Explicit `--without-dlss` excludes both providers because FG currently depends on
+DLSS/DLAA. See the [build guide](docs/BUILD_LINUX.md#experimental-frame-generation).
 
 Starting with **0.1.3**, the Linux launcher quietly checks for newer stable
 releases on startup. A newer release offers **Update** or **Later**. Update
@@ -79,6 +81,9 @@ restarts the launcher; it never presses Play. Compatible launcher-only updates
 retain the verified game build. Other updates rebuild the game locally. Saves,
 settings and the shared input stay in the original installation; failed or
 cancelled preparation keeps the previous version selected.
+
+From 0.1.6, the original folder's `update-version.json` shows the active version.
+Use `./Rollback_Monado_II.sh` for a version-aware rollback; see the Linux guide.
 
 **0.1.2 has no updater:** first apply the verified 0.1.3 or newer Linux source kit to the
 same original installation folder and rebuild once, preserving its input and
@@ -91,7 +96,7 @@ Releases provide separate **Linux setup `.tar.gz`** and **Windows setup `.zip`**
 kits containing reviewed source. They are **not precompiled playable game downloads**.
 You build the game locally from your own verified dump. No compiled game binary,
 private vendor SDK binary, game-derived cache or user data is distributed.
-Version 0.1.5 uses the regular release channel; frame generation remains an
+Version 0.1.6 uses the regular release channel; frame generation remains an
 experimental optional feature. A legacy Linux `-source` download remains solely
 for compatibility with installed updaters. New downloads use the `-setup` kit.
 

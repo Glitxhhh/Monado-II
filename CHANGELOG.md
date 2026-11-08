@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.6 — November 8, 2026
+
+- Include native frame-generation support in normal Linux builds and automatic
+  rebuilds. The user chooses whether to enable it in the launcher; it remains
+  **experimental and disabled in settings by default**. No extra build flag is
+  needed. Explicit `--without-dlss` omits both providers because FG requires
+  DLSS/DLAA. Keep `--framegen` accepted for older build commands.
+- Rebuild older DLSS games that lack FG support instead of reusing them without
+  the feature. Current updaters can rebuild ordinary FG builds automatically;
+  footstep-diagnostic builds remain manual. Older custom FG installations using
+  pre-0.1.6 updater code still need a one-time manual upgrade.
+- Make the original installation's `update-version.json` reflect the active
+  version. Preserve the original version in a manifest-checked backup and keep
+  game input, saves and settings in place. Add `Rollback_Monado_II.sh` so rollback
+  uses the retained version-aware updater and restores the visible version too.
+- Keep canonical Quiver setup downloads, the Linux legacy updater compatibility
+  download and checksum verification. No FG algorithm or performance improvement
+  is claimed; performance can vary or be worse with it enabled.
+
 ## 0.1.5 — November 8, 2026
 
 - Publish Linux and Windows **setup/build kits** with canonical `-setup` download

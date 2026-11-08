@@ -24,6 +24,11 @@ preferred FG off. **Performance varies and may be worse with FG enabled.** Autho
 tests do not establish improved physical display cadence, latency or all scenes.
 Linux FSR3 Super Resolution is unavailable.
 
+Version0.1.6 includes FG support in normal Linux builds and automatic rebuilds,
+with the effect disabled in settings by default. Users enable it in the launcher
+with DLSS/DLAA selected. Explicit DLSS-free builds omit both providers. This is an
+availability correction, not a new pacing/performance fix.
+
 Version 0.1.4 fixes Linux dependency flag handling in installation paths containing
 spaces. It preserves existing input/profile locations and the variable-query
 contract used by launcher setup.
@@ -34,7 +39,9 @@ updates can retain the compatible game; other source changes trigger a full loca
 rebuild. Original input and profile paths remain stable across managed versions.
 Failure/cancellation during preparation preserves the previous selection, and
 edited release-owned source stops installation. Full automated rebuilds of custom
-frame-generation/footstep-diagnostic builds are currently refused safely.
+footstep-diagnostic builds are refused safely. Current clients support ordinary
+FG rebuilds; older experimental FG installations with pre-0.1.6 updater code need
+a one-time manual upgrade.
 The 0.1.2 launcher needs a one-time manual 0.1.3 source upgrade/build to gain
 update support. The verified source kit can be applied to the same original
 folder while keeping its profile/input/build directories; fresh kits in another
@@ -54,5 +61,5 @@ its origin and limitations. It is not a game screenshot or extracted asset. The
 separate unreviewed sword icon and proprietary-font decoding remain excluded.
 Plain user/system TTF/OTF/TTC font input is supported. Public-only changes require
 further integrated testing. Full-game, save-recovery, long-session, other-GPU and
-clean-machine coverage remain incomplete. A regular 0.1.5 release does not imply
+clean-machine coverage remain incomplete. A regular 0.1.6 release does not imply
 Windows game-build or full-game qualification.

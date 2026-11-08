@@ -49,8 +49,10 @@ Linux FG presentation. No Windows backport is implied by publication preparation
 - [x] Add Linux stable-release offers, verified source downloads, local update
   builds, progress/cancellation, stable profiles and explicit pointer rollback.
 - [ ] Expand real-system update/restart/interruption and rollback validation.
-- [ ] Support automated full rebuilds of custom frame-generation or
-  footstep-diagnostic builds without dropping their selected features.
+- [x] Include FG capability in normal Linux builds and support ordinary FG full
+  rebuilds with the 0.1.6+ updater, retaining the off-by-default runtime setting.
+- [ ] Support automated full rebuilds of footstep-diagnostic builds without
+  dropping their diagnostic features. Pre-0.1.6 custom FG clients need one manual upgrade.
 - [ ] Validate the workspace launcher AppImage on more distributions/desktops;
   it currently requires the complete local build folder and its absolute receipts.
 

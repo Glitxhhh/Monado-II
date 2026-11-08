@@ -210,6 +210,27 @@ class ManagedBuild(unittest.TestCase):
             self.assertEqual(build.main(['--reuse-game', str(self.game), '--without-dlss']), 0)
         operation.assert_called_once_with(jobs=4, dlss=False, reuse_game=self.game, framegen=False)
 
+    def test_normal_reuse_rejects_older_dlss_game_without_framegen_before_writes(self):
+        self.receipt['dlss_enabled'] = True
+        self.save_receipt()
+        before = files(self.owner)
+        with self.assertRaisesRegex(build.BuildError, 'frame-generation flag differs'):
+            build.layout(self.workspace, 2, reuse_game=self.game)
+        self.assertEqual(files(self.owner), before)
+        self.assertEqual(self.commands, [])
+
+    def test_reuse_requires_explicit_boolean_framegen_receipt_metadata(self):
+        for value in (None, 0, 1, 'false', [], {}):
+            self.receipt['framegen_enabled'] = value
+            self.save_receipt()
+            with self.subTest(value=value), self.assertRaisesRegex(build.BuildError, 'frame-generation flag differs'):
+                build.layout(self.workspace, 2, dlss=False, reuse_game=self.game)
+        del self.receipt['framegen_enabled']
+        self.save_receipt()
+        with self.assertRaisesRegex(build.BuildError, 'frame-generation flag differs'):
+            build.layout(self.workspace, 2, dlss=False, reuse_game=self.game)
+        self.assertEqual(self.commands, [])
+
     def test_framegen_reuse_requires_matching_flags_and_retains_old_companions(self):
         self.receipt['dlss_enabled'] = self.receipt['framegen_enabled'] = True
         resources = {}
@@ -225,7 +246,7 @@ class ManagedBuild(unittest.TestCase):
         original = files(self.game.parent)
         with mock.patch.object(build, 'existing_framegen_sdk', side_effect=AssertionError('do not rebuild old SDK')), \
                 mock.patch.object(build.run_linux, 'dlss_namespace', side_effect=lambda argv, state: (argv, {'kind': 'authored'})):
-            paths, commands = build.layout(self.workspace, 2, dlss=True, framegen=True, reuse_game=self.game)
+            paths, commands = build.layout(self.workspace, 2, reuse_game=self.game)
         self.assertEqual(paths['game'], self.game)
         self.assertFalse(any(name in ('framegen-source', 'native-framegen-dependency', 'generate-game', 'build-game') for name, _ in commands))
         self.assertEqual(files(self.game.parent), original)

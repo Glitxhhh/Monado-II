@@ -391,6 +391,19 @@ def main(argv=None):
         os.umask(0o077)
         state = Path(launch['state'])
         lock_fd = acquire_lock(state)
+        if not args.shot and not args.ui_script and (ROOT.parent / 'update-version.json').exists():
+            # Managed versions mirror their active version at the original root.
+            # The checked helper also holds the install lease; dry runs returned
+            # above without changing source metadata or touching a user profile.
+            import importlib.util
+            path = ROOT.parent / 'tools/update_linux.py'
+            if path.resolve() != path or not path.is_file():
+                raise ValueError('missing ordinary installed-version helper')
+            spec = importlib.util.spec_from_file_location('_monado_installed_version', path)
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[spec.name] = module
+            spec.loader.exec_module(module)
+            module.sync_installation_version(ROOT.parent, state, lock_fd)
         logs_fd = mkdir_private(state / 'logs')
         try:
             log_fd = regular_open(logs_fd, 'launcher-console.log', os.O_WRONLY | os.O_APPEND)

@@ -2,8 +2,10 @@
 """Monado II Linux updates: immutable local builds and durable version selection.
 
 This module runs only in the outer launcher supervisor. It never opens, copies,
-restores or migrates saves/configuration/caches, and never overwrites installed
-source or builds. Network and compilation never run in the sandboxed GUI/game.
+restores or migrates saves/configuration/caches. Installed builds and authored
+source stay in place; only the checked visible version marker is updated, with
+its exact original bytes bound to the unchanged source manifest. Network and
+compilation never run in the sandboxed GUI/game.
 """
 from __future__ import annotations
 
@@ -28,6 +30,7 @@ _import_path = list(sys.path)
 sys.path.insert(0, str(ROOT / 'tools'))
 try:
     import update_release
+    import installation_version as installed_version
     from publication_guard import content_problem, path_problem, read_regular
 finally:
     sys.path[:] = _import_path
@@ -112,11 +115,14 @@ def layout_module(workspace):
     return module
 
 
-def installed_sources(workspace):
+def installed_sources(workspace, *, _allow_stale_marker=False):
     """Verify release-owned source bytes while leaving all runtime directories alone.
 
     Unlike the clean archive guard this intentionally does not enumerate runtime
     files. No game input, generated output, dependency cache or save is read.
+    Only an original installation's version marker may differ: its original
+    bytes must match the unchanged manifest, and its visible value must follow
+    a fully verified active selection (or a known recovery state during sync).
     """
     workspace = ordinary(workspace)
     manifest = json_read(workspace / 'publication-manifest.json')
@@ -126,10 +132,17 @@ def installed_sources(workspace):
             manifest.get('project') != 'Monado II' or not isinstance(files, dict) or
             not 1 <= len(files) <= 4096 or 'publication-policy.json' not in files):
         raise ValueError('installation has no supported exact source manifest')
+    original = None
+    backup = workspace / 'Monado_Linux/updates' / installed_version.BACKUP
+    if backup.exists() or backup.is_symlink():
+        if layout_module(ROOT).installation_root(workspace / 'Monado_Linux') != workspace:
+            raise ValueError('only the original installation may have a bootstrap version backup')
+        original = _original_metadata(workspace, manifest)
+        _checked_owner_marker(workspace, original, allow_stale=_allow_stale_marker)
     for name, identity in files.items():
         if (path_problem(name) or name == 'publication-manifest.json' or not isinstance(identity, dict)):
             raise ValueError('unsafe installed source manifest')
-        data = read_regular(ordinary(workspace / name))
+        data = original if name == 'update-version.json' and original is not None else read_regular(ordinary(workspace / name))
         if len(data) != identity.get('bytes') or hashlib.sha256(data).hexdigest() != identity.get('sha256'):
             raise ValueError('Local source changes detected; keep this installation and merge them manually: ' + name)
         problem = content_problem(name, data, policy.get('licensed_media', {}))
@@ -139,13 +152,7 @@ def installed_sources(workspace):
 
 
 def version(workspace):
-    metadata = json_read(Path(workspace) / 'update-version.json', 4096)
-    if metadata.get('schema') != 1 or metadata.get('protocol') != 1:
-        raise ValueError('unsupported installed updater version protocol')
-    value = metadata.get('version')
-    if not isinstance(value, str) or not re.fullmatch(r'0|[1-9][0-9]*', value.split('.')[0]) or not re.fullmatch(r'(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', value):
-        raise ValueError('invalid installed stable version')
-    return value
+    return installed_version.metadata(read_regular(ordinary(Path(workspace) / 'update-version.json')))['version']
 
 
 def pair(image):
@@ -198,6 +205,204 @@ def active_record(owner, record, *, verify_sources=True):
     return workspace
 
 
+def _original_metadata(owner, manifest):
+    identity = manifest['files'].get('update-version.json')
+    path = owner / 'Monado_Linux/updates' / installed_version.BACKUP
+    if path.exists() or path.is_symlink():
+        return installed_version.original_from_backup(json_read(path, 16384), owner,
+            digest(owner / 'publication-manifest.json'), identity)
+    return installed_version.checked_original(read_regular(ordinary(owner / 'update-version.json')), identity)
+
+
+def _previous_selection(owner):
+    path = owner / 'Monado_Linux/updates/previous.json'
+    if not path.exists() and not path.is_symlink():
+        return None
+    value = json_read(path, 8192)
+    if (set(value) != {'schema', 'selection'} or type(value.get('schema')) is not int
+            or value['schema'] not in (1, 2)):
+        raise ValueError('invalid previous version record')
+    if value['selection'] is not None:
+        active_record(owner, value['selection'])
+    return value
+
+
+def _selected_metadata(owner, original, selection):
+    if selection is None:
+        return original
+    selected = active_record(owner, selection)
+    data = read_regular(ordinary(selected / 'update-version.json'))
+    installed_version.metadata(data)
+    return data
+
+
+def _current_selection(owner):
+    path = owner / 'Monado_Linux/updates/active.json'
+    if path.exists() or path.is_symlink():
+        value = json_read(path, 8192)
+        active_record(owner, value)
+        return value
+    return None
+
+
+def _checked_owner_marker(owner, original, *, allow_stale=False):
+    expected = _selected_metadata(owner, original, _current_selection(owner))
+    actual = read_regular(ordinary(owner / 'update-version.json'))
+    installed_version.metadata(actual)
+    permitted = [expected]
+    if allow_stale:
+        permitted.append(original)
+        previous = _previous_selection(owner)
+        if previous is not None:
+            permitted.append(_selected_metadata(owner, original, previous['selection']))
+    if actual not in permitted:
+        raise ValueError('installed-version marker does not match a verified current/previous version')
+    return actual, expected
+
+
+def _fsync_directory(path):
+    descriptor = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _write_bytes_new(path, data, mode=0o600):
+    ordinary(path, missing=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC | os.O_NOFOLLOW, mode)
+    with os.fdopen(fd, 'wb') as output:
+        output.write(data)
+        output.flush()
+        os.fsync(output.fileno())
+    _fsync_directory(path.parent)
+
+
+def _replace_metadata(path, data):
+    installed_version.metadata(data)
+    temporary = path.parent / ('.installed-version-' + uuid.uuid4().hex + '.partial')
+    try:
+        _write_bytes_new(temporary, data)
+        os.replace(temporary, ordinary(path))
+        _fsync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _bridge_workspace(owner, bridge):
+    if (set(bridge) != installed_version.BRIDGE_KEYS or type(bridge.get('schema')) is not int
+            or bridge['schema'] != 1 or bridge.get('owner') != str(owner)
+            or not isinstance(bridge.get('workspace'), str)
+            or not all(isinstance(bridge.get(key), str) and HASH.fullmatch(bridge[key]) for key in
+                       ('manifest_sha256', 'updater_sha256', 'version_helper_sha256', 'wrapper_sha256'))):
+        raise ValueError('invalid installation version bridge')
+    relative = Path(bridge['workspace'])
+    if bridge['workspace'] == '.':
+        workspace = owner
+    elif (len(relative.parts) == 4 and relative.parts[:2] == ('Monado_Linux', 'updates')
+            and relative.parts[3] == 'workspace' and relative.parts[2].startswith('update-')
+            and IDENTITY.fullmatch(relative.parts[2])
+            and bridge['workspace'] == relative.as_posix()):
+        workspace = ordinary(owner / relative)
+        if layout_module(ROOT).installation_root(workspace / 'Monado_Linux') != owner:
+            raise ValueError('installation version bridge owner mismatch')
+    else:
+        raise ValueError('installation version bridge escaped its owner')
+    manifest = installed_sources(workspace, _allow_stale_marker=workspace == owner)
+    if digest(workspace / 'publication-manifest.json') != bridge['manifest_sha256']:
+        raise ValueError('installation version bridge source manifest changed')
+    for name, key in (('tools/update_linux.py', 'updater_sha256'),
+                      ('tools/installation_version.py', 'version_helper_sha256'),
+                      (installed_version.WRAPPER, 'wrapper_sha256')):
+        if manifest['files'].get(name, {}).get('sha256') != bridge[key]:
+            raise ValueError('installation version bridge differs from verified source')
+    if digest(owner / installed_version.WRAPPER) != bridge['wrapper_sha256']:
+        raise ValueError('unknown or modified installation rollback wrapper')
+    return workspace
+
+
+def _prepare_version_state(owner, capable_workspace):
+    """Under the install lease: establish recovery before changing the marker."""
+    manifest = installed_sources(owner, _allow_stale_marker=True)
+    original = _original_metadata(owner, manifest)
+    current, _ = _checked_owner_marker(owner, original, allow_stale=True)
+    capable = installed_sources(capable_workspace, _allow_stale_marker=capable_workspace == owner)
+    directory = owner / 'Monado_Linux/updates'
+    wrapper = owner / installed_version.WRAPPER
+    bridge_path = directory / installed_version.BRIDGE
+    bridge = None
+    if bridge_path.exists() or bridge_path.is_symlink():
+        bridge = json_read(bridge_path, 8192)
+        _bridge_workspace(owner, bridge)
+    else:
+        data = read_regular(ordinary(capable_workspace / installed_version.WRAPPER))
+        if (capable['files'].get(installed_version.WRAPPER, {}).get('sha256') != hashlib.sha256(data).hexdigest()
+                or any(name not in capable['files'] for name in ('tools/update_linux.py', 'tools/installation_version.py'))):
+            raise ValueError('selected source has no verified version-recovery entrypoint')
+        if wrapper.exists() or wrapper.is_symlink():
+            if read_regular(ordinary(wrapper)) != data or not os.access(wrapper, os.X_OK):
+                raise ValueError('unknown or modified installation rollback wrapper')
+        bridge = dict(schema=1, owner=str(owner), workspace=capable_workspace.relative_to(owner).as_posix(),
+            manifest_sha256=digest(capable_workspace / 'publication-manifest.json'),
+            updater_sha256=capable['files']['tools/update_linux.py']['sha256'],
+            version_helper_sha256=capable['files']['tools/installation_version.py']['sha256'],
+            wrapper_sha256=capable['files'][installed_version.WRAPPER]['sha256'])
+    previous = _previous_selection(owner)
+    backup = directory / installed_version.BACKUP
+    if not backup.exists():
+        write_new(backup, installed_version.make_backup(owner, digest(owner / 'publication-manifest.json'),
+            manifest['files']['update-version.json'], original))
+        _fsync_directory(directory)
+    if not wrapper.exists():
+        _write_bytes_new(wrapper, read_regular(ordinary(capable_workspace / installed_version.WRAPPER)), 0o755)
+    if not bridge_path.exists():
+        write_new(bridge_path, bridge)
+        _fsync_directory(directory)
+    # Old rollback clients must refuse before modifying selection: they cannot
+    # restore a mutable owner marker. The pinned wrapper remains usable instead.
+    if previous is None or previous['schema'] != 2:
+        durable_replace(directory / 'previous.json', {'schema': 2,
+            'selection': None if previous is None else previous['selection']})
+    return original, current
+
+
+def sync_installation_version(workspace, state, profile_lock_fd):
+    """Normal-start repair under the already held profile lease and install lease.
+
+    No active managed version means an ordinary fresh/development launch has no
+    version-marker migration to perform. Dry runs never call this function.
+    """
+    import fcntl
+    workspace, state = ordinary(workspace), ordinary(state)
+    owner = layout_module(ROOT).installation_root(workspace / 'Monado_Linux')
+    if not any(state != parent and state.is_relative_to(parent) for parent in
+               (owner / 'Monado_Linux/play', owner / 'Monado_Linux/runs')):
+        raise ValueError('version synchronization requires the original private profile')
+    lease = ordinary(state / '.session.lock')
+    expected, held = lease.stat(), os.fstat(profile_lock_fd)
+    if (not stat.S_ISREG(held.st_mode) or held.st_nlink != 1
+            or (expected.st_dev, expected.st_ino) != (held.st_dev, held.st_ino)):
+        raise ValueError('version synchronization profile lease mismatch')
+    fcntl.flock(profile_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    selected = _current_selection(owner)
+    if selected is None or active_record(owner, selected) != workspace:
+        return False
+    session = object.__new__(Session)
+    session.owner, session.lock_fd = owner, None
+    try:
+        session._lock()
+        if _current_selection(owner) != selected:
+            raise ValueError('active selection changed during version synchronization')
+        original, current = _prepare_version_state(owner, workspace)
+        target = _selected_metadata(owner, original, selected)
+        if current != target:
+            _replace_metadata(owner / 'update-version.json', target)
+            return True
+        return False
+    finally:
+        session.close()
+
+
 def dispatch_active(workspace, argv):
     """The original workspace image is a stable bootstrap; versions stay put.
 
@@ -216,22 +421,31 @@ def dispatch_active(workspace, argv):
     return [str(active / IMAGE), '--appimage-extract-and-run', *argv]
 
 
-def build_command(workspace, game, rebuild):
-    command = [str(workspace / 'Build_Monado_II.sh')]
+def game_features(game):
+    """Validate the selected game's recorded capabilities before planning reuse."""
     receipt = json_read(Path(game).parent / 'receipt.json')
     if not isinstance(receipt.get('dlss_enabled'), bool):
         raise ValueError('old game has no explicit feature receipt')
     framegen = receipt.get('framegen_enabled', False)
     if type(framegen) is not bool or (framegen and not receipt['dlss_enabled']):
         raise ValueError('old game has an invalid frame-generation feature receipt')
+    return receipt
+
+
+def build_command(workspace, game, rebuild):
+    command = [str(workspace / 'Build_Monado_II.sh')]
+    receipt = game_features(game)
+    framegen = receipt.get('framegen_enabled', False)
     if not receipt['dlss_enabled']:
         command.append('--without-dlss')
     if not rebuild:
+        if receipt['dlss_enabled'] and not framegen:
+            raise ValueError('The selected game lacks standard frame-generation support; a full rebuild is required.')
         if framegen:
             command.append('--framegen')
         command += ['--reuse-game', str(game)]
-    elif receipt.get('framegen_enabled') or receipt.get('foley_trace'):
-        raise ValueError('This custom diagnostic/experimental game build requires a manual rebuild; the current version is preserved.')
+    elif receipt.get('foley_trace'):
+        raise ValueError('This custom diagnostic game build requires a manual rebuild; the current version is preserved.')
     return command
 
 
@@ -399,6 +613,10 @@ class Session:
         if version(source) != self.offer['version']:
             raise ValueError('downloaded version metadata differs from release')
         rebuild = update_release.classify(baseline, candidate_manifest) == 'game'
+        features = game_features(self.game)
+        # Native FG support is part of the normal DLSS build. A launcher-only
+        # update cannot reuse an older game that lacks that capability.
+        rebuild = rebuild or (features['dlss_enabled'] and not features.get('framegen_enabled', False))
         workspace = transaction / 'workspace'
         source.rename(workspace)  # Before any build: absolute paths never change afterward.
         port = workspace / 'Monado_Linux'
@@ -443,12 +661,18 @@ class Session:
         actual = json_read(selected, 8192) if selected.exists() else None
         if actual != prepared['previous']:
             raise ValueError('active selection changed; preserve the prepared update and retry safely')
+        original, marker_before = _prepare_version_state(self.owner, workspace)
         # Previous record is durable before the one-file commit. Until replace,
-        # crashes leave the old selection; no source/image/save files are replaced.
-        durable_replace(directory / 'previous.json', {'schema': 1, 'selection': actual})
+        # crashes leave the old selection. Images, code and saves stay in place;
+        # the derived visible version marker follows the committed selection.
+        durable_replace(directory / 'previous.json', {'schema': 2, 'selection': actual})
         try:
             durable_replace(selected, record)
+            _replace_metadata(self.owner / 'update-version.json', _selected_metadata(self.owner, original, record))
         except BaseException:
+            # Restore the derived marker before selecting an older bootstrap,
+            # which may not contain startup repair code.
+            _replace_metadata(self.owner / 'update-version.json', marker_before)
             if actual is None:
                 selected.unlink(missing_ok=True)
                 fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
@@ -462,13 +686,18 @@ class Session:
 
 
 def rollback(owner):
-    """Manual local rollback; source/game/profile data are never moved or restored."""
+    """Select the previous build and its visible marker; code/game/saves stay put."""
     owner = ordinary(owner)
-    module = layout_module(owner)
+    # Validate original source bytes (with the narrow manifest-bound marker
+    # override) before loading any original-installation Python source.
+    installed_sources(owner, _allow_stale_marker=True)
+    module = layout_module(ROOT)
+    if module.installation_root(ROOT / 'Monado_Linux') != owner:
+        raise ValueError('rollback owner differs from the pinned updater installation')
     if module.installation_root(owner / 'Monado_Linux') != owner:
         raise ValueError('run rollback from the original installation')
     # Acquire the ordinary default profile lease as well as the update lock.
-    scripts = owner / 'Monado_Linux/scripts'
+    scripts = ROOT / 'Monado_Linux/scripts'
     previous = list(sys.path)
     sys.path.insert(0, str(scripts))
     try:
@@ -480,18 +709,28 @@ def rollback(owner):
     session.owner, session.lock_fd = owner, None
     try:
         directory = session._lock()
-        prior = json_read(directory / 'previous.json', 8192)
-        if prior.get('schema') != 1 or set(prior) != {'schema', 'selection'}:
+        original, marker_before = _prepare_version_state(owner, ROOT)
+        prior = _previous_selection(owner)
+        if prior is None:
             raise ValueError('invalid previous version record')
         selection = prior['selection']
-        if selection is None:
-            (directory / 'active.json').unlink(missing_ok=True)
-            fd = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW)
-            try: os.fsync(fd)
-            finally: os.close(fd)
-        else:
-            active_record(owner, selection)
-            durable_replace(directory / 'active.json', selection)
+        current = _current_selection(owner)
+        _replace_metadata(owner / 'update-version.json', _selected_metadata(owner, original, selection))
+        try:
+            if selection is None:
+                (directory / 'active.json').unlink(missing_ok=True)
+                _fsync_directory(directory)
+            else:
+                durable_replace(directory / 'active.json', selection)
+        except BaseException:
+            if current is None:
+                _replace_metadata(owner / 'update-version.json', marker_before)
+                (directory / 'active.json').unlink(missing_ok=True)
+                _fsync_directory(directory)
+            else:
+                durable_replace(directory / 'active.json', current)
+                _replace_metadata(owner / 'update-version.json', marker_before)
+            raise
     finally:
         session.close()
         os.close(lease)
@@ -502,6 +741,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--rollback', action='store_true',
                         help='select the previous version while the original default profile is closed')
+    parser.add_argument('--owner', type=Path,
+                        help='original installation selected by the verified rollback entrypoint')
     parser.add_argument('--build-worker', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--worker-log', type=Path, help=argparse.SUPPRESS)
     parser.add_argument('--update-lock-fd', type=int, help=argparse.SUPPRESS)
@@ -509,14 +750,17 @@ if __name__ == '__main__':
     options = parser.parse_args()
     if options.build_worker:
         command = options.command[1:] if options.command[:1] == ['--'] else options.command
-        if not options.worker_log or not command or options.rollback or options.update_lock_fd is None:
+        if not options.worker_log or not command or options.rollback or options.update_lock_fd is None or options.owner is not None:
             parser.error('invalid private build worker invocation')
         try:
             sys.exit(build_worker(options.build_worker, options.worker_log, command, options.update_lock_fd))
         except KeyboardInterrupt:
             sys.exit(130)
     elif options.rollback and not options.command:
-        rollback(ROOT)
+        owner = layout_module(ROOT).installation_root(ROOT / 'Monado_Linux')
+        if options.owner is not None and ordinary(options.owner) != owner:
+            parser.error('rollback owner differs from the updater installation')
+        rollback(owner)
         print('Previous version selected. Open Play_Monado_II.sh; saves and settings are unchanged.')
     else:
         parser.error('choose --rollback')

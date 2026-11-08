@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-Download and extract **`monado-ii-0.1.5-linux-setup.tar.gz`** from
+Download and extract **`monado-ii-0.1.6-linux-setup.tar.gz`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases). Open a terminal in
 the extracted folder. The supported baseline is **Linux x86-64 with CPython 3.14**,
 bash, pkg-config, dpkg-deb, binutils (`readelf` and `nm`) and squashfs-tools
@@ -110,9 +110,9 @@ the folder invalidates absolute build receipts; rebuild in the new location.
 The image contains no game input, generated game executable/code, caches or saves.
 Do not upload local generated outputs as a project release.
 
-Frame generation remains a separate optional experimental build feature. Enabling
-DLSS in the normal build does not enable it; reported slow/glitchy behavior remains
-unresolved. Version 0.1.3 is a regular source/setup release requiring local game
+Starting with 0.1.6, a normal Linux build includes experimental frame-generation
+support. Its launcher checkbox is off initially; users choose whether to enable
+it. Reported slow/glitchy behavior remains unresolved. This source/setup release requires local game
 generation. See [platform status](PLATFORM_STATUS.md) and
 [remaining work](../TODO.md) for features and validation limits.
 
@@ -121,15 +121,17 @@ Installation paths containing spaces are supported starting with 0.1.4. An older
 latest source kit in the same original installation folder. Keep input/profile
 directories in place.
 
-## Experimental frame-generation build
+## Experimental frame generation
 
-To compile the optional native frame-generation provider into your local build:
+Normal Linux builds include native frame-generation support without an extra flag:
 
 ```sh
-./Build_Monado_II.sh --framegen
+./Build_Monado_II.sh
 ```
 
-This requires the normal DLSS/DLAA build; `--without-dlss --framegen` is rejected.
+This requires the normal DLSS/DLAA build. Explicit `--without-dlss` omits both
+providers; contradictory `--without-dlss --framegen` is rejected. The old
+`--framegen` argument remains accepted for compatibility but is unnecessary.
 The pinned FidelityFX source is built locally when missing. A verified local SDK
 is reused; an altered SDK stops the build for inspection. No SDK binaries are
 included in source releases or launcher images. Runtime frame generation stays
@@ -145,8 +147,9 @@ FG off/on after shader and SDK warmup. Component passes do not qualify physical
 presentation, latency, visual quality or every game scene. Maintainer testing of
 0.1.5 preferred FG off despite mostly stable gameplay; no broad improvement is claimed.
 
-Launcher-only updates preserve a compatible FG game. Automatic full updates of
-FG or diagnostic builds still stop safely for a manual rebuild, as described below.
+Launcher-only updates preserve a compatible FG game. An older DLSS build without
+FG support is rebuilt to gain it. Current clients can rebuild ordinary FG builds
+automatically; footstep-diagnostic builds still require a manual rebuild.
 
 ## 4. Update and roll back
 
@@ -189,9 +192,11 @@ be applied while the game or shader precompiler is running.
 Presentation-only updates retain a compatible verified game build and rebuild
 the launcher. Runtime, generator or other unrecognized source changes require a
 full local game rebuild. The existing DLSS build choice is preserved; standard
-builds keep DLSS/DLAA enabled. Automated full rebuilds currently refuse custom
-frame-generation or footstep-diagnostic builds rather than silently dropping
-those options; those builds require a manual rebuild. Frame generation remains
+builds keep DLSS/DLAA enabled and include FG support. The setting remains off
+unless the user enables it. Clients on 0.1.6 or newer can automatically rebuild
+ordinary FG builds. Older experimental FG builds using 0.1.5 or earlier updater
+code still require a one-time manual upgrade because their old client refuses
+that rebuild. Footstep-diagnostic builds remain manual. Frame generation remains
 experimental. Edited release-owned source files also stop automatic installation
 so local changes can be merged manually. Normal settings changes do not modify
 the release-owned source.
@@ -208,16 +213,28 @@ Keep the original folder and retained version directories together. Update
 downloads and runtime artifacts under `Monado_Linux/updates` are local only and
 must not be committed or included in source releases.
 
+Starting with 0.1.6, the original folder's **`update-version.json` reflects the
+active version**. An older installation gains this behavior when its updated
+launcher first starts. Its original source version is retained in a checked
+backup for rollback; the game input and profile are not moved. Keep the update
+directories, including the retained updater used for rollback.
+
 To select the previous version, close the launcher, game and shader precompiler
 using the original default profile. From the **original installation root**, run:
 
 ```sh
-Monado_Linux/.venv/bin/python -I -B tools/update_linux.py --rollback
+./Rollback_Monado_II.sh
 ./Play_Monado_II.sh
 ```
 
-Rollback changes the active-version pointer, including returning to the original
-bootstrap after the first managed update. It does not restore or delete game
+The rollback entrypoint is included in fresh 0.1.6 kits and installed at the
+original root during its first version-aware managed startup. It validates and
+uses the retained capable updater even when the previous game version is older.
+Use this entrypoint after upgrading; the old pre-0.1.6 `tools/update_linux.py
+--rollback` command refuses the newer version records safely.
+
+Rollback changes the active-version pointer and visible version, including
+returning to the original bootstrap after the first managed update. It does not restore or delete game
 builds, input, saves or settings. This command uses the original default profile;
 it is not a profile migration or save-recovery tool. The updater is Linux-only;
 no Windows updater or backport is included.
