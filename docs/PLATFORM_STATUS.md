@@ -19,6 +19,10 @@ are listed in the [Linux guide](BUILD_LINUX.md).
 **Frame generation is experimental, slow/glitchy in reported gameplay and should
 normally remain off.** Linux FSR3 Super Resolution is unavailable.
 
+Version 0.1.4 fixes Linux dependency flag handling in installation paths containing
+spaces. It preserves existing input/profile locations and the variable-query
+contract used by launcher setup.
+
 Version 0.1.3 adds a Linux stable-release updater with source verification, local
 build progress/cancellation and checked launcher restart. Presentation-only
 updates can retain the compatible game; other source changes trigger a full local
@@ -45,5 +49,5 @@ its origin and limitations. It is not a game screenshot or extracted asset. The
 separate unreviewed sword icon and proprietary-font decoding remain excluded.
 Plain user/system TTF/OTF/TTC font input is supported. Public-only changes require
 further integrated testing. Full-game, save-recovery, long-session, other-GPU and
-clean-machine coverage remain incomplete. A regular 0.1.3 release does not imply
+clean-machine coverage remain incomplete. A regular 0.1.4 release does not imply
 Windows game-build or full-game qualification.

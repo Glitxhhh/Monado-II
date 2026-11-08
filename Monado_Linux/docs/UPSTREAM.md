@@ -228,3 +228,13 @@ AppImage packager/driver make the public source kit easier to build. Game-derive
 code/binaries and all runtime state stay out of the image and source releases.
 Focused authored and isolated clean-build evidence is in the project Linux record;
 full gameplay and broad distribution compatibility are separate validation gates.
+
+
+## November 8, 2026 — LINUX-028 spaced installation paths
+
+`scripts/setup_linux_graphics.py` now quotes the sysroot for pkg-config flag
+fragment expansion separately from the shell export. Literal variable/metadata
+queries keep their existing raw path contract. Real authored pkg-config fixtures
+cover spaces and shell metacharacters, variable queries and a tiny C compile; no
+external implementation copied. Native build flags/dependency pins are unchanged.
+[Build-path repair record](../../docs/PLATFORM_STATUS.md).

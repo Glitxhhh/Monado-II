@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.4 — November 8, 2026
+
+- Fix Linux dependency compiler/linker flags when the installation folder contains
+  spaces, such as `My Games/Monado II`. Quote the pkg-config fragment separately
+  from its shell assignment while preserving literal variable queries used by
+  launcher setup. Existing folders do not need to be renamed or moved.
+- Add real pkg-config regression coverage for spaced paths. Preserve the existing
+  input location, save profile, native DLSS/DLAA and updater behavior. Users build
+  locally from their own input; no game-derived binaries or caches are shipped.
+- Continue regular Linux and Windows source/setup kits. This is a Linux build
+  tooling fix; Windows runtime/backports and full-game coverage are unchanged.
+
 ## 0.1.3 — November 7, 2026
 
 - Add a **Linux stable-release updater**. Normal startup quietly checks the

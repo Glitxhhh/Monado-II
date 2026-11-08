@@ -167,6 +167,15 @@ def main():
     write_managed_text(wrapper, '#!/usr/bin/env bash\nset -euo pipefail\n' +
                        'export PKG_CONFIG_SYSROOT_DIR=' + shlex.quote(str(target)) + '\n' +
                        'export PKG_CONFIG_LIBDIR=' + shlex.quote(str(target / 'usr/lib/x86_64-linux-gnu/pkgconfig') + ':' + str(target / 'usr/share/pkgconfig')) + '\n' +
+                       # [XCDE] LINUX-028: pkgconf reparses expanded sysroot flag fragments.
+                       # Quote that value for flags, then quote its shell literal
+                       # separately. Variable queries must retain the raw value.
+                       'for monado_pkg_arg in "$@"; do\n' +
+                       '  case "$monado_pkg_arg" in\n' +
+                       '    --cflags|--cflags-only-*|--libs|--libs-only-*)\n' +
+                       '      export PKG_CONFIG_SYSROOT_DIR=' + shlex.quote(shlex.quote(str(target))) + '\n' +
+                       '      break;;\n' +
+                       '  esac\ndone\n' +
                        'unset PKG_CONFIG_PATH\nexec /usr/bin/pkg-config "$@"\n', mode=0o755)
     write_managed_text(active, str(target) + '\n')
     print(f'sysroot: {target}')

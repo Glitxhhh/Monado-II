@@ -110,13 +110,18 @@ unresolved. Version 0.1.3 is a regular source/setup release requiring local game
 generation. See [platform status](PLATFORM_STATUS.md) and
 [remaining work](../TODO.md) for features and validation limits.
 
+Installation paths containing spaces are supported starting with 0.1.4. An older
+0.1.3 source kit can fail in dependency compiler flags in such a folder; use the
+latest source kit in the same original installation folder. Keep input/profile
+directories in place.
+
 ## 4. Update and roll back
 
 **The 0.1.2 launcher cannot update itself.** Enable the updater with one manual
-0.1.3 source upgrade/build. You can preserve your current profile in the same
+0.1.3 or newer source upgrade/build. You can preserve your current profile in the same
 original installation folder:
 
-1. Close its launcher, game and shader precompiler. Download the official 0.1.3
+1. Close its launcher, game and shader precompiler. Download the official latest
    Linux source/setup kit and compare its SHA-256 with the published release
    checksum. Extract it into a separate temporary folder first.
 2. From that clean extracted kit, run
