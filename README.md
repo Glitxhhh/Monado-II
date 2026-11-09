@@ -49,8 +49,8 @@ remains incomplete.
 
 ## Setup downloads and local builds
 
-Download the [Linux setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.6/monado-ii-0.1.6-linux-setup.tar.gz)
-or [Windows setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.6/monado-ii-0.1.6-windows-setup.zip)
+Download the [Linux setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.7/monado-ii-0.1.7-linux-setup.tar.gz)
+or [Windows setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.7/monado-ii-0.1.7-windows-setup.zip)
 from the release, and verify its checksum. These contain source and setup tools;
 you provide your own input and build locally. For Linux app launchers such as
 Quiver, select **`App_Monado_II.sh`**: it shows first-build progress in an installed
@@ -96,7 +96,7 @@ Releases provide separate **Linux setup `.tar.gz`** and **Windows setup `.zip`**
 kits containing reviewed source. They are **not precompiled playable game downloads**.
 You build the game locally from your own verified dump. No compiled game binary,
 private vendor SDK binary, game-derived cache or user data is distributed.
-Version 0.1.6 uses the regular release channel; frame generation remains an
+Version 0.1.7 uses the regular release channel; frame generation remains an
 experimental optional feature. A legacy Linux `-source` download remains solely
 for compatibility with installed updaters. New downloads use the `-setup` kit.
 

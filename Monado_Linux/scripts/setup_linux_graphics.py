@@ -8,21 +8,30 @@ Installed host libraries supply its transitive runtime dependencies. Run with
 """
 import argparse
 import concurrent.futures
+import errno
 import hashlib
+import http.client
+import importlib.util
 import json
 import os
 from pathlib import Path, PurePosixPath
 import shlex
-import shutil
+import socket
+import ssl
+import stat
 import subprocess
 import tarfile
 import tempfile
+import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
 
 ROOT = Path(__file__).resolve().parent.parent
 LOCK = ROOT / 'graphics-deps-linux.lock.json'
+DOWNLOAD_ATTEMPTS = 3
+DOWNLOAD_TIMEOUT = 30
 
 
 def reject_managed_symlinks(path):
@@ -59,30 +68,184 @@ def digest(path):
         return hashlib.file_digest(f, 'sha256').hexdigest()
 
 
+def verified_package(path, package, output=None):
+    """Read only ordinary pinned bytes; optionally copy into our new partial."""
+    before = path.lstat()
+    if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
+            or before.st_size != package['size']):
+        raise ValueError(f'cached package type/hash/size mismatch: {path.name}; preserve and investigate it')
+    flags = os.O_RDONLY | getattr(os, 'O_NOFOLLOW', 0) | getattr(os, 'O_CLOEXEC', 0)
+    with os.fdopen(os.open(path, flags), 'rb') as source:
+        opened = os.fstat(source.fileno())
+        if (not stat.S_ISREG(opened.st_mode) or opened.st_nlink != 1
+                or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)):
+            raise ValueError('cached package changed before reading; preserve and investigate it')
+        total, identity = 0, hashlib.sha256()
+        while block := source.read(min(1024 * 1024, package['size'] - total + 1)):
+            total += len(block)
+            if total > package['size']:
+                raise ValueError('cached package exceeds locked size; preserve and investigate it')
+            identity.update(block)
+            if output is not None:
+                output.write(block)
+        finished = os.fstat(source.fileno())
+    after = path.lstat()
+    snapshot = lambda s: (s.st_dev, s.st_ino, s.st_size, s.st_mtime_ns, s.st_ctime_ns, s.st_nlink)
+    if snapshot(before) != snapshot(after) or snapshot(opened) != snapshot(finished):
+        raise ValueError('cached package changed while reading; preserve and investigate it')
+    if total != package['size'] or identity.hexdigest() != package['sha256']:
+        raise ValueError(f'cached package hash/size mismatch: {path.name}; preserve and investigate it')
+    return path
+
+
+def original_cached_package(package):
+    """Only the bound original installation's raw .deb cache may be borrowed."""
+    if not os.path.lexists(ROOT.parent / 'installation.json'):
+        return None
+    # Use the existing exact owner/workspace/game binding, not guessed nearby
+    # directories, environment overrides, sysroots or previously built binaries.
+    recipe = Path(__file__).resolve().with_name('install_layout.py')
+    spec = importlib.util.spec_from_file_location('_graphics_install_layout', recipe)
+    layout = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(layout)
+    owner_port = layout.installation_root(ROOT) / 'Monado_Linux'
+    cache = owner_port / '.deps/graphics/debs'
+    current = owner_port
+    for piece in ('.deps', 'graphics', 'debs'):
+        current /= piece
+        try:
+            info = current.lstat()
+        except FileNotFoundError:
+            return None
+        if not stat.S_ISDIR(info.st_mode):
+            raise ValueError('original installation cache must use ordinary directories; preserve and investigate it')
+    source = package_path(package, cache)
+    return source if os.path.lexists(source) else None
+
+
+def approved_origin(value):
+    url = urllib.parse.urlsplit(value)
+    if (url.scheme != 'https' or url.hostname != 'archive.ubuntu.com'
+            or url.port not in (None, 443) or url.username is not None or url.password is not None
+            or not url.path.startswith('/ubuntu/pool/')):
+        raise ValueError('unexpected package origin in lock or response')
+
+
+class ApprovedRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, url):
+        # Reject an insecure/foreign redirect before contacting its destination.
+        approved_origin(url)
+        return super().redirect_request(request, response, code, message, headers, url)
+
+
+def open_package(url):
+    return urllib.request.build_opener(ApprovedRedirect()).open(url, timeout=DOWNLOAD_TIMEOUT)
+
+
+def transient_network(error):
+    if isinstance(error, urllib.error.HTTPError):
+        return error.code in (408, 429) or 500 <= error.code <= 599
+    if isinstance(error, urllib.error.URLError):
+        return transient_network(error.reason) if isinstance(error.reason, BaseException) else False
+    if isinstance(error, ssl.SSLCertVerificationError):
+        return False
+    if isinstance(error, ssl.SSLError):
+        return isinstance(error, ssl.SSLEOFError)
+    if isinstance(error, socket.gaierror):
+        return error.errno == socket.EAI_AGAIN
+    return (isinstance(error, (TimeoutError, ConnectionError, http.client.IncompleteRead))
+            or isinstance(error, OSError) and error.errno in
+            (errno.ETIMEDOUT, errno.ECONNRESET, errno.ECONNABORTED, errno.ECONNREFUSED,
+             errno.ENETUNREACH, errno.EHOSTUNREACH, errno.EPIPE))
+
+
+class RetryDownload(Exception):
+    def __init__(self, cause):
+        self.cause = cause
+
+
+def network_call(operation):
+    # Only network operations enter this classifier. A disk-full, permission or
+    # other output error must not be retried as a connection failure.
+    try:
+        return operation()
+    except Exception as error:
+        if isinstance(error, urllib.error.HTTPError):
+            error.close()
+        if transient_network(error):
+            raise RetryDownload(error) from error
+        raise
+
+
+def download_package(package, output):
+    response = network_call(lambda: open_package(package['url']))
+    with response:
+        approved_origin(response.geturl())
+        length = response.headers.get('Content-Length')
+        if length is not None and (not length.isdecimal() or int(length) != package['size']):
+            raise ValueError(f'download Content-Length differs from locked size: {package["filename"]}')
+        total, identity = 0, hashlib.sha256()
+        while block := network_call(lambda: response.read(min(1024 * 1024, package['size'] - total + 1))):
+            total += len(block)
+            if total > package['size']:
+                raise ValueError(f'download hash/size mismatch: {package["filename"]}')
+            identity.update(block)
+            output.write(block)
+    if total < package['size']:
+        raise RetryDownload(http.client.IncompleteRead(b'', package['size'] - total))
+    if identity.hexdigest() != package['sha256']:
+        raise ValueError(f'download hash/size mismatch: {package["filename"]}')
+
+
+def publish_package(temporary, target, package):
+    reject_managed_symlinks(target)
+    # A hard link from our newly copied/downloaded partial gives no-overwrite
+    # publication. It never links to the original installation's cache inode.
+    os.link(temporary, target)
+    temporary.unlink()
+    return verified_package(target, package)
+
+
 def fetch(package, cache, offline):
     name = package['filename']
     target = package_path(package, cache)
     reject_managed_symlinks(target)
     if target.exists():
-        if target.is_symlink() or target.stat().st_size != package['size'] or digest(target) != package['sha256']:
-            raise ValueError(f'cached package hash/size mismatch: {name}; preserve and investigate it')
+        return verified_package(target, package)
+    original = original_cached_package(package)
+    if original is not None:
+        fd, temporary = tempfile.mkstemp(prefix=name + '.', suffix='.partial', dir=cache)
+        temporary = Path(temporary)
+        try:
+            with os.fdopen(fd, 'wb') as output:
+                verified_package(original, package, output)
+                output.flush()
+                os.fsync(output.fileno())
+            publish_package(temporary, target, package)
+        finally:
+            temporary.unlink(missing_ok=True)
+        print(f'reused verified original-installation package {name}', flush=True)
         return target
     if offline:
         raise FileNotFoundError(f'offline package missing: {name}')
-    url = urllib.parse.urlsplit(package['url'])
-    if url.scheme != 'https' or url.hostname != 'archive.ubuntu.com' or not url.path.startswith('/ubuntu/pool/'):
-        raise ValueError('unexpected package origin in lock')
-    fd, temporary = tempfile.mkstemp(prefix=name + '.', suffix='.partial', dir=cache)
-    try:
-        with os.fdopen(fd, 'wb') as out, urllib.request.urlopen(package['url'], timeout=30) as response:
-            shutil.copyfileobj(response, out)
-        path = Path(temporary)
-        if path.stat().st_size != package['size'] or digest(path) != package['sha256']:
-            raise ValueError(f'download hash/size mismatch: {name}')
-        reject_managed_symlinks(target)
-        path.rename(target)
-    finally:
-        Path(temporary).unlink(missing_ok=True)
+    approved_origin(package['url'])
+    for attempt in range(1, DOWNLOAD_ATTEMPTS + 1):
+        fd, temporary = tempfile.mkstemp(prefix=name + '.', suffix='.partial', dir=cache)
+        temporary = Path(temporary)
+        try:
+            with os.fdopen(fd, 'wb') as output:
+                download_package(package, output)
+                output.flush()
+                os.fsync(output.fileno())
+            publish_package(temporary, target, package)
+            break
+        except RetryDownload as failure:
+            if attempt == DOWNLOAD_ATTEMPTS:
+                raise RuntimeError(f'package download failed for {name} after {DOWNLOAD_ATTEMPTS} attempts: {failure.cause}') from failure.cause
+            print(f'transient download failure for {name} (attempt {attempt}/{DOWNLOAD_ATTEMPTS}); retrying in {attempt}s: {failure.cause}', flush=True)
+        finally:
+            temporary.unlink(missing_ok=True)
+        time.sleep(attempt)
     print(f'verified {name}', flush=True)
     return target
 

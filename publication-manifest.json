@@ -12,7 +12,7 @@
       "bytes": 1582
     },
     ".github/workflows/source-release.yml": {
-      "sha256": "feb9bef8da63a4ba8f8fee27a1812a0df707ee2b5ddf0ed64073a38f64482ede",
+      "sha256": "b7c2bce53917e2137db95cbcf01afaea73f92f6d9a25be123db5cbf3f5fccdbd",
       "bytes": 2624
     },
     ".gitignore": {
@@ -28,8 +28,8 @@
       "bytes": 458
     },
     "CHANGELOG.md": {
-      "sha256": "d6dee10ca594d5942b5ec4ebeeb5f472598bd4788f60bf4c825559ec94c5ce2d",
-      "bytes": 14369
+      "sha256": "2de7cd24882de7169e3f3189c51796942e532cf0affaacf70a9842cebd373632",
+      "bytes": 15221
     },
     "CONTRIBUTING.md": {
       "sha256": "ac54c5f9662bde82f3a37cd9c7428d5d3326a151606d5910e497689c8227825a",
@@ -832,8 +832,8 @@
       "bytes": 31715
     },
     "Monado_Linux/scripts/setup_linux_graphics.py": {
-      "sha256": "91876826284eea7bafd7d60b25f0e277094419b4c13c25d24a8ccee7b6f514c5",
-      "bytes": 8615
+      "sha256": "7700af1c9b065b3208572128fbdde0deb4acd9278d1fd632426479a05a0d56a9",
+      "bytes": 15925
     },
     "Monado_Linux/scripts/soak.sh": {
       "sha256": "d309cee741bae652b69462a814a7a07577572ff1e32e43cfed2ea6697bfcc20e",
@@ -3276,7 +3276,7 @@
       "bytes": 673
     },
     "README.md": {
-      "sha256": "70697b1cf28b86d53a82cdd34b18f579bee771fa0737c7996f7afb889abe4815",
+      "sha256": "69140021c4eca53866b2565be56fa02915ba01034cf70e18c5572694cee5289d",
       "bytes": 7846
     },
     "Rollback_Monado_II.sh": {
@@ -3292,15 +3292,15 @@
       "bytes": 635
     },
     "docs/BUILD_LINUX.md": {
-      "sha256": "f8d31ba16d65a396d5755bc8ac4ff9fab2b93500ce5caf5e913093f1bc5d7d90",
-      "bytes": 12694
+      "sha256": "f709d4eaa852b0a61f68e4210a4a97090f092dc5cf4b825a0fed89340b0a2f5a",
+      "bytes": 13055
     },
     "docs/BUILD_WINDOWS.md": {
-      "sha256": "7f3d9e48d7b876712060a782c076cf2f1260cc00c3704cce9471bb7a5358d6b7",
+      "sha256": "4d0fb054589254febe7f5de420307f239ff1d18bdd4d273a5f12c07dc3b9ebec",
       "bytes": 2746
     },
     "docs/PLATFORM_STATUS.md": {
-      "sha256": "184044fccedfdb2357ebe625c1061ebff439588acef04fa838f06ba79969e7b7",
+      "sha256": "affb04776cef12aef40e9584617401431077e56d2e12d5f8a1b2f7f02693b7c7",
       "bytes": 4196
     },
     "docs/QUIVER.md": {
@@ -3308,7 +3308,7 @@
       "bytes": 4642
     },
     "docs/RELEASING.md": {
-      "sha256": "33d2a737cc647e3d8d80016cca18eb1652202e6331bdae40b6a7e99d32717f9a",
+      "sha256": "b2ff418da1bfd97c34e47fcac0833a7f2b1e5c6d9ea84084b08f708269996d04",
       "bytes": 7455
     },
     "publication-policy.json": {
@@ -3318,6 +3318,10 @@
     "tests/native/test_launcher_updates_ipc.cpp": {
       "sha256": "ffeb8a9a02eec4caff125d0e25a1595ea6db56f2bc4dead509e4761a72b32dc1",
       "bytes": 4399
+    },
+    "tests/test_graphics_downloads.py": {
+      "sha256": "1ecdb18ab710263d71b4144ae0fd2756fc6f166c3df276c285d8f5bdb5e48ebc",
+      "bytes": 17520
     },
     "tests/test_install_layout.py": {
       "sha256": "f76d386af1f0e0ebaddb6625bfe7e179674be7010ea1bb0e3298c60e6b60fe2c",
@@ -3476,7 +3480,7 @@
       "bytes": 18754
     },
     "update-version.json": {
-      "sha256": "91de3d8f67cbfca9bfd853a0a30fd61a12ccdce6fe74c6eca41c2134eab0892e",
+      "sha256": "bd1a2d6f57f10f065c9bc2419b3aa853c1c7ddab991b62458233a0e09551ffb1",
       "bytes": 57
     }
   }

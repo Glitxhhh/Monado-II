@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.7 — November 8, 2026
+
+- Retry transient Linux graphics-dependency download failures with bounded
+  attempts and short backoff. Report the package and attempt so a timeout can be
+  diagnosed. Keep HTTPS certificate verification, pinned sizes/hashes and strict
+  cleanup; invalid cached files or integrity failures still stop the build.
+- Reuse verified official package archives from the original installation during
+  managed updates, copying them into the new workspace without changing the old
+  cache. This avoids downloading the same graphics dependencies again when the
+  exact locked files are already available.
+- Preserve previous-version selection on failure, FG support in normal builds
+  with the effect off by default, and version-aware update/rollback behavior.
+  Game input, settings and saves stay in their original locations.
+
 ## 0.1.6 — November 8, 2026
 
 - Include native frame-generation support in normal Linux builds and automatic

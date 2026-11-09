@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-Download and extract **`monado-ii-0.1.6-linux-setup.tar.gz`** from
+Download and extract **`monado-ii-0.1.7-linux-setup.tar.gz`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases). Open a terminal in
 the extracted folder. The supported baseline is **Linux x86-64 with CPython 3.14**,
 bash, pkg-config, dpkg-deb, binutils (`readelf` and `nm`) and squashfs-tools
@@ -62,6 +62,12 @@ generates game code locally, builds the
 game and native launcher, then creates **`Monado-II-x86_64.AppImage`** at the kit
 root. Progress, logs and a receipt identify each stage; the command stops at the
 first failure. It never starts the launcher or presses Play.
+
+Graphics package downloads retry temporary connection failures with bounded
+attempts. Managed updates reuse exact hash-verified package archives from the
+original installation when available. A failed download keeps the previous
+version selected; its log identifies the package and final error. Certificate,
+size/hash and invalid-cache failures remain errors.
 
 The normal build includes native **DLSS Super Resolution / DLAA** support. Select
 it in the launcher on compatible NVIDIA hardware and drivers; runtime capability

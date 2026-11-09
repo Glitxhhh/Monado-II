@@ -1,6 +1,6 @@
 # Local Windows build
 
-Download **`monado-ii-0.1.6-windows-setup.zip`** from the GitHub Release. It contains
+Download **`monado-ii-0.1.7-windows-setup.zip`** from the GitHub Release. It contains
 reviewed source and build tools, not a ready-to-run Windows app. Quiver recognizing
 this archive does not establish Windows setup or gameplay compatibility.
 

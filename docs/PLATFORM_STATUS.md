@@ -61,5 +61,5 @@ its origin and limitations. It is not a game screenshot or extracted asset. The
 separate unreviewed sword icon and proprietary-font decoding remain excluded.
 Plain user/system TTF/OTF/TTC font input is supported. Public-only changes require
 further integrated testing. Full-game, save-recovery, long-session, other-GPU and
-clean-machine coverage remain incomplete. A regular 0.1.6 release does not imply
+clean-machine coverage remain incomplete. A regular 0.1.7 release does not imply
 Windows game-build or full-game qualification.
