@@ -4,7 +4,7 @@
 Definitive Edition static recompilation project by **TheMonadoGuy / Monado
 contributors**, built on **Peiikai's LASRecomp**. The name acknowledges both the
 original project and the game. This fork adds native Linux work and continues
-maintenance; it is independent of Nintendo and Monolith Soft. This was developed entirely using AI,
+maintenance (no plans to add my improvements like 99 save slots, high fps stability, etc to Windows at this point); it is independent of Nintendo and Monolith Soft. This was developed entirely using AI,
 do with that information what you will.
 
 <img width="1259" height="795" alt="image" src="https://github.com/user-attachments/assets/69fabc08-665d-41bc-8900-f707138d630f" />
