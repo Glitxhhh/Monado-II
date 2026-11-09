@@ -27,3 +27,8 @@ Use separate Linux/Windows outputs and disposable test profiles. Gameplay tests
 and actual Windows builds must be reported as such; source inspection and synthetic
 tests are not equivalent evidence. Frame-generation performance fixes and Windows
 parity work are tracked in [TODO](TODO.md).
+
+Native Linux CPU-header fixtures require Clang. Tests prefer the project-local
+compiler, or use `MONADO_TEST_CC=/path/to/clang`; without either, Clang must be
+on PATH. These fixtures explicitly skip if it is absent. Ubuntu CI requires
+Clang before running the suite. GCC cannot compile the inherited SIMD builtins.

@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.1.8 — November 8, 2026
+
+- Add **Exit to desktop** below Options on the Linux title screen and after
+  Title Screen in the in-game System menu, using native menu styling and
+  confirmation dialogs. Keep Cancel/No selected by default; the positive button
+  says **Exit**. Unsaved progress is not automatically saved.
+- Preserve the existing title and System menu actions, including Continue,
+  Load Game, New Game+, Event Theatre and main/Extra Story switching. The System
+  entry follows Title Screen's availability restrictions; unavailable optional
+  layout elements leave the original menu intact.
+- On Linux host close, stop and join guest producers, drain queued rendering,
+  then finish GPU and pipeline-cache work. Preserve the existing exit lock/grace
+  and avoid graphics-library teardown while a render worker is still active.
+- Fix confirmation ownership validation so the native endpoint object address
+  is checked correctly. Retain dialog ownership, choice-count and negative-default
+  checks. Add native regression coverage for caption linkage, original menu
+  preservation, confirmation callbacks and render-completion waits during shutdown.
+- The maintainer manually accepted both exit paths on the Linux candidate.
+  Updating older Linux builds requires a local game rebuild; existing saves and
+  settings stay in their original installation. Windows source is unchanged;
+  this release does not add the new exit UI to Windows.
+
 ## 0.1.7 — November 8, 2026
 
 - Retry transient Linux graphics-dependency download failures with bounded

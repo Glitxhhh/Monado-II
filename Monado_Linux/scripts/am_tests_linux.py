@@ -135,6 +135,16 @@ def main():
             run('blocked-close-' + mode, [binary, '--blocked-close'], mode=mode,
                 contains=('guest blocked in WaitSynchronization; host close signal now',
                           'blocked ExitRequest wake/cleanup OK'))
+            run('shutdown-close-' + mode, [binary, '--shutdown-close'], mode=mode,
+                contains=('renderer drain follows guest stop/join',
+                          'direct GPU/cache/process finish follows renderer drain',
+                          'AM-ready live guest stop/join -> render drain -> direct finish OK'))
+            run('shutdown-renderer-wait-' + mode, [binary, '--shutdown-renderer-wait'], mode=mode,
+                contains=('render worker completed queued work while UI joined guest',
+                          'renderer completion drained/joined after guest safe-point exit',
+                          'AM-ready renderer-wait guest stop/join -> real completion drain -> direct finish OK'))
+            run('shutdown-exit-old-order-' + mode, [binary, '--shutdown-exit-old-order'], mode=mode,
+                expected=-signal.SIGABRT, contains=('shutdown_stage == 2',))
             run('early-close-' + mode, [binary, '--early-close'], mode=mode,
                 contains=('early native close before IPC initialization OK',))
         for mode in ('0', '1'):

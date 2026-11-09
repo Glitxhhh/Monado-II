@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-Download and extract **`monado-ii-0.1.7-linux-setup.tar.gz`** from
+Download and extract **`monado-ii-0.1.8-linux-setup.tar.gz`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases). Open a terminal in
 the extracted folder. The supported baseline is **Linux x86-64 with CPython 3.14**,
 bash, pkg-config, dpkg-deb, binutils (`readelf` and `nm`) and squashfs-tools

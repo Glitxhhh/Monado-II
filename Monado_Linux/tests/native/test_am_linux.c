@@ -240,6 +240,7 @@ static void test_policy(Cpu *c, Endpoint self) {
 
 static int cycle;
 static atomic_int sdl_phase;
+static pthread_t sdl_owner;
 static void test_exit(Cpu *c, Endpoint self) {
     Endpoint common = open_interface(c, false, 0);
     CHECK(!am_host_exit_ready(0));
@@ -284,6 +285,17 @@ static int strict_negative;
 static const char *idle_case;
 static bool domain_size_probe;
 static bool blocked_close;
+static bool shutdown_close, shutdown_old_order, shutdown_renderer_wait;
+static atomic_bool shutdown_unlocked;
+static KThread *shutdown_guest;
+static unsigned shutdown_stage;
+// Authored renderer-completion queue: deliberately distinct from the kernel's
+// wait condition. This exercises real guest stop/join ordering, not exec.c/GPU.
+static pthread_mutex_t renderer_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t renderer_condition = PTHREAD_COND_INITIALIZER;
+static pthread_t renderer_worker;
+static bool renderer_pending, renderer_completed, renderer_joined;
+static atomic_bool renderer_guest_waiting;
 static bool timer_signal_probe, early_close;
 static atomic_bool close_sent;
 static atomic_uint timer_fired;
@@ -358,9 +370,34 @@ void guest_call(Cpu *c, uint64_t entry) {
         rt_svc(c, 0x18, 0); // Actual infinite kernel wait, not a zero-time poll.
         CHECK(atomic_load(&close_sent) && c->x[0] == R_OK && c->x[1] == 0);
         r = request(c, common.handle, 4, 0, 1, NULL, 0); CHECK(r.value == 4);
+        no_message(c, common); // Duplicate non-UI requests must coalesce.
         CHECK(!am_host_exit_ready(plat_now_ns()));
         empty_reply(request(c, domain.handle, 4, domain.object, 2, NULL, 0));
         LOG("[fixture] blocked guest consumed ExitRequest and unlocked\n");
+        if (shutdown_close) {
+            // UnlockExit permits the UI to finish; it does not stop rendering
+            // or guest threads. Deliberately retain a live, blocked producer.
+            if (shutdown_renderer_wait) {
+                pthread_mutex_lock(&renderer_lock);
+                renderer_pending = true;
+                atomic_store(&shutdown_unlocked, true);
+                atomic_store(&renderer_guest_waiting, true);
+                pthread_cond_broadcast(&renderer_condition);
+                while (!renderer_completed) pthread_cond_wait(&renderer_condition, &renderer_lock);
+                pthread_mutex_unlock(&renderer_lock);
+                atomic_store(&renderer_guest_waiting, false);
+                c->x[0] = 0;
+                rt_svc(c, 0x0b, 0); // Actual next safe point observes host unwind.
+                CHECK(false);
+            }
+            KObject *never = calloc(1, sizeof *never);
+            CHECK(never != NULL); never->type = KOBJ_EVENT;
+            uint32_t never_handle = kernel_new_handle(never);
+            atomic_store(&shutdown_unlocked, true);
+            c->x[1] = (uintptr_t)&never_handle; c->x[2] = 1; c->x[3] = UINT64_MAX;
+            rt_svc(c, 0x18, 0);
+            CHECK(false); // Host shutdown must unwind, not return from this wait.
+        }
         return;
     }
     if (strict_negative) {
@@ -408,6 +445,73 @@ void guest_call(Cpu *c, uint64_t entry) {
     last_event = event; // Leave a signaled, live old handle across service reset.
 }
 
+static void *non_ui_exit_request(void *unused) {
+    (void)unused;
+    CHECK(!pthread_equal(pthread_self(), sdl_owner));
+    uint64_t now = plat_now_ns();
+    am_request_host_exit(now);
+    am_request_host_exit(now + 1);
+    LOG("[fixture] non-UI worker requested close twice\n");
+    return NULL;
+}
+
+static void *renderer_complete_during_join(void *unused) {
+    (void)unused;
+    CHECK(!pthread_equal(pthread_self(), sdl_owner));
+    pthread_mutex_lock(&renderer_lock);
+    while (!renderer_pending) pthread_cond_wait(&renderer_condition, &renderer_lock);
+    pthread_mutex_unlock(&renderer_lock);
+    // Force this completion to occur while the UI is stopping the guest.
+    // Kernel wake(t) cannot release the separate renderer condition above.
+    uint64_t end = plat_now_ns() + 5000000000ull;
+    while (!__atomic_load_n(&g_rt_unwind, __ATOMIC_ACQUIRE)) {
+        CHECK(plat_now_ns() < end); sched_yield();
+    }
+    pthread_mutex_lock(&g_klock);
+    CHECK(shutdown_guest && shutdown_guest->started && !shutdown_guest->finished);
+    pthread_mutex_unlock(&g_klock); // Stop must release this lock while waiting.
+    pthread_mutex_lock(&renderer_lock);
+    CHECK(renderer_pending && atomic_load(&renderer_guest_waiting));
+    renderer_pending = false;
+    renderer_completed = true;
+    LOG("[fixture] render worker completed queued work while UI joined guest\n");
+    pthread_cond_broadcast(&renderer_condition);
+    pthread_mutex_unlock(&renderer_lock);
+    return NULL;
+}
+
+// Graphics operations are fixture callbacks; the actual AM, cooperative stop,
+// blocked-wait wake and joins execute above/below without graphics or game data.
+static void shutdown_drain(void) {
+    CHECK(pthread_equal(pthread_self(), sdl_owner));
+    pthread_mutex_lock(&g_klock);
+    CHECK(shutdown_guest && shutdown_guest->finished && g_rt_unwind);
+    for (KThread *t = g_threads; t; t = t->anext) CHECK(!t->started || t->finished);
+    pthread_mutex_unlock(&g_klock);
+    CHECK(shutdown_stage == 0);
+    if (shutdown_renderer_wait) {
+        CHECK(pthread_join(renderer_worker, NULL) == 0);
+        pthread_mutex_lock(&renderer_lock);
+        CHECK(renderer_completed && !renderer_pending && !atomic_load(&renderer_guest_waiting));
+        pthread_mutex_unlock(&renderer_lock);
+        renderer_joined = true;
+        LOG("[fixture] renderer completion drained/joined after guest safe-point exit\n");
+    }
+    shutdown_stage = 1;
+    LOG("[fixture] renderer drain follows guest stop/join\n");
+}
+static void shutdown_finish(void) {
+    CHECK(shutdown_stage == 1);
+    CHECK(!shutdown_renderer_wait || renderer_joined);
+    shutdown_stage = 2;
+    LOG("[fixture] direct GPU/cache/process finish follows renderer drain\n");
+}
+static void shutdown_vendor_teardown(void) {
+    // A destructor registered by a later dlopen runs before the old early
+    // atexit handler. Entering libc exit with the live producer must fail here.
+    CHECK(shutdown_stage == 2);
+}
+
 static void wait_finished(KThread *thread) {
     uint64_t end = plat_now_ns() + 5000000000ull;
     for (;;) {
@@ -416,9 +520,15 @@ static void wait_finished(KThread *thread) {
             bool blocked = thread->in_sync_wait && (!kernel_det() || thread->det_state == 3);
             pthread_mutex_unlock(&g_klock);
             if (blocked) {
+                pthread_mutex_lock(&g_klock);
+                CHECK(!am.exit_requested && am.message_count == 0);
+                pthread_mutex_unlock(&g_klock);
+                CHECK(!am_host_exit_ready(plat_now_ns()));
                 LOG("[fixture] guest blocked in WaitSynchronization; host close signal now\n");
                 atomic_store(&close_sent, true);
-                am_request_host_exit(plat_now_ns());
+                pthread_t requester;
+                CHECK(pthread_create(&requester, NULL, non_ui_exit_request, NULL) == 0);
+                CHECK(pthread_join(requester, NULL) == 0);
             }
         }
         if (atomic_load(&sdl_phase) == 1) {
@@ -436,6 +546,13 @@ static void wait_finished(KThread *thread) {
         }
         pthread_mutex_lock(&g_klock); bool done = thread->finished; pthread_mutex_unlock(&g_klock);
         if (done) return;
+        if (shutdown_close && atomic_load(&shutdown_unlocked)) {
+            pthread_mutex_lock(&g_klock);
+            bool blocked = shutdown_renderer_wait ? atomic_load(&renderer_guest_waiting)
+                : thread->in_sync_wait && (!kernel_det() || thread->det_state == 3);
+            pthread_mutex_unlock(&g_klock);
+            if (blocked) { CHECK(applet_ui_should_exit(NULL)); return; }
+        }
         CHECK(plat_now_ns() < end); sched_yield();
     }
 }
@@ -499,6 +616,9 @@ int main(int argc, char **argv) {
         if (!strncmp(argv[1], "--idle-", 7)) idle_case = argv[1];
         else if (!strcmp(argv[1], "--domain-size-probe")) domain_size_probe = true;
         else if (!strcmp(argv[1], "--blocked-close")) blocked_close = true;
+        else if (!strcmp(argv[1], "--shutdown-close")) blocked_close = shutdown_close = true;
+        else if (!strcmp(argv[1], "--shutdown-renderer-wait")) blocked_close = shutdown_close = shutdown_renderer_wait = true;
+        else if (!strcmp(argv[1], "--shutdown-exit-old-order")) blocked_close = shutdown_close = shutdown_old_order = true;
         else if (!strcmp(argv[1], "--timer-signal")) timer_signal_probe = true;
         else if (!strcmp(argv[1], "--early-close")) early_close = true;
         else if (!strcmp(argv[1], "--strict-negative")) strict_negative = 1;
@@ -510,6 +630,7 @@ int main(int argc, char **argv) {
         else return 2;
     } else if (argc != 1) return 2;
     CHECK(diag_strict());
+    sdl_owner = pthread_self();
     CHECK(SDL_Init(SDL_INIT_EVENTS));
     if (early_close) { am_request_host_exit(0); am_request_host_exit(1); CHECK(am_host_exit_ready(0)); }
     for (int i = 0; i < 8; ++i) {
@@ -519,10 +640,25 @@ int main(int argc, char **argv) {
             test_concurrent_init(); test_concurrent_idle_policy();
         }
         KThread *thread = kernel_create_main_thread(1, 16384, 44);
+        if (shutdown_renderer_wait) {
+            shutdown_guest = thread;
+            CHECK(pthread_create(&renderer_worker, NULL, renderer_complete_during_join, NULL) == 0);
+        }
         kernel_run_main(thread, 0, 0, 0, 0);
         wait_finished(thread);
         if (atomic_load(&sdl_phase) == 3) CHECK(applet_ui_should_exit(NULL));
-        kernel_stop_threads(NULL); // Actual stop/join before either reset order.
+        if (shutdown_close) {
+            shutdown_guest = thread;
+            CHECK(am_host_exit_ready(plat_now_ns()));
+            pthread_mutex_lock(&g_klock); CHECK(!thread->finished); pthread_mutex_unlock(&g_klock);
+            if (shutdown_old_order) {
+                CHECK(atexit(shutdown_finish) == 0);
+                CHECK(atexit(shutdown_vendor_teardown) == 0);
+                exit(0); // Negative control: original UI route enters libc teardown with live work.
+            }
+            applet_ui_finish_exit(shutdown_drain, shutdown_finish);
+            CHECK(shutdown_stage == 2 && thread->finished);
+        } else kernel_stop_threads(NULL); // Actual stop/join before either reset order.
         if (idle_case) { kernel_reset(); am_reset(); SDL_Quit(); return 0; }
         if (domain_size_probe) { kernel_reset(); SDL_Quit(); puts("domain payload size OK"); return 0; }
         if (timer_signal_probe || early_close) {
@@ -533,7 +669,9 @@ int main(int argc, char **argv) {
         if (blocked_close) {
             CHECK(am_host_exit_ready(plat_now_ns()));
             kernel_reset(); am_reset(); SDL_Quit();
-            puts("blocked ExitRequest wake/cleanup OK"); return 0;
+            puts(shutdown_renderer_wait ? "AM-ready renderer-wait guest stop/join -> real completion drain -> direct finish OK"
+                : shutdown_close ? "AM-ready live guest stop/join -> render drain -> direct finish OK"
+                : "blocked ExitRequest wake/cleanup OK"); return 0;
         }
         CHECK(last_event && last_event->refs == 1 && last_event->signaled);
         if (!(i & 1)) {

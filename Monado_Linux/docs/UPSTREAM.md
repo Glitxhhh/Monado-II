@@ -251,3 +251,56 @@ bound resource lifetime remain. Added actual-source clock/heuristic regressions
 and optional authored GPU timing/pixel oracles. Public build/update helpers preserve
 explicit opt-in and feature identity; no external implementation copied. This is
 a component-tested candidate, not full-game/physical-presentation qualification.
+
+
+## November 8, 2026 — LINUX-033 title-menu Exit candidate
+
+`games/xcde/patches.py` adds checked DE2.0.0 title-controller hooks for spare-row
+insertion, native authored text and cancel-default confirmation. Original actions
+and native cancellation bookkeeping remain guest-owned; confirmed Exit requests
+the existing AM close path. Native callback copies retain logical ownership.
+`scripts/build_linux.py` registers the authored `runtime/hle/title_exit.c` bridge;
+`runtime/services/am.h` documents its existing non-UI-thread-safe request API.
+New authored row model/header and synthetic bridge/model fixtures cover preserved
+row order/status/capacity/alignment, CPU state, dialog text boundaries, direct and
+cloned callbacks, Cancel/confirmation and no story-switch dispatch. Existing AM
+fixture additionally requests close from a separate thread while the guest waits.
+No game layout/font/texture/localized text, lifted code or downloaded save belongs
+in these changes. Candidate manual acceptance remains pending; no release claim.
+
+
+## November8,2026 — LINUX-033 revision2
+
+The caption adapter uses a checked native post-build hook and logical message
+ownership to change only the positive Exit caption. System extends its six-row
+native controller in separate guest storage, constructs the resource's seventh
+widget and preserves Title Screen availability/default No and native cancellation
+bookkeeping. Missing optional seventh-row resources leave the original six rows.
+No inline parent fields, game message tables or assets are replaced.
+
+`runtime/host/applet_lifecycle_ui.h` and `runtime/nvn/vulkan/device.c` now stop/join
+guest producers after unchanged AM readiness, drain rendering, then directly
+perform existing GPU-idle/cache termination. This prevents the observed live-NGX
+render worker from overlapping libc vendor teardown on requested host close.
+Generic guest ExitProcess/emergency paths remain separate. Native fixtures cover
+live guests after UnlockExit in both scheduling modes and the old exit-order
+negative control; the normal AM runner includes these cases. Caption and System
+fixtures check ownership, six-row byte preservation, restrictions, callbacks,
+CPU state, construction/reuse and optional-resource fallbacks. Integrated visual/
+Vulkan/NGX shutdown acceptance remains manual; this is an unreleased candidate.
+
+
+## November8local/9UTC,2026 — LINUX-033 revision3
+
+The native message endpoint backlink stores the manager endpoint object's
+address, not its vtable value. Correct the caption ownership comparison and its
+authored fixture to preserve that distinction. Keep all other ownership, UI,
+choice-count and negative-default checks; report a bounded mismatch mask when
+they fail. The corrected fixture reproduces the r2 pre-confirmation abort, then
+checks valid address linkage, corrupt ownership/defaults, packet immutability
+and complete CPU restoration. Actual confirmation and GPU shutdown remain manual.
+
+The AM fixture additionally uses an authored pthread render-completion queue:
+a guest blocked outside kernel waits reaches its next safe point only after the
+worker completes during UI stop/join. Both scheduling modes verify guest join,
+then worker drain/join, then process finish. This does not exercise exec.c/Vulkan.

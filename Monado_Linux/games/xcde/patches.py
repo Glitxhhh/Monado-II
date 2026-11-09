@@ -183,3 +183,150 @@ def _thumb_loaded(gen, addr):
 
 
 PATCHES[0x700057dab4] = Patch(0x940ce425, _thumb_loaded, 'T222', 'bl memcpy - slot thumbnail picture loaded (f_700057da00)')
+
+
+# [XCDE] LINUX-033: use the title controller's preallocated rows and native
+# confirmation, retaining the game's own rendering, navigation and cleanup.
+# These hooks describe the checked DE 2.0.0 ABI, not distributed game UI assets.
+def _title_plain(gen, addr):
+    ins = gen.lift(addr)
+    if ins.kind != 'op':
+        raise ValueError(f'{addr:#x}: title hook requires a plain instruction')
+    return ins.code
+
+
+def _title_rows(gen, addr):
+    original = _title_plain(gen, addr)
+    return ('{ extern _Bool xcde_title_exit_configure(uint64_t ui); '
+            'if (c->x[24] == 0) (void)xcde_title_exit_configure(c->x[19]); } ' + original)
+
+
+def _title_render_action(gen, addr):
+    original = _title_plain(gen, addr)
+    return (original + ' { extern _Bool xcde_title_exit_row_is_exit(uint64_t ui, uint64_t row); '
+            'if ((uint32_t)c->x[8] == 7 && xcde_title_exit_row_is_exit(c->x[19], c->x[25])) '
+            'c->x[8] = 4; }')
+
+
+def _title_label(gen, addr):
+    ins = gen.lift(addr)
+    if ins.kind != 'bl' or ins.target != 0x700057c160:
+        raise ValueError(f'{addr:#x}: title label requires the original native text setter')
+    return ('{ extern _Bool xcde_title_exit_label(Cpu *c); '
+            'extern void f_700057c160(Cpu *c); c->x[30] = 0x7000297c84ull; '
+            'if (!xcde_title_exit_label(c)) f_700057c160(c); }')
+
+
+def _title_confirm_action(gen, addr):
+    original = _title_plain(gen, addr)
+    return ('{ extern uint32_t xcde_title_exit_action(uint64_t sequence, uint32_t action); '
+            'c->x[0] = xcde_title_exit_action(c->x[19], (uint32_t)c->x[0]); } ' + original)
+
+
+def _title_force_prompt(gen, addr):
+    original = _title_plain(gen, addr)
+    return (original + ' { extern _Bool xcde_title_exit_pending(uint64_t sequence); '
+            'if (xcde_title_exit_pending(c->x[19])) goto L_xcde_title_exit_prompt; }')
+
+
+def _title_prompt_label(gen, addr):
+    return 'L_xcde_title_exit_prompt:; ' + _title_plain(gen, addr)
+
+
+def _title_dialog_text(gen, addr):
+    ins = gen.lift(addr)
+    if ins.kind != 'bl' or ins.target != 0x70000f4520:
+        raise ValueError(f'{addr:#x}: title confirmation requires the original native dialog call')
+    return ('{ extern void xcde_title_exit_dialog(Cpu *c); '
+            'extern void f_70000f4520(Cpu *c); c->x[30] = 0x70003c4ffcull; '
+            'xcde_title_exit_dialog(c); f_70000f4520(c); }')
+
+
+def _title_dialog_reply(gen, addr):
+    original = _title_plain(gen, addr)
+    return ('{ extern _Bool xcde_title_exit_reply(Cpu *c); '
+            'if (xcde_title_exit_reply(c)) return; } ' + original)
+
+
+def _title_dispatch_guard(gen, addr):
+    original = _title_plain(gen, addr)
+    return ('{ extern void xcde_title_exit_check_dispatch(uint64_t sequence, uint32_t action); '
+            'xcde_title_exit_check_dispatch(c->x[19], (uint32_t)c->x[0]); } ' + original)
+
+
+TITLE_EXIT_PATCHES = {
+    0x70002979f8: (0xb8787b56, _title_rows, 'first native row-label iteration; insert into verified spare capacity'),
+    0x7000297a50: (0xb9400328, _title_render_action, 'native label-render action; preserve stored Exit action'),
+    0x7000297c80: (0x940b9138, _title_label, 'native row text setter; authored Exit label'),
+    0x70003c48e0: (0x7100181f, _title_confirm_action, 'confirmed selection; enter existing native confirmation route'),
+    0x70003c4be4: (0xaa0003f3, _title_force_prompt, 'checked title owner; Exit always asks, including Future Connected'),
+    0x70003c4c54: (0x12800014, _title_prompt_label, 'native confirmation construction after original bypass conditions'),
+    0x70003c4ff8: (0x97f4bd4a, _title_dialog_text, 'native dialog call; authored prompt with original localized choices'),
+    0x70003c5ef0: (0xf9400408, _title_dialog_reply, 'native reply entry; ordinary Cancel bookkeeping then host exit on Yes'),
+    0x70003c5248: (0x7100181f, _title_dispatch_guard, 'native action dispatch; Exit must not become a story-mode transition'),
+}
+for _site, (_word, _emit, _note) in TITLE_EXIT_PATCHES.items():
+    PATCHES[_site] = Patch(_word, _emit, 'LINUX-033', _note)
+
+
+# [XCDE] LINUX-033 r2: preserve all six System rows and attach the resource's
+# unused seventh native widget. The authored helper owns extended guest storage;
+# the original controller still owns selection, enabled permissions and cleanup.
+def _system_prefix(helper, returns=False):
+    def emit(gen, addr):
+        original = _title_plain(gen, addr)
+        if returns:
+            return (f'{{ extern _Bool {helper}(Cpu *c); '
+                    f'if ({helper}(c)) return; }} ' + original)
+        return f'{{ extern void {helper}(Cpu *c); {helper}(c); }} ' + original
+    return emit
+
+
+def _system_call(gen, addr, target):
+    ins = gen.lift(addr)
+    if ins.kind != 'bl' or ins.target != target:
+        raise ValueError(f'{addr:#x}: System hook requires its checked native call')
+    return (f'extern void f_{target:x}(Cpu *c); '
+            f'c->x[30] = 0x{addr + 4:x}ull; f_{target:x}(c); ')
+
+
+def _system_construct(gen, addr):
+    _system_call(gen, addr, 0x7000293c00)
+    return ('{ extern void xcde_system_exit_construct(Cpu *c); '
+            f'c->x[30] = 0x{addr + 4:x}ull; xcde_system_exit_construct(c); }}')
+
+
+def _system_action(gen, addr):
+    original = _system_call(gen, addr, 0x7000294680)
+    return ('{ ' + original + 'extern uint32_t xcde_system_exit_action(uint64_t sequence, uint32_t action); '
+            'c->x[0] = xcde_system_exit_action(c->x[19], (uint32_t)c->x[0]); }')
+
+
+def _system_child(gen, addr):
+    original = _system_call(gen, addr, 0x70002ef680)
+    return ('{ ' + original + 'extern void xcde_system_exit_child(Cpu *c); '
+            'xcde_system_exit_child(c); }')
+
+
+def _system_dialog(gen, addr):
+    original = _system_call(gen, addr, 0x7000331840)
+    return ('{ extern void xcde_system_exit_dialog(Cpu *c); '
+            'xcde_system_exit_dialog(c); ' + original + '}')
+
+
+SYSTEM_EXIT_PATCHES = {
+    0x70003b570c: (0x97fb793d, _system_construct, 'native System constructor; separate extended guest storage with seventh widget'),
+    0x70002941e0: (0xf81e0ff3, _system_prefix('xcde_system_exit_destroy'), 'native System destructor; release seventh widget before original six'),
+    0x7000294690: (0xa9be4ff4, _system_prefix('xcde_system_exit_update'), 'native System frame update; update seventh widget and mirror Title Screen permission'),
+    0x7000294070: (0xd10103ff, _system_prefix('xcde_system_exit_help', True), 'native help setter; authored Exit help only when seventh row is selected'),
+    0x7000294680: (0xb9402808, _system_prefix('xcde_system_exit_selected', True), 'native selected row getter; accept verified seventh row'),
+    0x70003b5a18: (0x97fb7b1a, _system_action, 'confirmed System selection; route Exit through native Title Screen confirmation'),
+    0x70003b5a48: (0x97fb7b0e, _system_action, 'native System action validation; temporary Exit action alias'),
+    0x70003b5aac: (0x97fb7af5, _system_action, 'native System dispatch; retain original Title Screen enabled check'),
+    0x70003b5d0c: (0x97fce65d, _system_child, 'native Title Screen confirmation child; bind pending Exit owner'),
+    0x70003b6138: (0x97fdedc2, _system_dialog, 'native System confirmation; authored prompt, default No and bound Exit caption'),
+    0x70003b6350: (0xf9400408, _system_prefix('xcde_system_exit_reply', True), 'native System confirmation reply; Cancel bookkeeping before host exit'),
+    0x70002f1e08: (0x910043e0, _system_prefix('xcde_exit_caption_render'), 'native MsgInfo UI post-build; caption only the bound Exit confirmation'),
+}
+for _site, (_word, _emit, _note) in SYSTEM_EXIT_PATCHES.items():
+    PATCHES[_site] = Patch(_word, _emit, 'LINUX-033', _note)

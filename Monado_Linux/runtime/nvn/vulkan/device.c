@@ -1374,7 +1374,7 @@ void vk_shaders_init(void);
 
 // exit() from any thread: let the GPU finish, keep the pipeline cache, then end the process without the DLL
 // teardown (driver / validation-layer threads can stall it for minutes while the game's threads still run).
-static void quick_exit_handler(void) {
+static _Noreturn void quick_exit_handler(void) {
     static int trace = -1;
     if (trace < 0) trace = getenv("LARECOMP_VK_TRACE") != NULL;
     if (trace) LOG("[vk] exit: waiting for the GPU\n");
@@ -1389,6 +1389,22 @@ static void quick_exit_handler(void) {
     fflush(stderr);
 #if defined(_WIN32) || defined(__linux__)
     plat_terminate();
+#endif
+    abort();  // plat_terminate must not return.
+}
+
+static _Noreturn void ui_finish_host_exit(void) {
+    LOG("[am] native close permitted\n");
+#ifdef __linux__
+    // [XCDE] LINUX-033: retain AM's cleanup/exit-lock deadline, then stop
+    // producers and drain the renderer before GPU/cache work and termination.
+    // Do not enter libc's graphics-library teardown with a live NGX worker.
+    extern void backend_drain(void);
+    LOG("[vk] exit: stopping guest producers and draining render work\n");
+    applet_ui_finish_exit(backend_drain, quick_exit_handler);
+    abort();  // the process-finishing callback must not return.
+#else
+    exit(0);
 #endif
 }
 
@@ -1465,8 +1481,7 @@ int ui_run(void) {
             // its cleanup running until UnlockExit or the bounded host deadline.
             // Poll before input filtering, including continuous event traffic.
             if (applet_ui_should_exit(&e)) {
-                LOG("[am] native close permitted\n");
-                exit(0);
+                ui_finish_host_exit();
             }
             if (e.type == SDL_EVENT_QUIT) continue;
             extern bool input_user_blocked(const SDL_Event *e);
@@ -1475,8 +1490,7 @@ int ui_run(void) {
             input_handle_event(&e);
         }
         if (applet_ui_should_exit(NULL)) {
-            LOG("[am] native close permitted\n");
-            exit(0);
+            ui_finish_host_exit();
         }
         menu_apply_window_requests(window);
     }

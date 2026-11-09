@@ -39,6 +39,10 @@ unavailable on Linux. Windows retains its own vendor integrations. Other GPUs,
 drivers and long sessions need more validation; component tests are not full-game
 qualification. See [platform status](docs/PLATFORM_STATUS.md).
 
+Linux includes **Exit to desktop** on the title screen and in the in-game System
+menu, with native confirmation and Cancel/No selected by default. Existing menu
+actions remain available. Save your progress first: exiting does not save it.
+
 The strict public source snapshot uses plain TTF/OTF/TTC font input. It does not
 ship Nintendo fonts or include proprietary-font deobfuscation. The public launcher
 uses the Monado II wordmark/theme and the original generated landscape artwork
@@ -49,8 +53,8 @@ remains incomplete.
 
 ## Setup downloads and local builds
 
-Download the [Linux setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.7/monado-ii-0.1.7-linux-setup.tar.gz)
-or [Windows setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.7/monado-ii-0.1.7-windows-setup.zip)
+Download the [Linux setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.8/monado-ii-0.1.8-linux-setup.tar.gz)
+or [Windows setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.8/monado-ii-0.1.8-windows-setup.zip)
 from the release, and verify its checksum. These contain source and setup tools;
 you provide your own input and build locally. For Linux app launchers such as
 Quiver, select **`App_Monado_II.sh`**: it shows first-build progress in an installed
@@ -96,7 +100,7 @@ Releases provide separate **Linux setup `.tar.gz`** and **Windows setup `.zip`**
 kits containing reviewed source. They are **not precompiled playable game downloads**.
 You build the game locally from your own verified dump. No compiled game binary,
 private vendor SDK binary, game-derived cache or user data is distributed.
-Version 0.1.7 uses the regular release channel; frame generation remains an
+Version 0.1.8 uses the regular release channel; frame generation remains an
 experimental optional feature. A legacy Linux `-source` download remains solely
 for compatibility with installed updaters. New downloads use the `-setup` kit.
 
