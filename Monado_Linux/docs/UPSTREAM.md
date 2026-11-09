@@ -304,3 +304,55 @@ The AM fixture additionally uses an authored pthread render-completion queue:
 a guest blocked outside kernel waits reaches its next safe point only after the
 worker completes during UI stop/join. Both scheduling modes verify guest join,
 then worker drain/join, then process finish. This does not exercise exec.c/Vulkan.
+
+
+## November9,2026 — LINUX-035 development candidate
+
+`games/xcde/patches.py` and authored `runtime/hle/expanded_saves.c/.h` extend the
+native logical save records to99manual slots plus the existing autosave for
+each story. Existing file IDs0..2 and00a remain; extra manual IDs3..98 use the
+original native formatter and journaled save mount. Four physical cards, native
+sort/scrolling/No data, native file jobs and visible thumbnail uploads remain.
+Metadata grows in the former thumbnail arena; CPU images move to appended
+allocation storage. All affected bases, extents, sort end and bounds are checked
+against the selected DE2.0.0 input. Empty entries create no save or picture files.
+
+The native remembered-slot field holds four bits. The adapter preserves the
+serialized format and neighboring flags, uses nativezero for extended IDs, and
+tracks actual UI selection separately perstory. Native scoped-owner validation,
+CPU/FP preservation, destructor/reset cleanup and failure controls accompany it.
+
+`runtime/hle/expanded_save_scan.c/.h` adds compact serial extra-ID stages around
+the original title Continue and availability/clear-save checks. Existing native
+readers/validators/field-aware payload copies remain; no four-bit mask growth or
+100fullpayload allocation. Continue retains a winning constructed payload and
+its actual logical ID. Per-owner generations and pending-task drain prevent
+reset/reuse from retargeting IO. Serial checks may increase title/Continue wait.
+
+The Linux build includes both adapters. Authored native/model/scanner fixtures
+and real host-filesystem synthetic tests cover indexes/ownership/POD layouts,
+selection/story separation, register/FP restoration, originalslot/autosave/system
+preservation, nooverwrite, lazy empty lookups, commit failures/retry and synthetic
+recovery. No production FS/journal, save format, renderer or Windows change.
+This remains an unreleased development candidate pending manual testing.
+
+
+## November9,2026 — LINUX-036 bounded initial save metadata scan
+
+The checked native UI call in `games/xcde/patches.py` runs its original function
+first, then calls the authored `expanded_saves.c/.h` initial-read pump. Its own
+extra work is limited to seven additional native metadata FSM calls and a soft
+500microsecond budget checked between calls. Existing native file readers,
+validation, sorting and save transactions remain. A pending read, unsettled
+callback handle, unchanged progress or budget limit yields normally. Writes,
+other operations, populated menu models and changed owner generations prevent
+extra work. Known thumbnail-read phases pause this metadata-only pump.
+
+The helper preserves the complete post-original-call CPU/FP state, reserves each
+initial owner against reentry, keeps no mutex across guest calls, and logs one
+integer summary per scan. The native visible-card update itself runs once, with
+four physical cards and all100 metadata identities retained. Continue/title scan
+adapters and the filesystem are unchanged. Authored fixture coverage includes
+call/time limits, callback busy-clear/handle-live windows, pending writes,
+thumbnail pause/resume, owner generations/reset/reentry and CPU preservation.
+Actual menu-opening latency and real asynchronous save/load remain manual tests.

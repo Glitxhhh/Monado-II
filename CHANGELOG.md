@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.1.9 — November 9, 2026
+
+- Expand each story to **99 manual slots plus its separate autosave** on Linux, preserving the
+  four-card native scrolling menu. Unused slots show No data and create no files.
+- Preserve existing manual/autosave filenames and the native save format. Keep
+  main-game and Future Connected saves separate; protect the legacy remembered
+  slot field while tracking extended selections outside the saved payload.
+- Include extended slots in Continue and title save/clear checks through native
+  asynchronous readers and validation. These serial scans may add startup or
+  Continue wait time. Existing save transactions and recovery behavior remain.
+- Reduce frame-by-frame overhead in initial Save/Load metadata scans by batching
+  ready native read steps within a small call/time budget. Yield for pending
+  reads and callbacks; keep writes and thumbnail reads at their ordinary cadence.
+  Add one scan summary per initial menu scan for measurement. Actual wait time
+  depends on populated slots, I/O and the host; no universal speedup is promised.
+- The maintainer accepted the expanded-save development build and the scan
+  improvement manually. This does not qualify 99 populated slots, every
+  main-game/Future Connected save or recovery case, or full-game completion.
+- Updating older Linux builds requires a full local game rebuild. The updater
+  performs it while retaining the original input, saves and settings in place;
+  no save conversion is required. Windows keeps its existing implementation;
+  these features are Linux-only and Windows backports are not currently planned.
+- Continue regular Linux and Windows source/setup kits, requiring the player's
+  own legally dumped DE 2.0.0 input. Frame generation remains experimental,
+  disabled by default, and can perform worse when enabled.
+
 ## 0.1.8 — November 8, 2026
 
 - Add **Exit to desktop** below Options on the Linux title screen and after

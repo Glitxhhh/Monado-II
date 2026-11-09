@@ -330,3 +330,153 @@ SYSTEM_EXIT_PATCHES = {
 }
 for _site, (_word, _emit, _note) in SYSTEM_EXIT_PATCHES.items():
     PATCHES[_site] = Patch(_word, _emit, 'LINUX-033', _note)
+
+
+# [XCDE] LINUX-035: keep the native four-card viewport and async job identities;
+# expand only logical metadata and the separately appended CPU thumbnail arena.
+# Every ABI anchor is checked against the selected DE 2.0.0 input by Patch.
+def _save_constant(register, value):
+    def emit(gen, addr):
+        _title_plain(gen, addr)
+        return f'c->x[{register}] = {value}u;'
+    return emit
+
+
+def _save_prefix(helper, argument):
+    def emit(gen, addr):
+        original = _title_plain(gen, addr)
+        parameter = 'Cpu *c' if argument == 'c' else 'uint64_t state'
+        return (f'{{ extern void {helper}({parameter}); {helper}({argument}); }} '
+                + original)
+    return emit
+
+
+def _save_initialize(gen, addr):
+    _title_plain(gen, addr)
+    return ('{ extern void xcde_expanded_saves_initialize(Cpu *c); '
+            'xcde_expanded_saves_initialize(c); }')
+
+
+def _save_legacy(helper, target):
+    def emit(gen, addr):
+        ins = gen.lift(addr)
+        if ins.kind != 'bl' or ins.target != target:
+            raise ValueError(f'{addr:#x}: expanded saves need the checked native slot helper')
+        return (f'{{ extern void {helper}(Cpu *c); '
+                f'c->x[30] = 0x{addr + 4:x}ull; {helper}(c); }}')
+    return emit
+
+
+def _save_auto_image(gen, addr):
+    _title_plain(gen, addr)
+    word = gen.word(addr)
+    destination, source = word & 31, (word >> 5) & 31
+    return f'c->x[{destination}] = (uint32_t)((uint32_t)c->x[{source}] + 99u);'
+
+
+def _save_initial_max(gen, addr):
+    _title_plain(gen, addr)
+    return '(void)subs32(c, (uint32_t)c->x[20], 99u);'
+
+
+EXPANDED_SAVE_PATCHES = {
+    0x7000282ddc: (0x528e2a00, _save_constant(0, 0x1d50), 'extended native state allocation, low half'),
+    0x7000282de0: (0x72a00b00, _save_constant(0, 0x1601d50), 'extended native state allocation, complete size'),
+    0x70002836f0: (0x321e03e9, _save_constant(9, 100), '100 logical records; four visible cards stay unchanged'),
+    0x7000283704: (0xaa1303e1, _save_initialize, 'initialize additional empty records and supply real record sort end'),
+    0x70002822e0: (0xd100c3ff, _save_prefix('xcde_expanded_saves_forget', 'c->x[0]'), 'native state destructor; drop live ownership before free'),
+    0x70002839e0: (0xb940a800, _save_prefix('xcde_expanded_saves_capture', 'c'), 'confirmed Save/Load selection; remember its stable logical identity'),
+    0x700028286c: (0x97f7fc45, _save_legacy('xcde_expanded_saves_legacy_set', 0x7000081980), 'preserve original serialized slot nibble and neighboring flags'),
+    0x7000396f18: (0x97f3aaae, _save_legacy('xcde_expanded_saves_default', 0x70000819d0), 'save dialog default; session extended selection or vanilla nibble'),
+    0x7000396f80: (0x71000e9f, _save_initial_max, 'native default selection upper clamp is logical99'),
+    0x7000396f84: (0x320007e9, _save_constant(9, 99), 'native default selection maximum is logical99'),
+}
+
+# [XCDE] LINUX-035: all seven old thumbnail-base constructions, including native
+# constructor/reset fills, I/O destinations, missing images and visible binding.
+for _low, _register in ((0x70002821ac, 8), (0x70002827dc, 9),
+                        (0x70002829e4, 10), (0x7000282ab4, 9),
+                        (0x7000283390, 10), (0x70002834f4, 8),
+                        (0x70002835d4, 8)):
+    EXPANDED_SAVE_PATCHES[_low] = (0x52886500 | _register,
+                                  _save_constant(_register, 0x7150), 'relocated thumbnail base, low half')
+    EXPANDED_SAVE_PATCHES[_low + 4] = (0x72a002a0 | _register,
+                                      _save_constant(_register, 0x587150), 'relocated appended thumbnail base')
+
+# [XCDE] LINUX-035: exactly the three whole-arena fills. Per-thumbnail transfer
+# and fallback fill sizes remain the original 320*180*3 bytes.
+for _low in (0x70002821b8, 0x70002834d4, 0x70002835b0):
+    EXPANDED_SAVE_PATCHES[_low] = (0x52918002, _save_constant(2, 0xac00), '100-thumbnail arena fill, low half')
+    EXPANDED_SAVE_PATCHES[_low + 4] = (0x72a00142, _save_constant(2, 0x107ac00), '100-thumbnail arena fill extent')
+
+# [XCDE] LINUX-035: autosave remains logical row0 and filename00a; only its
+# independent CPU picture-buffer index moves after the99 manual pictures.
+for _site, _word in ((0x70002827c8, 0x11000d2a), (0x70002829d4, 0x11000d09),
+                     (0x7000282a9c, 0x11000d2a), (0x7000283384, 0x11000d48)):
+    EXPANDED_SAVE_PATCHES[_site] = (_word, _save_auto_image, 'autosave image follows99 manual thumbnail buffers')
+
+for _site, (_word, _emit, _note) in EXPANDED_SAVE_PATCHES.items():
+    PATCHES[_site] = Patch(_word, _emit, 'LINUX-035', _note)
+
+
+# [XCDE] LINUX-035: title Continue and title-feature presence use separate native
+# four-slot scanners. The adapter scans extra IDs through their existing async
+# reader, with one stable job identity and one retained winning payload.
+def _save_scan_hook(helper, argument, after=False):
+    def emit(gen, addr):
+        ins = gen.lift(addr)
+        if ins.kind == 'bl':
+            original = _system_call(gen, addr, ins.target)
+        elif ins.kind == 'op':
+            original = ins.code
+        else:
+            raise ValueError(f'{addr:#x}: expanded save scanner needs an instruction or native call')
+        parameter = 'Cpu *c' if argument == 'c' else 'uint64_t owner'
+        hook = f'{{ extern void {helper}({parameter}); {helper}({argument}); }} '
+        return original + hook if after else hook + original
+    return emit
+
+
+def _save_scan_wait(gen, addr):
+    original = _title_plain(gen, addr)
+    return ('{ extern _Bool xcde_expanded_scan_continue_wait(Cpu *c); '
+            'if (xcde_expanded_scan_continue_wait(c)) goto L_700039a0e0; } ' + original)
+
+
+EXPANDED_SAVE_SCAN_PATCHES = {
+    0x7000399d90: (0xd10103ff, _save_scan_hook('xcde_expanded_scan_continue_begin', 'c->x[0]'),
+                   'Continue scan begins; bind the native reader owner'),
+    0x7000399b20: (0xa9be4ff4, _save_scan_hook('xcde_expanded_scan_continue_drop', 'c->x[0]'),
+                   'Continue owner cleanup; release retained extended winner'),
+    0x7000399d30: (0xa9be4ff4, _save_scan_hook('xcde_expanded_scan_continue_drop', 'c->x[0]'),
+                   'Continue owner destructor; release retained extended winner'),
+    0x7000399f78: (0x39426268, _save_scan_wait,
+                   'wait for serial extended reads before choosing Continue payload'),
+    0x700039a048: (0xb82a6928, _save_scan_hook('xcde_expanded_scan_continue_selected', 'c', after=True),
+                   'confirmed Continue selection; preserve full logical identity'),
+    0x70003c3c8c: (0x97fffafd, _save_legacy('xcde_expanded_scan_presence', 0x70003c2880),
+                   'title presence checker; aggregate extended main and Future Connected saves'),
+    0x70003c2de0: (0xa9be4ff4, _save_scan_hook('xcde_expanded_scan_presence_drop', 'LD64(c->x[0] + 0x278)'),
+                   'title owner destructor; remove checker ownership'),
+    0x70003c2d94: (0x97f2c6bf, _save_scan_hook('xcde_expanded_scan_presence_drop', 'c->x[21]'),
+                   'title checker replacement; drop old ownership before native free'),
+    0x70003c31fc: (0x52880788, _save_scan_hook('xcde_expanded_scan_presence_reset', 'c->x[21]'),
+                   'title recheck; drain any pending extended read before native reuse'),
+}
+for _site, (_word, _emit, _note) in EXPANDED_SAVE_SCAN_PATCHES.items():
+    PATCHES[_site] = Patch(_word, _emit, 'LINUX-035', _note)
+
+
+# [XCDE] LINUX-036: preserve the original update and its caller CPU results;
+# only afterwards permit bounded extra cold metadata transitions. Rendering,
+# thumbnail reads, writes and ordinary gameplay retain their native cadence.
+def _save_metadata_pump(gen, addr):
+    original = _system_call(gen, addr, 0x70002823a0)
+    return ('{ uint64_t scan_ui_ = c->x[19], scan_state_ = c->x[0]; '
+            + original +
+            'extern void xcde_expanded_saves_pump(Cpu *c, uint64_t ui, uint64_t state); '
+            'xcde_expanded_saves_pump(c, scan_ui_, scan_state_); }')
+
+
+PATCHES[0x7000283200] = Patch(0x97fffc68, _save_metadata_pump, 'LINUX-036',
+                            'native UI metadata update; original call then bounded owned cold-read work')

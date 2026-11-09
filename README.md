@@ -30,8 +30,8 @@ generated locally on each player's machine and must stay out of Git and releases
 
 | Platform | Source status | Validation |
 |---|---|---|
-| Linux x86-64 | Native SDL/Vulkan port, high-refresh timing fixes, menu-speed preference, native DLSS/DLAA and optional shader preparation | Opening cutscenes/battles through first character control tested by the maintainer; full game, Future Connected and save/recovery coverage remain incomplete |
-| Windows x86-64 | Original Monado implementation retained | Original author reported full-game playability on NVIDIA RTX; this fork has not independently built or validated Windows, and Linux improvements are queued in [TODO](TODO.md) |
+| Linux x86-64 | Native SDL/Vulkan port, high-refresh timing fixes, menu-speed preference, native DLSS/DLAA, optional shader preparation and expanded save slots | Opening cutscenes/battles through first character control tested by the maintainer; expanded saves and scan responsiveness received positive manual feedback; full game, Future Connected and save/recovery coverage remain incomplete |
+| Windows x86-64 | Original Monado implementation retained | Original author reported full-game playability on NVIDIA RTX; this fork has not independently built or validated Windows, and Linux backports are not currently planned |
 
 **Linux frame generation is experimental. Performance varies: it may run worse,
 stutter or show visual glitches; leaving it off is recommended.** FSR 3.1 Super Resolution remains
@@ -43,6 +43,14 @@ Linux includes **Exit to desktop** on the title screen and in the in-game System
 menu, with native confirmation and Cancel/No selected by default. Existing menu
 actions remain available. Save your progress first: exiting does not save it.
 
+Linux 0.1.9 provides **99 manual save slots plus a separate autosave for each
+story**, keeping main-game and Future Connected saves separate. Four native cards
+remain visible as you scroll; unused slots show **No data** and create no files.
+Existing saves keep their native format and filenames. Initial Save/Load scanning
+groups ready native read steps within a small budget, yielding for pending I/O
+and callbacks. Opening these menus and scanning Continue can still take time;
+99 populated slots and every save/recovery case have not been qualified.
+
 The strict public source snapshot uses plain TTF/OTF/TTC font input. It does not
 ship Nintendo fonts or include proprietary-font deobfuscation. The public launcher
 uses the Monado II wordmark/theme and the original generated landscape artwork
@@ -53,8 +61,8 @@ remains incomplete.
 
 ## Setup downloads and local builds
 
-Download the [Linux setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.8/monado-ii-0.1.8-linux-setup.tar.gz)
-or [Windows setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.8/monado-ii-0.1.8-windows-setup.zip)
+Download the [Linux setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.9/monado-ii-0.1.9-linux-setup.tar.gz)
+or [Windows setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.9/monado-ii-0.1.9-windows-setup.zip)
 from the release, and verify its checksum. These contain source and setup tools;
 you provide your own input and build locally. For Linux app launchers such as
 Quiver, select **`App_Monado_II.sh`**: it shows first-build progress in an installed
@@ -86,6 +94,10 @@ retain the verified game build. Other updates rebuild the game locally. Saves,
 settings and the shared input stay in the original installation; failed or
 cancelled preparation keeps the previous version selected.
 
+**Updating to 0.1.9 requires a full local game rebuild** for the new native save
+hooks. The updater performs that rebuild and keeps the original save/settings
+profile in place; it does not convert, replace or delete your saves.
+
 From 0.1.6, the original folder's `update-version.json` shows the active version.
 Use `./Rollback_Monado_II.sh` for a version-aware rollback; see the Linux guide.
 
@@ -94,13 +106,13 @@ same original installation folder and rebuild once, preserving its input and
 profile directories. Follow the safe manual-upgrade steps below. A fresh kit in
 a new folder is a separate installation and does not import an older profile.
 See [Linux updating and rollback](docs/BUILD_LINUX.md#4-update-and-roll-back).
-Windows does not yet have this updater.
+Windows has no updater in this release, and backport work is not currently planned.
 
 Releases provide separate **Linux setup `.tar.gz`** and **Windows setup `.zip`**
 kits containing reviewed source. They are **not precompiled playable game downloads**.
 You build the game locally from your own verified dump. No compiled game binary,
 private vendor SDK binary, game-derived cache or user data is distributed.
-Version 0.1.8 uses the regular release channel; frame generation remains an
+Version 0.1.9 uses the regular release channel; frame generation remains an
 experimental optional feature. A legacy Linux `-source` download remains solely
 for compatibility with installed updaters. New downloads use the `-setup` kit.
 

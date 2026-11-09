@@ -15,7 +15,8 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = 'tests/native/test_save_commit_linux.c'
 CASES = ('flush-success', 'flush-error', 'commit-success', 'commit-file-error',
-         'commit-directory-error', 'commit-open-error')
+         'commit-directory-error', 'commit-open-error',
+         'extended-slots', 'extended-slots-failure', 'extended-slots-recovery')
 
 
 def digest(path):

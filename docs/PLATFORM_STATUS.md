@@ -52,7 +52,7 @@ qualification; coverage limits below remain applicable.
 Windows retains the original Monado implementation. Its original author reported
 whole-game playability on NVIDIA RTX, including Future Connected. This fork has
 not independently built or run that Windows source. The Linux improvements listed
-in [TODO](../TODO.md) have not been backported.
+in [TODO](../TODO.md) have not been backported and are not currently planned.
 There is no Windows updater in this release.
 
 The public launcher restores the exact original generated landscape artwork;
@@ -61,7 +61,7 @@ its origin and limitations. It is not a game screenshot or extracted asset. The
 separate unreviewed sword icon and proprietary-font decoding remain excluded.
 Plain user/system TTF/OTF/TTC font input is supported. Public-only changes require
 further integrated testing. Full-game, save-recovery, long-session, other-GPU and
-clean-machine coverage remain incomplete. A regular 0.1.8 release does not imply
+clean-machine coverage remain incomplete. A regular 0.1.9 release does not imply
 Windows game-build or full-game qualification.
 
 Linux0.1.8 adds native Exit to desktop entries on the title screen and System
@@ -69,3 +69,19 @@ menu, scoped Exit/Cancel-or-No confirmations, and ordered guest/render/GPU close
 The maintainer accepted both flows manually on the tested NVIDIA Linux candidate.
 Existing menu rows/restrictions and saves/settings are preserved; unsaved progress
 is not automatically saved. This feature is not backported to Windows.
+
+Linux 0.1.9 expands each story to 99 manual save slots plus its own autosave.
+The native four-card list scrolls through unused No data slots without creating
+files. Existing native save formats and filenames remain unchanged, with separate
+main-game and Future Connected saves. Continue and title save/clear checks include
+extended slots through the native asynchronous readers and validation.
+
+Initial Save/Load scans now batch ready native metadata steps within a bounded
+call/time budget. Pending reads and callbacks yield; save writes and thumbnail
+reads retain their ordinary cadence. These changes received positive manual
+feedback on the Linux development build. Actual waits depend on I/O, populated
+slots and host timing; startup and Continue scans can still add delay. This is
+not qualification of 99 populated slots, every story/save/recovery case, or the
+full game. Updating requires a local game rebuild; the updater retains the
+original save/settings profile and shared input. No save conversion is required.
+Windows retains its existing save implementation and has no backport scheduled.

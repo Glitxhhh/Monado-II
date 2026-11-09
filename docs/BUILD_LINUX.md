@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-Download and extract **`monado-ii-0.1.8-linux-setup.tar.gz`** from
+Download and extract **`monado-ii-0.1.9-linux-setup.tar.gz`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases). Open a terminal in
 the extracted folder. The supported baseline is **Linux x86-64 with CPython 3.14**,
 bash, pkg-config, dpkg-deb, binutils (`readelf` and `nm`) and squashfs-tools
@@ -127,6 +127,19 @@ Installation paths containing spaces are supported starting with 0.1.4. An older
 latest source kit in the same original installation folder. Keep input/profile
 directories in place.
 
+### Expanded save slots
+
+Linux 0.1.9 provides 99 manual slots and a separate autosave for each story.
+Main-game and Future Connected saves remain separate. Save/Load keeps four native
+cards visible and scrolls through the remaining slots; unused slots show No data
+without creating files. Existing saves retain their native format and filenames.
+
+Initial Save/Load scanning batches ready native read steps within a small budget
+and yields for pending I/O and callbacks. Menu, startup and Continue scans can
+still take time, especially with many populated slots. The maintainer accepted
+the development build manually; full-capacity and recovery coverage remain
+incomplete. See [platform status](PLATFORM_STATUS.md).
+
 ## Experimental frame generation
 
 Normal Linux builds include native frame-generation support without an extra flag:
@@ -206,6 +219,13 @@ that rebuild. Footstep-diagnostic builds remain manual. Frame generation remains
 experimental. Edited release-owned source files also stop automatic installation
 so local changes can be merged manually. Normal settings changes do not modify
 the release-owned source.
+
+**The 0.1.9 save-slot changes require a full local game rebuild.** The normal
+updater performs this rebuild before activation. It preserves the original
+`Monado_Linux/play/launcher` save/settings profile and shared input in place;
+it does not convert, replace or delete saves. Keep the original installation
+folder and its retained update directories. A fresh kit elsewhere is a separate
+profile, as described above.
 
 Subsequent managed updates leave installed sources in place. Each new version
 stays at a fixed path under

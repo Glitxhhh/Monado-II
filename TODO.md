@@ -1,8 +1,12 @@
 # Monado II TODO
 
-Unchecked items are planned work, not implemented or validated features.
+Unchecked items are potential or deferred work, not implemented or validated
+features. Windows backports are not currently planned.
 
-## Windows backports
+## Deferred Windows parity references (not planned)
+
+This list records known Linux/Windows differences for a possible future decision;
+it is not a Windows development roadmap or a commitment to backport them.
 
 - [ ] Bring over the themed/responsive launcher, public-safe resources, Monado II
   wordmark/icon integration and larger default opening size.
@@ -22,12 +26,14 @@ Unchecked items are planned work, not implemented or validated features.
 - [ ] Preserve custom/unknown launcher settings, atomically save configuration,
   and review post-game reload/process behavior.
 - [ ] Design and validate a Windows updater; the 0.1.3 updater is Linux-only.
+- [ ] Revisit Linux-only Exit to desktop, expanded save slots and bounded initial
+  save scanning if Windows parity is explicitly scheduled later.
 - [ ] Regenerate/build on Windows and run focused regression tests in isolated
   state, then manual gameplay. Keep original Windows fiber/vendor implementations.
 
 Windows already has DLSS/DLAA, AMD frame generation and shader precompilation.
 Do not replace those with Linux-specific providers or transplant experimental
-Linux FG presentation. No Windows backport is implied by publication preparation.
+Linux FG presentation. Publishing a Windows source kit does not schedule backports.
 
 ## Linux correctness and coverage
 
@@ -35,6 +41,8 @@ Linux FG presentation. No Windows backport is implied by publication preparation
   after the current publication work; keep its warning and off-by-default setting.
 - [ ] Validate more gameplay, demanding scenes, long sessions and Future Connected.
 - [ ] Validate disposable save/reload/journal recovery and failure durability.
+- [ ] Expand extended-save coverage across main-game and Future Connected,
+  including 99 populated manual slots, thumbnails, Continue and recovery.
 - [ ] Expand high-FPS follower/damping/cutscene coverage and FP exception semantics.
 - [ ] Test AMD/Intel/other hardware and remaining diagnostics/input behavior.
 - [ ] Validate the public plain-font, restored-artwork and DLSS paths across more
