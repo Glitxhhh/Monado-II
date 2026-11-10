@@ -40,6 +40,11 @@ bool quickstep_slot_get(Cpu *c, uint64_t context, uint32_t character, QuickstepG
 // current adoption; a nonzero token requires that exact adoption and instance.
 bool quickstep_slot_reference_matches(uint64_t context, uint32_t character,
                                      const QuickstepGem *expected, uint64_t *epoch);
+// Read-only presentation lookup for one exact native pooled instance. Resolves
+// no guest helpers and changes no ownership. Epoch0 captures the adoption;
+// callers that yield must query again with that token before publishing.
+bool quickstep_slot_owner(uint64_t context, uint64_t native_instance,
+                          QuickstepGem *out, uint64_t *epoch);
 bool quickstep_slot_set_checked(Cpu *c, uint64_t context, uint32_t character,
                                uint32_t uid, const uint8_t fingerprint[32]);
 // Native Remove must identify the association shown to the user. A helper yield
@@ -70,3 +75,11 @@ void quickstep_slot_effects_finish(Cpu *c);
 void quickstep_slot_native_equip(Cpu *c);
 void quickstep_slot_native_consume(Cpu *c);
 void quickstep_slot_native_destroy(Cpu *c);
+// Native 232E2C row presentation only: X20=ItemView, W0=native E-marker status.
+// Overrides only native "unassigned" (-1); preserves all other CPU/FP state.
+// Never changes the native equipment query used by transfer/removal code.
+void quickstep_slot_native_marker(Cpu *c);
+// Native 2377E0 portrait binder, after174AE0: X20=ItemView, W0=owning
+// character (0 none). Display only; the original compare against the real
+// portrait character chooses its native E mark and frame. No guest call.
+void quickstep_slot_native_portrait_owner(Cpu *c);

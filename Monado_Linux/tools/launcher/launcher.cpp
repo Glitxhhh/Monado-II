@@ -243,7 +243,7 @@ static const char *const k_en[][2] = {
     {"30 (como en Switch)", "30 (like Switch)"}, {"Sin límite", "Unlimited"},
     {"Ranura exclusiva de Paso rápido", "Dedicated Quick Step gem slot"},
     {"Equipa una gema de Paso rápido en una ranura propia del personaje, incluso sin botas.", "Equip a Quick Step gem in a character-owned slot, including without boots."},
-    {"Experimental: puede comportarse de forma irregular o mostrar fallos de interfaz. Se prevén más mejoras.", "Experimental: may behave inconsistently or show UI quirks. Further fixes and polish are planned."},
+    {"Función opcional estable. Desactivada por defecto para quienes prefieren el sistema de equipo original.", "Stable optional feature. Off by default for players who prefer the original equipment setup."},
     {"Velocidad de navegación en menús", "Menu navigation speed"},
     {"Normal (estilo de 30 FPS)", "Normal (30 FPS style)"},
     {"Rápida (estilo de 60 FPS)", "Fast (60 FPS style)"},
@@ -1139,7 +1139,7 @@ static void tab_mods() {
     launcher_theme::section(T("Monado II"));
     launcher_theme::checkbox(T("Ranura exclusiva de Paso rápido"), &g.quickstep_slot);
     ImGui::TextWrapped("%s", T("Equipa una gema de Paso rápido en una ranura propia del personaje, incluso sin botas."));
-    ImGui::TextWrapped("%s", T("Experimental: puede comportarse de forma irregular o mostrar fallos de interfaz. Se prevén más mejoras."));
+    ImGui::TextWrapped("%s", T("Función opcional estable. Desactivada por defecto para quienes prefieren el sistema de equipo original."));
     ImGui::Separator();
 #endif
     static bool scanned;

@@ -1,5 +1,6 @@
 // [XCDE] LINUX-039: authored ownership adapter for a real, native Quick Step gem.
 // The native item pool, equipment, effect decoder, stacking and caps stay native.
+// [XCDE] LINUX-044: publish validated bonus ownership to native row E markers.
 #include "../hle.h"
 #include "../settings.h"
 #include "quickstep_slot.h"
@@ -28,7 +29,7 @@ typedef struct {
 } DeferredRefresh;
 
 static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
-static uint64_t playing, generation, last_context;
+static uint64_t playing, generation, last_context, last_view;
 static QuickstepSnapshot current;
 static uint32_t dirty;
 static bool active, last_enabled, refreshing;
@@ -106,7 +107,7 @@ static uint64_t resolve(Cpu *c, uint64_t context, uint32_t *story) {
     *story = (LD8(view + 0x150) >> 3) & 1u;
     pthread_mutex_lock(&lock);
     bool matches = active && data == playing && *story == current.story;
-    if (matches) last_context = context;
+    if (matches) { last_context = context; last_view = view; }
     pthread_mutex_unlock(&lock);
     return matches ? data : 0;
 }
@@ -160,7 +161,7 @@ static void required(void) {
 void quickstep_slot_adopt(uint64_t data, uint32_t story, const QuickstepSnapshot *snapshot) {
     pthread_mutex_lock(&lock);
     ++generation;
-    playing = data; last_context = 0;
+    playing = data; last_context = last_view = 0;
     active = range(data, INVENTORY + GEAR_END) && story < 2;
     memset(&current, 0, sizeof current); current.story = story;
     dirty = 0; refreshing = false; last_enabled = g_settings.quickstep_slot;
@@ -183,7 +184,7 @@ void quickstep_slot_adopt(uint64_t data, uint32_t story, const QuickstepSnapshot
 
 void quickstep_slot_suspend(void) {
     pthread_mutex_lock(&lock);
-    active = false; playing = 0; last_context = 0; ++generation; dirty = 0;
+    active = false; playing = 0; last_context = last_view = 0; ++generation; dirty = 0;
     pthread_mutex_unlock(&lock);
 }
 
@@ -296,6 +297,67 @@ bool quickstep_slot_reference_matches(uint64_t context, uint32_t character,
     if (valid) *epoch = generation;
     pthread_mutex_unlock(&lock);
     return valid;
+}
+
+bool quickstep_slot_owner(uint64_t context, uint64_t instance,
+                          QuickstepGem *out, uint64_t *epoch) {
+    if (!out || !epoch || !range(context, 8) || !range(instance, GEM_STRIDE)) return false;
+    pthread_mutex_lock(&lock);
+    bool valid = g_settings.quickstep_slot && active && playing && last_context == context
+        && range(last_view, 0x151) && ((LD8(last_view + 0x150) >> 3) & 1u) == current.story
+        && (!*epoch || *epoch == generation);
+    uint32_t uid = valid ? LD32(instance) : 0;
+    int index = -1;
+    if (valid && (uid & 0xffff0000u) == 0x30000u && (uid & 0xffffu) < QUICKSTEP_GEM_CAPACITY
+            && instance == playing + INVENTORY + GEM_POOL + (uid & 0xffffu) * GEM_STRIDE) {
+        for (uint32_t i = 0; i < current.count; ++i)
+            if (current.entries[i].uid == uid) { index = (int)i; break; }
+    }
+    QuickstepGem item;
+    valid = valid && index >= 0 && playable(current.story, current.entries[index].character)
+        && gem(playing, uid, &item) && item.availability == QUICKSTEP_FREE
+        && !memcmp(item.fingerprint, current.entries[index].fingerprint, sizeof item.fingerprint);
+    if (valid) {
+        item.character = current.entries[index].character;
+        item.assigned = true;
+        *out = item; *epoch = generation;
+    }
+    pthread_mutex_unlock(&lock);
+    return valid;
+}
+
+void quickstep_slot_native_marker(Cpu *c) {
+    // 232960 binds every real row through 174E80 -> 2327B0. The latter renders
+    // the native E marker (none=-1, other character=0, current character=1,
+    // unworn ordinary parent=3). Adapt this presentation result only; claiming
+    // a native parent in 174F00 would break ordinary detach/transfer semantics.
+    uint64_t view = c->x[20];
+    if ((uint32_t)c->x[0] != UINT32_MAX || !range(view, 0x140) || LD32(view + 0x28) != 3) return;
+    uint64_t context = LD64(view + 8), instance = LD64(view + 0x138), epoch = 0;
+    QuickstepGem owner, checked;
+    if (!quickstep_slot_owner(context, instance, &owner, &epoch)) return;
+    // 174ED0 resolves the same native ownership cache used by 174E80. Its +8
+    // character is the exact comparison native 174F00 uses for E-frame 0/1.
+    uint64_t cache = call(c, 0x7000174ed0ull, context, 0, 0, 0, 0);
+    if (!range(cache, 12) || !range(view, 0x140) || LD32(view + 0x28) != 3
+            || LD64(view + 8) != context || LD64(view + 0x138) != instance
+            || !quickstep_slot_owner(context, instance, &checked, &epoch)
+            || checked.character != owner.character
+            || memcmp(checked.fingerprint, owner.fingerprint, sizeof owner.fingerprint)) return;
+    c->x[0] = LD32(cache + 8) == owner.character ? 1 : 0;
+}
+
+void quickstep_slot_native_portrait_owner(Cpu *c) {
+    // Item Details2377E0 uses a different presentation-only native helper,
+    //174AE0, returning a character ID rather than the row's E-frame status.
+    // Leave the native portrait comparison, visibility, style and frame calls
+    // intact; supplying an owner in the global inventory query would invent a
+    // gear parent for ordinary transfer/removal code.
+    uint64_t view = c->x[20], epoch = 0;
+    if ((uint32_t)c->x[0] || !range(view, 0x140) || LD32(view + 0x28) != 3) return;
+    QuickstepGem owner;
+    if (quickstep_slot_owner(LD64(view + 8), LD64(view + 0x138), &owner, &epoch))
+        c->x[0] = owner.character;
 }
 
 bool quickstep_slot_set_checked(Cpu *c, uint64_t context, uint32_t character, uint32_t uid, const uint8_t fingerprint[32]) {
@@ -569,7 +631,7 @@ void quickstep_slot_native_destroy(Cpu *c) {
 
 RT_ON_RESET(quickstep_slot_reset) {
     pthread_mutex_lock(&lock);
-    active = false; playing = 0; last_context = 0; dirty = 0; refreshing = false; ++generation;
+    active = false; playing = 0; last_context = last_view = 0; dirty = 0; refreshing = false; ++generation;
     memset(&current, 0, sizeof current);
     memset(leases, 0, sizeof leases);
     memset(deferred, 0, sizeof deferred);

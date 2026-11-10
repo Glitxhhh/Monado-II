@@ -63,6 +63,8 @@ class QuickstepNativeHookTests(unittest.TestCase):
             0x70002ff5fc: 0x17fffd0d, 0x70002ffd90: 0x52914288,
             0x70003035d0: 0xd10603ff, 0x7000303270: 0xa9bd57f6,
             0x70003022b0: 0xa9bd57f6, 0x700017b81c: 0xb8296913,
+            0x7000237898: 0xb943be68, 0x70002378d0: 0x6b00035f,
+            0x7000237940: 0x6b00035f,
         }
         self.assertTrue(set(expected).issubset(self.module.QUICKSTEP_PATCHES))
         for site, (word, _emitter, _note) in self.module.QUICKSTEP_PATCHES.items():

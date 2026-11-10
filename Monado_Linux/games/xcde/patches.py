@@ -604,6 +604,10 @@ QUICKSTEP_PATCHES = {
     0x7000183a60: (0xb94fb808, _quickstep_prefix('quickstep_native_picker_filter'), 'owned bonus list filter before native sorts and category rebuilds'),
     0x7000241b40: (0xb9002001, _quickstep_prefix('quickstep_native_picker_count'), 'native bonus row count and genuine No data state'),
     0x7000316604: (0x97fbd29b, _quickstep_row_style, 'owned bonus gem row styling independent of ordinary boot socket eligibility'),
+    0x7000232e2c: (0x2a0003f4, _quickstep_prefix('quickstep_slot_native_marker'), 'LINUX-044 display-only native E state for validated bonus ownership; retain original row status move'),
+    0x7000237898: (0xb943be68, _quickstep_prefix('quickstep_slot_native_portrait_owner'), 'LINUX-044 R2 display-only portrait owner after native lookup; retain native field load'),
+    0x70002378d0: (0x6b00035f, _quickstep_prefix('quickstep_slot_native_portrait_owner'), 'LINUX-044 R2 gem portrait E compares genuine portrait character with validated bonus owner'),
+    0x7000237940: (0x6b00035f, _quickstep_prefix('quickstep_slot_native_portrait_owner'), 'LINUX-044 R2 alternate portrait path retains original character comparison'),
     0x70002fa178: (0xf941f7e8, _quickstep_prefix('quickstep_native_picker_menu_item'), 'bonus Remove eligibility after native ordinary-socket checks; retain original load'),
     0x70002f8cd8: (0x37003ac0, _quickstep_prefix('quickstep_native_picker_menu_gate'), 'active bonus context menu ignores ordinary parent socket restriction; retain native branch'),
     0x70002f9970: (0x910b63e9, _quickstep_prefix('quickstep_native_picker_menu_item'), 'active-list bonus Remove item flag; retain native item pointer calculation'),
@@ -635,12 +639,6 @@ for _site, (_word, _emit, _note) in QUICKSTEP_PATCHES.items():
 
 # [XCDE] LINUX-039: native payloads remain unchanged; optional character-slot
 # metadata binds to exact serialized bytes and confirmed load intent.
-def _quickstep_read_intent(gen, addr):
-    original = _system_call(gen, addr, 0x7000087040)
-    return ('{ extern void quickstep_save_read_intent(Cpu *c); '
-            'quickstep_save_read_intent(c); ' + original + '}')
-
-
 _QUICKSTEP_CONTINUE_BASE = PATCHES[0x700039a048].emit
 
 
@@ -656,7 +654,10 @@ QUICKSTEP_SAVE_PATCHES = {
     0x70000afe10: (0xd102c3ff, _quickstep_prefix('quickstep_save_loading', 'void', ''), 'suspend old character references before actual playing-data load'),
     0x70000afe60: (0x910043e0, _quickstep_prefix('quickstep_save_adopt'), 'adopt only confirmed native playing-data decode'),
     0x700054df24: (0xa9497bfd, _quickstep_prefix('quickstep_save_loaded'), 'reconcile only after native story finalization'),
-    0x7000398760: (0x97f3ba38, _quickstep_read_intent, 'confirmed load selection; retain native async read'),
+    0x7000087040: (0xd10503ff, _quickstep_prefix('quickstep_save_read_intent'), 'LINUX-044 actual native save read entry covers all Load and Continue callers; retain native stack frame'),
+    0x70005c4234: (0xb9402a88, _quickstep_prefix('quickstep_save_header_copy'), 'LINUX-044 R2 bind actual split-read header copy to raw buffer; retain original loader field load'),
+    0x700039a424: (0xaa1303e0, _quickstep_prefix('quickstep_save_cache_copy'), 'LINUX-044 R2 preserve validated save provenance after completed typed cache copy'),
+    0x70003992b4: (0xb9400a68, _quickstep_prefix('quickstep_save_selected_copy'), 'LINUX-044 R2 preserve exact selected save provenance after typed constructor copy'),
     0x700039a048: (0xb82a6928, _quickstep_continue_intent, 'confirmed Continue; compose after extended-slot logical correction'),
     0x70000adcc0: (0xd10243ff, _quickstep_prefix('quickstep_save_newgame_begin'), 'actual New Game reset; suspend old references and load intent'),
     0x70000ae860: (0xa9487bfd, _quickstep_prefix('quickstep_save_newgame_end'), 'actual New Game completion; adopt empty slot state after story setup'),

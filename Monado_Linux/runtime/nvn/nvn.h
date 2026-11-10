@@ -69,11 +69,22 @@ typedef struct NvnShaderStage {
     uint32_t const_offset, const_size;  // compiler constants (bound as c1), within the code blob
     void *backend;
     uint64_t code_hash;       // [XCDE] T125: content of the blob (code + constants) - the same address can hold another shader later
-    const uint8_t *code_copy; // [XCDE] T240: the blob as it was when registered (what the translator reads; NULL: code_addr)
+    const uint8_t *code_copy; // [XCDE] LINUX-046: owned code AND compiler constants as registered
+    uint64_t code_copy_size;  // full owned extent; translator cmax remains const_offset (or its existing fallback)
 } NvnShaderStage;
 
 // [XCDE] T240: the code the translator reads - the copy taken at registration, else the live address
 static inline uint64_t nvn_stage_code(const NvnShaderStage *s) { return s->code_copy ? (uint64_t)(uintptr_t)s->code_copy : s->code_addr; }
+
+// Compiler constants must come from the same immutable registration as the
+// translated instructions. A missing/invalid snapshot is an error, not zero data.
+static inline bool nvn_stage_constants(const NvnShaderStage *s, const uint8_t **data, uint64_t *size) {
+    if (!s || !s->code_copy || s->const_offset > s->code_copy_size ||
+        s->const_size > s->code_copy_size - s->const_offset) return false;
+    *data = s->code_copy + s->const_offset;
+    *size = s->const_size;
+    return true;
+}
 
 typedef struct NvnProgram {
     NvnShaderStage stages[6];

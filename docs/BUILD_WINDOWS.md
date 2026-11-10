@@ -1,13 +1,14 @@
 # Local Windows build
 
-Download **`monado-ii-0.1.10-windows-setup.zip`** from the GitHub Release. It contains
+Download **`monado-ii-0.1.11-windows-setup.zip`** from the GitHub Release. It contains
 reviewed source and build tools, not a ready-to-run Windows app. Quiver recognizing
 this archive does not establish Windows setup or gameplay compatibility.
 
 Windows source is inherited from Monado and has not been independently validated
 by this fork. This kit retains the existing Windows implementation. Expanded
-saves, faster scanning, the dedicated Quick Step slot, NPC trading correction and
-new runtime compatibility work are Linux-only. Backports are not currently
+saves, faster scanning, the dedicated Quick Step slot and its 0.1.11 save/UI fixes,
+NPC trading correction, queued-rendering fixes and runtime compatibility work are
+Linux-only. The 0.1.11 Windows source implementation is unchanged. Backports are not currently
 planned; [TODO](../TODO.md) records deferred parity references. The release
 is a source/setup kit, not a playable executable or a bundled dependency installer.
 

@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-Download and extract **`monado-ii-0.1.10-linux-setup.tar.gz`** from
+Download and extract **`monado-ii-0.1.11-linux-setup.tar.gz`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases). Open a terminal in
 the extracted folder. The current pinned baseline is **Linux x86-64 (x86-64-v2),
 CPython 3.14, glibc 2.43 or newer**, and a native GNU C++ runtime exporting
@@ -182,18 +182,19 @@ still take time, especially with many populated slots. The maintainer accepted
 the development build manually; full-capacity and recovery coverage remain
 incomplete. See [platform status](PLATFORM_STATUS.md).
 
-### Experimental dedicated Quick Step slot
+### Dedicated Quick Step slot
 
-Linux 0.1.10 adds **Dedicated Quick Step gem slot** under Mods in the launcher.
-It is **off by default**. The character-owned slot uses eligible owned Quick Step
+**Dedicated Quick Step gem slot** under Mods in the launcher is stable in Linux
+0.1.11 following manual acceptance. It is **off by default** for players who prefer
+the original equipment setup. The character-owned slot uses eligible owned Quick Step
 I–VI without consuming an ordinary armour slot, including when no boots or
 socketless/unique boots or drones are equipped. It retains normal ownership,
 potency and caps; optional assignment metadata is paired with each native save.
 Back up the complete save folder, including hidden files, to retain assignments.
 
-**This feature is experimental and can be hit-or-miss or show UI quirks. Expect
-quirkiness; further fixes and polish are planned.** See the [Quick Step guide](QUICKSTEP.md)
-for controls, removal and coverage limits.
+Load Game and Continue restore the saved assignment and its actual movement
+bonus from matching metadata. Native `.sav` formats and filenames stay unchanged.
+See the [Quick Step guide](QUICKSTEP.md) for controls, removal and coverage limits.
 
 ## Experimental frame generation
 
@@ -275,10 +276,11 @@ experimental. Edited release-owned source files also stop automatic installation
 so local changes can be merged manually. Normal settings changes do not modify
 the release-owned source.
 
-**The 0.1.10 Quick Step, trading and runtime changes require a full local game
+**The 0.1.11 Quick Step and queued-rendering fixes require a full local game
 rebuild.** The normal updater performs this rebuild before activation. It preserves the original
 `Monado_Linux/play/launcher` save/settings profile and shared input in place;
-it does not convert, replace or delete saves. Keep the original installation
+it does not convert, replace or delete saves. Preserve optional Quick Step metadata
+with the complete save folder, including hidden files. Keep the original installation
 folder and its retained update directories. A fresh kit elsewhere is a separate
 profile, as described above.
 

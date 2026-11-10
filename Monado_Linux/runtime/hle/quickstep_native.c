@@ -33,6 +33,7 @@ typedef struct {
     const char *failure_stage;
     uint32_t failure_detail;
     uint32_t character, uid;
+    uint32_t focus_selected, focus_pane, focus_ui_pane;
     uint8_t fingerprint[32];
     bool focus, visible, busy, failed, dirty;
 } NativeSlot;
@@ -64,6 +65,14 @@ static bool identity(const NativeSlot *s) {
         && range(s->ui, UI_BYTES) && LD64(s->sequence + SEQ_UI_PTR) == s->ui
         && LD64(s->ui) == ui_vtable && LD64(s->ui + 0x10) == s->context
         && LD32(s->sequence + SEQ_CHAR) == s->character;
+}
+// [XCDE] LINUX-044: focus belongs to one actual base native row/pane. A
+// native child can consume navigation before our router hook; its new route
+// must not inherit bonus callbacks simply because the visual focus was true.
+static bool focus_route(const NativeSlot *s) {
+    return identity(s) && LD32(s->ui + 0x24) == s->focus_selected
+        && LD32(s->ui + 0x18) == s->focus_ui_pane
+        && LD32(s->sequence + 0x18c0) == s->focus_pane;
 }
 static bool current(const NativeSlot *s) {
     pthread_mutex_lock(&state_lock);
@@ -131,6 +140,17 @@ static void ordinary_focus(Cpu *c, const NativeSlot *s, bool restore) {
     uint64_t original = LD64(s->ui + 8);
     uint64_t row = plain(c, 0x700057aeb0ull, original, s->memory + PATH, 0, 0, 0);
     if (current(s)) play(c, s, row, "off");
+}
+// Native ordinary cell movement301558/30197C uses this helper (sound1,
+// volume1). Only a completed consumed Right/Left transition owns feedback;
+// blocked repeats and events passed back to the native router stay silent.
+static void move_sound(Cpu *c, const NativeSlot *s, bool focused) {
+    if (!current(s) || !focus_route(s)) return;
+    pthread_mutex_lock(&state_lock);
+    bool owner = state.generation == s->generation && state.sequence == s->sequence
+        && state.focus == focused;
+    pthread_mutex_unlock(&state_lock);
+    if (owner) plain(c, 0x70001b7630ull, s->context, 0, 0, 0, 0);
 }
 static void transform(Cpu *c, uint64_t node, bool scale, float x, float y) {
     const float values[] = { x, y };
@@ -587,6 +607,11 @@ void quickstep_native_tick(Cpu *c) {
         }
         pthread_mutex_unlock(&state_lock);
     }
+    if (s.focus && !picker && !menu && !focus_route(&s)) {
+        // The native owner already changed rows/panes. Preserve its controller
+        // and selection instead of repeatedly clearing it from the old focus.
+        s.focus = false; s.dirty = true;
+    }
     bool boots = equipment && (LD32(s.ui + 0x24) == 13
         || (LD32(s.ui + 0x24) == 5 && !LD8(s.ui + 0x328 + 13)));
     bool show = equipment && (boots || s.focus || picker || menu);
@@ -648,6 +673,12 @@ bool quickstep_native_bonus_context(uint64_t seq, uint64_t *context,
     pthread_mutex_unlock(&state_lock);
     bool valid = g_settings.quickstep_slot && s.sequence == seq && s.focus
         && s.visible && s.root && !s.failed && identity(&s);
+    // A chooser temporarily uses native index13/pane2; a typed popup owns its
+    // modal route. Outside those exact leases the captured base route must
+    // still match, even before the next visual tick reconciles logical focus.
+    if (valid && !quickstep_native_picker_active(seq)
+            && !quickstep_native_picker_context_menu_active(seq))
+        valid = focus_route(&s);
     if (valid) {
         if (context) *context = s.context;
         if (character) *character = s.character;
@@ -682,16 +713,28 @@ bool quickstep_native_input(Cpu *c, uint64_t seq, QuickstepNativeAction action) 
     pthread_mutex_unlock(&state_lock);
     if (!g_settings.quickstep_slot || seq != s.sequence || !s.visible || s.failed
             || s.busy || !identity(&s) || quickstep_native_picker_active(seq)) return false;
+    if (s.focus && !focus_route(&s)) {
+        pthread_mutex_lock(&state_lock);
+        if (state.generation == s.generation) { state.focus = false; state.dirty = true; }
+        pthread_mutex_unlock(&state_lock);
+        s.focus = false;
+    }
     if (!s.focus) {
         if (action != QUICKSTEP_NATIVE_RIGHT) return false;
         uint32_t selected = LD32(s.ui + 0x24);
         if (selected != 13 && !(selected == 5 && !LD8(s.ui + 0x328 + 13))) return false;
-        s.focus = true; s.dirty = true;
+        s.focus = true; s.dirty = true; s.focus_selected = selected;
+        s.focus_pane = LD32(seq + 0x18c0); s.focus_ui_pane = LD32(s.ui + 0x18);
         pthread_mutex_lock(&state_lock);
-        if (state.generation == s.generation) { state.focus = true; state.dirty = true; }
+        if (state.generation == s.generation) {
+            state.focus = true; state.dirty = true;
+            state.focus_selected = s.focus_selected; state.focus_pane = s.focus_pane;
+            state.focus_ui_pane = s.focus_ui_pane;
+        }
         pthread_mutex_unlock(&state_lock);
         ordinary_focus(c, &s, false);
         if (current(&s)) play(c, &s, s.slot, "off");
+        move_sound(c, &s, true);
         return true;
     }
     if (action == QUICKSTEP_NATIVE_CONFIRM) {
@@ -704,6 +747,7 @@ bool quickstep_native_input(Cpu *c, uint64_t seq, QuickstepNativeAction action) 
     pthread_mutex_unlock(&state_lock);
     ordinary_focus(c, &s, true);
     if (current(&s)) play(c, &s, s.slot, "off");
+    if (action == QUICKSTEP_NATIVE_LEFT) move_sound(c, &s, false);
     return action == QUICKSTEP_NATIVE_LEFT || action == QUICKSTEP_NATIVE_BACK;
 }
 bool quickstep_native_input_event(Cpu *c) {

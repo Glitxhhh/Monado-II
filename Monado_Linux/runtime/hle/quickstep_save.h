@@ -21,7 +21,14 @@ void quickstep_save_intent(uint32_t story, uint16_t file, bool autosave);
 void quickstep_save_loading(void); // suspend effects, retain confirmed intent
 void quickstep_save_adopt(Cpu *c); // checked AFE60: playing=x20, raw=x22
 void quickstep_save_loaded(Cpu *c); // checked 54DF24: context=x19, story finalized
-void quickstep_save_read_intent(Cpu *c); // confirmed UI read: task=x0, file=x1, auto=x2
+// Full native read87040: task=x0, file=x1, auto=x2, destination=task+150.
+// Intent is keyed by that destination; speculative async reads never adopt it.
+void quickstep_save_read_intent(Cpu *c);
+// Checked uncompressed reader5C4234: copied header at x8, source sp+70.
+void quickstep_save_header_copy(Cpu *c);
+// Checked completed native typed copies, preserving raw-file provenance.
+void quickstep_save_cache_copy(Cpu *c); //39A424: destination=x19, source=x20
+void quickstep_save_selected_copy(Cpu *c); //3992B4: destination=x21, source=*[x19]
 void quickstep_save_continue_intent(Cpu *c); // after035 corrected logical selection
 void quickstep_save_new_game(uint64_t playing_data, uint32_t story);
 void quickstep_save_newgame_begin(Cpu *c); // ADCC0 entry: suspend and clear intent

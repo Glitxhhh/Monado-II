@@ -1,11 +1,10 @@
-# Dedicated Quick Step slot — Linux 0.1.10
+# Dedicated Quick Step slot — Linux 0.1.11
 
 Enable **Dedicated Quick Step gem slot** in the launcher's **Mods** tab before
-starting the game. The option is **off by default**. It received positive
-maintainer feedback but remains **experimental**: it can be hit-or-miss or show
-UI quirks. Expect quirkiness; further fixes and polish are planned for future
-builds. Coverage across all character/equipment/save/recovery cases remains
-incomplete.
+starting the game. The feature is **stable following the maintainer's manual
+acceptance** and remains **off by default** for players who prefer the original
+equipment setup. Broader character, equipment, Future Connected and save-recovery
+coverage remains incomplete.
 
 Open **Change Equipment** and highlight the boots gem area. A rounded native
 mini-table slides out beyond the table's right border. Press Right to focus it,
@@ -16,7 +15,11 @@ returns from the extra slot to the ordinary equipment selection. Native list
 navigation, icons, descriptions, sorting and favourites are retained. Keyboard
 controls follow the launcher's configured bindings. The empty socket's native
 outer underlay is green; its hexagon keeps its ordinary fill. Equipped gems use
-their ordinary native colours and socket badge. The small frame uses an original
+their ordinary native colours and socket badge. Gem rows and character portraits
+show the native **E** equipped indicator with the correct current-character or
+other-character ownership state. Opening, confirming and cancelling the bonus
+picker use native menu sounds. Leaving it restores the ordinary gem chooser,
+including its normal filtering and controls. The small frame uses an original
 native nine-part window loaded from your own game files at runtime; no game
 texture or other game asset is included in the source distribution.
 
@@ -34,9 +37,13 @@ through ordinary inventory actions clears its bonus assignment. No item is
 created, removed from the bag or refunded by this feature.
 
 Assignments are separate for the main story and Future Connected, and are saved
-with the specific save slot. The native save format is unchanged. Optional
-metadata lives inside the same private save mount in `.monado-quickstep`; back up
-the complete save folder, including hidden files, to preserve assignments.
+with the specific save slot. Load Game and Continue restore both the assignment
+and its actual movement bonus from that save's matching metadata, including when
+the native loader uses a cached save. Native `.sav` formats and filenames remain
+unchanged; no conversion is required. Optional metadata lives inside the same
+private save mount in `.monado-quickstep`; back up the **complete save folder,
+including hidden files**, to preserve assignments. Updates keep the original
+profile in place and do not move this metadata to a new profile.
 An older save without this metadata remains loadable with an empty bonus slot.
 Turning the option off disables the bonus while keeping the actual gems.
 
@@ -60,5 +67,5 @@ battles. Save in a spare slot, restart and load it, then check Continue and both
 stories. Also test with the launcher option off. Component and filesystem-fault
 tests do not replace these gameplay checks.
 
-The dedicated Quick Step slot is experimental and off by default. It can behave
-inconsistently or show UI quirks; further fixes and polish are planned.
+The 0.1.11 fixes require a full local game rebuild. The normal Linux updater
+performs it while retaining the existing input, saves and settings.

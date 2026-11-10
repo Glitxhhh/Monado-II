@@ -15,6 +15,7 @@
 #include "../../kernel.h"
 #include "shaders.h"
 #include "vk.h"
+#include "../program_binding.h"
 #include "host_import.h"  // [XCDE] LINUX-005: shared checked host-memory import
 #include "temporal.h"
 void vk_watch(VkImage dst, const char *site);  // [XCDE] debugging: log writes to a watched image
@@ -991,6 +992,7 @@ static struct {
     RtState rt;
     bool rt_dirty;
     NvnProgram *program;
+    NvnProgram bound_program; // renderer-owned composition; never borrowed by build jobs
     uint8_t blend[8][8];
     uint32_t channel_mask;
     uint8_t color_state[4], ds[8], ms[0x18], poly[4];
@@ -1785,6 +1787,7 @@ static void clear(int index, int kind, const void *color, uint32_t mask, bool de
 #define MAX_BIND 96
 typedef struct {
     ShaderInfo *vi, *fi;
+    NvnShaderStage stages[6]; // immutable pipeline + compiler-constant source metadata
     uint64_t code[2], cmax[2];  // translation inputs (copied: translated on the translator thread)
     uint64_t src[2], gsrc;      // [XCDE] T240: where the translator reads them (objects.c code_snapshot; code[] = the game's address, for logs)
     ShaderKey vkey, fkey;
@@ -2028,18 +2031,27 @@ static uint16_t f32_to_f16(float f) {
 static Prog *get_program(NvnProgram *np, ShaderKey *vkey, ShaderKey *fkey) {
     static NvnProgram *l_np;
     static ShaderKey l_v, l_f;
-    static uint64_t l_code[3], l_hash[3];
+    static uint64_t l_code[3], l_hash[3], l_source[3], l_source_size[3];
+    static uint32_t l_const_offset[3], l_const_size[3];
     static uint8_t l_gs_in, l_mask;
     static uint32_t l_gen = ~0u;
     static Prog *l_p;
     if (l_p && np == l_np && l_gen == prog_tab_gen && l_gs_in == g_draw_gs_in && l_mask == np->stage_mask &&
         l_code[0] == np->stages[0].code_addr && l_code[1] == np->stages[1].code_addr && l_code[2] == np->stages[2].code_addr &&
         l_hash[0] == np->stages[0].code_hash && l_hash[1] == np->stages[1].code_hash && l_hash[2] == np->stages[2].code_hash &&
+        l_source[0] == nvn_stage_code(&np->stages[0]) && l_source[1] == nvn_stage_code(&np->stages[1]) && l_source[2] == nvn_stage_code(&np->stages[2]) &&
+        l_source_size[0] == np->stages[0].code_copy_size && l_source_size[1] == np->stages[1].code_copy_size && l_source_size[2] == np->stages[2].code_copy_size &&
+        l_const_offset[0] == np->stages[0].const_offset && l_const_offset[1] == np->stages[1].const_offset && l_const_offset[2] == np->stages[2].const_offset &&
+        l_const_size[0] == np->stages[0].const_size && l_const_size[1] == np->stages[1].const_size && l_const_size[2] == np->stages[2].const_size &&
         !memcmp(vkey, &l_v, sizeof l_v) && !memcmp(fkey, &l_f, sizeof l_f))
         return l_p;
     Prog *p = get_program_(np, vkey, fkey);
     l_np = np; l_v = *vkey; l_f = *fkey; l_gs_in = g_draw_gs_in; l_mask = np->stage_mask; l_gen = prog_tab_gen; l_p = p;
-    for (int i = 0; i < 3; i++) { l_code[i] = np->stages[i].code_addr; l_hash[i] = np->stages[i].code_hash; }
+    for (int i = 0; i < 3; i++) {
+        l_code[i] = np->stages[i].code_addr; l_hash[i] = np->stages[i].code_hash;
+        l_source[i] = nvn_stage_code(&np->stages[i]); l_source_size[i] = np->stages[i].code_copy_size;
+        l_const_offset[i] = np->stages[i].const_offset; l_const_size[i] = np->stages[i].const_size;
+    }
     return p;
 }
 static Prog *get_program_(NvnProgram *np, ShaderKey *vkey, ShaderKey *fkey) {
@@ -2050,6 +2062,17 @@ static Prog *get_program_(NvnProgram *np, ShaderKey *vkey, ShaderKey *fkey) {
     uint64_t h = 0xcbf29ce484222325ull;
     for (int i = 0; i < 2; i++) { h ^= (uint64_t)(np->stages[i].code_addr != 0); h *= 0x100000001B3ull; }
     for (int i = 0; i < 3; i++) { h ^= np->stages[i].code_hash; h *= 0x100000001B3ull; }
+    // The same blob bytes can have a different instruction/constant boundary.
+    // Keep metadata in the cache key without changing public code_hash matches.
+    for (int i = 0; i < 3; i++) {
+        h ^= np->stages[i].const_offset; h *= 0x100000001B3ull;
+        h ^= np->stages[i].const_size; h *= 0x100000001B3ull;
+        // This hash is an in-process table key only, never a disk cache key.
+        // Interned, collision-checked full blobs preserve legacy hash feature
+        // matches while distinguishing tail bytes and the full translator input.
+        h ^= nvn_stage_code(&np->stages[i]); h *= 0x100000001B3ull;
+        h ^= np->stages[i].code_copy_size; h *= 0x100000001B3ull;
+    }
     const uint8_t *vb = (const uint8_t *)vkey;
     for (size_t i = 0; i < sizeof *vkey; i++) { h ^= vb[i]; h *= 0x100000001B3ull; }
     for (int i = 0; i < 8; i++) { h ^= fkey->rt_kind[i]; h *= 0x100000001B3ull; }
@@ -2071,6 +2094,7 @@ static Prog *get_program_(NvnProgram *np, ShaderKey *vkey, ShaderKey *fkey) {
     slot->key = h;
     slot->val = p;
     prog_tab.n++;
+    memcpy(p->stages, np->stages, sizeof p->stages);
     for (int i = 0; i < 2; i++) {
         p->code[i] = np->stages[i].code_addr;
         p->src[i] = nvn_stage_code(&np->stages[i]);
@@ -3288,6 +3312,7 @@ void vk_prewarm_hold(uint64_t frame_draws) {
 // (the calling thread translates and compiles). Returns 0 if not built; *vs_attr = the vertex inputs it reads.
 int vk_precompile_program(const NvnProgram *np, const ShaderKey *vkey, const ShaderKey *fkey, uint32_t *vs_attr) {
     Prog *p = calloc(1, sizeof *p);
+    memcpy(p->stages, np->stages, sizeof p->stages);
     for (int i = 0; i < 2; i++) {
         p->code[i] = np->stages[i].code_addr;
         p->src[i] = nvn_stage_code(&np->stages[i]);
@@ -3333,6 +3358,7 @@ int vk_precompile_variant(const NvnProgram *np, const void *rec, size_t rec_size
     memcpy(&v, rec, sizeof v);
     if (v.has_gs) return 0;
     Prog *p = calloc(1, sizeof *p);
+    memcpy(p->stages, np->stages, sizeof p->stages);
     for (int i = 0; i < 2; i++) {
         p->code[i] = np->stages[i].code_addr;
         p->src[i] = nvn_stage_code(&np->stages[i]);
@@ -3851,7 +3877,8 @@ static VkDescriptorBufferInfo ubo_span(VkSpan s, uint64_t size) {
 }
 
 // Constant buffer k of a stage (renderer.m bind_cbufs), copied into transient memory.
-static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32_t gx, uint32_t gy, uint32_t gz) {
+static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, const NvnShaderStage *shader,
+                                       int k, uint32_t gx, uint32_t gy, uint32_t gz) {
     static const uint8_t zeros[0x10000];
     if (k == 0) {
         uint32_t drv[0x800 / 4] = {0};
@@ -3885,11 +3912,28 @@ static VkDescriptorBufferInfo cbuf_info(int stage, ShaderInfo *si, int k, uint32
         if (size < 0x500 && stage == 5) size = 0x500;
         return ubo_span(copy_dedupe(stage == 5 ? DEDUPE_DRV_C : stage == 1 ? DEDUPE_DRV_F : DEDUPE_DRV_V, drv, size, 256), size);
     }
-    if (k == 1) {  // compiler constants stored after the shader code
-        NvnShaderStage *ss = &st.program->stages[stage];
-        uint64_t size = ss->const_size ? ss->const_size : 16;
+    if (k == 1) {  // compiler constants belong to the same captured stage as this pipeline
+        const uint8_t *data = NULL;
+        uint64_t available = 0;
+        if (!shader || !shader->code_addr || !nvn_stage_constants(shader, &data, &available)
+                || (!available && si->cbuf_size[1]))
+            FATAL("[vk] invalid compiler constants stage=%d code=%llx hash=%llx offset=%u declared=%u owned=%llu required=%u\n",
+                  stage, (unsigned long long)(shader ? shader->code_addr : 0),
+                  (unsigned long long)(shader ? shader->code_hash : 0),
+                  shader ? shader->const_offset : 0, shader ? shader->const_size : 0,
+                  (unsigned long long)(shader ? shader->code_copy_size : 0),
+                  si->cbuf_size[1]);
+        uint64_t size = available ? available : 16;
         if (size < si->cbuf_size[1]) size = si->cbuf_size[1];
-        return ubo_span(guest_copy(ss->code_addr + ss->const_offset, size), size);  // (constant: shared per submission)
+        if (size > available) {
+            // Same bound-range rule as T126 below: retain every declared byte,
+            // zero only the shader's tail beyond that verified native extent.
+            VkSpan span = vk_transient(size, 256);
+            if (available) memcpy(span.ptr, data, available);
+            memset((uint8_t *)span.ptr + available, 0, size - available);
+            return ubo_span(span, size);
+        }
+        return ubo_span(guest_copy((uint64_t)(uintptr_t)data, size), size);
     }
     int idx = k - 3;  // cbuf_base
     Range r = (idx >= 0 && idx < 18) ? st.ubuf[stage][idx] : (Range){0, 0};
@@ -4683,7 +4727,7 @@ static VkDescriptorSet stage_set(Prog *p, VkDescriptorSetLayout layout, uint32_t
             if (ti < 64) { tex_sc[sg][ti][0] = sc[0]; tex_sc[sg][ti][1] = sc[1]; tex_d16[sg][ti] = 0; }  // [XCDE] T178
             w[n].pImageInfo = &ii[n];
         } else if (b->type == VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER && b->binding < 17) {
-            bi[n] = cbuf_info(stage, si, (int)b->binding, gx, gy, gz);
+            bi[n] = cbuf_info(stage, si, &p->stages[stage], (int)b->binding, gx, gy, gz);
             w[n].pBufferInfo = &bi[n];
         } else if (b->type == VK_DESCRIPTOR_TYPE_STORAGE_BUFFER) {
             bi[n] = b->binding == GFAST_BUFFER_INDEX ? gfast_info() : gmem_info();
@@ -4746,16 +4790,36 @@ static void build_compute(void *arg) {
     if (r != VK_SUCCESS) LOG("[compute] pipeline failed: %d\n", r);
 }
 
-static struct CsEnt { uint64_t addr; CsProg *cp; } g_cs_tab[256];  // compute programs by code address
+static struct CsEnt {
+    uint64_t addr, hash, source, source_size;
+    uint32_t const_offset, const_size, local[3];
+    CsProg *cp;
+} g_cs_tab[256]; // captured compute content and specialization, not recycled address alone
 
 static CsProg *compute_program(NvnProgram *np) {
     NvnShaderStage *ss = &np->stages[5];
     if (!ss->code_addr) return NULL;
+    uint32_t local[3];
+    for (int i = 0; i < 3; i++) {
+        local[i] = ss->control ? *(const uint32_t *)(ss->control + 0x748 + 4 * i) : 1;
+        if (!local[i]) local[i] = 1;
+    }
     struct CsEnt *tab = g_cs_tab;
     int n = g_cs_n;
-    for (int i = 0; i < n; i++) if (tab[i].addr == ss->code_addr) return tab[i].cp;
+    for (int i = 0; i < n; i++)
+        if (tab[i].addr == ss->code_addr && tab[i].hash == ss->code_hash
+                && tab[i].source == nvn_stage_code(ss) && tab[i].source_size == ss->code_copy_size
+                && tab[i].const_offset == ss->const_offset && tab[i].const_size == ss->const_size
+                && !memcmp(tab[i].local, local, sizeof local)) return tab[i].cp;
     CsProg *cp = calloc(1, sizeof *cp);
-    if (n < 256) { tab[n].addr = ss->code_addr; tab[n].cp = cp; g_cs_n = n + 1; }
+    memcpy(cp->p.stages, np->stages, sizeof cp->p.stages);
+    memcpy(cp->local, local, sizeof local);
+    if (n < 256) {
+        tab[n] = (struct CsEnt){.addr=ss->code_addr, .hash=ss->code_hash,
+            .source=nvn_stage_code(ss), .source_size=ss->code_copy_size,
+            .const_offset=ss->const_offset, .const_size=ss->const_size, .cp=cp};
+        memcpy(tab[n].local, local, sizeof local); g_cs_n = n + 1;
+    }
     maxwell_gmem_base = HEAP_BASE;
     maxwell_gmem_size = HEAP_MAX;
     ShaderKey k = {0};
@@ -4768,10 +4832,6 @@ static CsProg *compute_program(NvnProgram *np) {
         LOG("[compute] translate failed: %s (code %llx)\n", cp->si->error, (unsigned long long)ss->code_addr);
         atomic_store(&cp->p.state, 2);
         return cp;
-    }
-    for (int i = 0; i < 3; i++) {
-        cp->local[i] = ss->control ? *(const uint32_t *)(ss->control + 0x748 + 4 * i) : 1;
-        if (!cp->local[i]) cp->local[i] = 1;
     }
     save_glsl(cp->si->msl, ss->code_addr, "cs");
     run_job(build_compute, cp);
@@ -6615,7 +6675,10 @@ static void exec_list(uint64_t handle, int depth) {
             for (uint64_t i = 0; i < r->x[0] && depth < 8; i++) exec_list(h[i], depth + 1);
             break;
         }
-        case CMD_BIND_PROGRAM: st.program = (NvnProgram *)(uintptr_t)r->x[0]; break;
+        case CMD_BIND_PROGRAM:
+            nvn_program_bind_stages(&st.bound_program, (const NvnProgram *)(uintptr_t)r->x[0], (uint32_t)r->x[1]);
+            st.program = st.bound_program.stage_mask ? &st.bound_program : NULL;
+            break;
         case CMD_BIND_BLEND: { uint8_t *b = x; memcpy(st.blend[b[0] & 7], b, 8); break; }
         case CMD_BIND_CHANNEL_MASK: memcpy(&st.channel_mask, x, 4); break;
         case CMD_BIND_COLOR: memcpy(st.color_state, x, 4); break;

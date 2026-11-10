@@ -87,16 +87,28 @@ original save/settings profile and shared input. No save conversion is required.
 Windows retains its existing save implementation and has no backport scheduled.
 
 
-Linux 0.1.10 adds the experimental, character-owned dedicated Quick Step slot,
-off by default, and fixes missing native dispatch cases in NPC trading. The
-maintainer accepted Quick Step manually and reports no trading crashes in the
-tested development build. Quick Step can still be hit-or-miss or show UI quirks;
-expect quirkiness, with further fixes and polish planned. Broader character,
-equipment, Future Connected, save/reload/recovery and full-game coverage remain
-incomplete. See the [Quick Step guide](QUICKSTEP.md).
+Linux 0.1.11 makes the dedicated Quick Step slot stable following the maintainer's
+manual acceptance. It remains off by default for the original-game preference.
+Saved assignments and their actual movement bonuses restore through Load Game
+and Continue, retaining the selected save's identity across native cache copies.
+Native row/portrait E markers distinguish current-character and other-character
+ownership; leaving the bonus picker restores the ordinary chooser and its native
+menu feedback. Native `.sav` formats and filenames are unchanged; optional hidden
+metadata must stay with the complete save folder. Updating requires a full local
+game rebuild while keeping input and the original profile in place, without
+save conversion. See the [Quick Step guide](QUICKSTEP.md).
 
-Its pinned private runtime now includes ordinary media/codec dependencies that
-previously came from the Ubuntu host. Native driver/audio/session interfaces,
+The queued renderer now retains recorded shader programs and compiler constants,
+correcting the reported Bionis Interior crash. The maintainer reports that everything looks
+in order after this change. Exact scene coverage, all character/equipment cases,
+Future Connected, save recovery, other hardware and the full game remain
+incompletely qualified. Shadow boxes reported in Valak/Makna are queued for
+investigation and are not fixed in 0.1.11. These changes are Linux-only; Windows
+source is unchanged. Frame generation remains experimental and off by default.
+
+Linux 0.1.10 fixed missing native dispatch cases in NPC trading; the maintainer
+reports no trading crashes in the tested build. Its pinned private runtime includes
+ordinary media/codec dependencies that previously came from the Ubuntu host. Native driver/audio/session interfaces,
 glibc 2.43+ and required GNU ABI versions remain explicit host requirements.
 Both completed build modes pass game/launcher and native companion load-only
 checks in an isolated official Arch 2026.11 userspace (glibc 2.44, Python 3.14.9),

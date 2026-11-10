@@ -119,14 +119,33 @@ int quickstep_save_decode(const char *name,const uint8_t hash[32],uint64_t size,
 }
 
 typedef struct { uint64_t address,age;uint8_t hash[32];QuickstepSnapshot snapshot; } Capture;
-typedef struct { uint64_t age,size;char root[PATH_CAP],name[32]; } Observation;
+typedef struct {
+    uint64_t age,address,size;char root[PATH_CAP],name[32];
+    bool assembled,copied,wire_known;uint8_t hash[32];QuickstepSnapshot snapshot;
+} Observation;
+typedef struct { uint64_t age,address;char root[PATH_CAP],name[32];uint8_t bytes[48]; } HeaderRead;
+typedef struct { uint64_t age,address;uint32_t story;char name[32]; } ReadIntent;
 typedef struct { bool used;char root[PATH_CAP];QuickstepSaveWrite write; } Pending;
 static pthread_mutex_t lock=PTHREAD_MUTEX_INITIALIZER;
+// Adoption itself calls back into set_required(), so it cannot hold lock.
+// This separate short gate serializes lifecycle invalidation/suspend/adoption;
+// never hold it across a native helper, story resolution or stat refresh.
+static pthread_mutex_t transition=PTHREAD_MUTEX_INITIALIZER;
 static Capture captures[CAPTURES];static Observation observations[OBSERVATIONS];static Pending pending[PENDING];
+static ReadIntent read_intents[OBSERVATIONS];
+static HeaderRead headers[CAPTURES];
 static uint64_t age;static bool required,has_intent,have_load,load_selected;
+static uint64_t lifecycle,load_lifecycle;
 static char intent[32];static uint32_t intent_story;
 static char selected_name[32];static uint32_t selected_story;
 static uint64_t load_context,load_playing;static QuickstepSnapshot load_snapshot;
+static unsigned restore_messages;
+// [XCDE] LINUX-044: bounded local diagnostics distinguish an intentionally empty
+// optional slot from a rejected restore. Never print native payload or identity.
+static void restore_log(const char *reason,const char *name,unsigned count) {
+    if(__atomic_fetch_add(&restore_messages,1,__ATOMIC_RELAXED)<96)
+        LOG("[quickstep-save] restore %s file=%s entries=%u\n",reason,name&&*name?name:"unknown",count);
+}
 void quickstep_save_set_required(bool value) { pthread_mutex_lock(&lock);required=value;pthread_mutex_unlock(&lock); }
 static bool needed(void) { pthread_mutex_lock(&lock);bool value=required||g_settings.quickstep_slot;pthread_mutex_unlock(&lock);return value; }
 
@@ -149,18 +168,68 @@ static int metadata_read(const char *root,const char *name,uint8_t data[QUICKSTE
     }
     e=errno;if(close(fd)&&!result){result=-1;e=errno;}errno=e;return result;
 }
-void quickstep_save_observe(const char *root,const char *path,const void *payload,int64_t offset,int64_t bytes) {
-    (void)payload;
-    const char *name=relative(root,path);if(!name||offset||bytes<1024*1024||bytes>QUICKSTEP_SAVE_BYTES)return;
-    Observation seen={.size=(uint64_t)bytes};strcpy(seen.root,root);strcpy(seen.name,name);
-    // Do not hash speculative title/100-slot reads. The confirmed adoption path
-    // opens exact-filename metadata first, then checks the adopted raw payload.
-    pthread_mutex_lock(&lock);unsigned slot=0;
+static unsigned observation_slot(uint64_t address) {
+    unsigned slot=0;
     for(unsigned i=0;i<OBSERVATIONS;++i) {
-        if(!strcmp(observations[i].root,root)&&!strcmp(observations[i].name,name)){slot=i;break;}
+        if(observations[i].address==address)return i;
         if(observations[i].age<observations[slot].age)slot=i;
     }
-    seen.age=++age;observations[slot]=seen;pthread_mutex_unlock(&lock);
+    return slot;
+}
+static void bind_wire(Observation *seen) {
+    uint8_t data[QUICKSTEP_META_MAX];size_t n;
+    // Scans with no optional metadata must not hash every1.4MiB native file.
+    // The reader has completed this exact wire buffer; hashes are captured now,
+    // before native typed copies can omit padding or recycle the source memory.
+    if(metadata_read(seen->root,seen->name,data,&n))return;
+    quickstep_save_hash((const void *)(uintptr_t)seen->address,QUICKSTEP_SAVE_BYTES,seen->hash);
+    if(!quickstep_save_decode(seen->name,seen->hash,seen->size,data,n,&seen->snapshot))seen->wire_known=true;
+}
+void quickstep_save_observe(const char *root,const char *path,const void *payload,int64_t offset,int64_t bytes) {
+    const char *name=relative(root,path);if(!name||offset<0||bytes<=0||bytes>QUICKSTEP_SAVE_BYTES)return;
+    uint64_t address=(uint64_t)(uintptr_t)payload;
+    if(!offset&&bytes==48) {
+        HeaderRead item={.address=address};strcpy(item.root,root);strcpy(item.name,name);memcpy(item.bytes,payload,48);
+        pthread_mutex_lock(&lock);unsigned slot=0;
+        for(unsigned i=0;i<CAPTURES;++i) {
+            if(headers[i].address==address){slot=i;break;}
+            if(headers[i].age<headers[slot].age)slot=i;
+        }
+        item.age=++age;headers[slot]=item;pthread_mutex_unlock(&lock);return;
+    }
+    Observation seen={.address=address,.size=(uint64_t)bytes};strcpy(seen.root,root);strcpy(seen.name,name);
+    pthread_mutex_lock(&lock);uint64_t epoch=lifecycle,token=0;
+    if(offset) {
+        bool found=false;
+        for(unsigned i=0;i<OBSERVATIONS;++i) {
+            Observation *item=&observations[i];
+            if(item->assembled&&item->size==(uint64_t)offset&&item->address+(uint64_t)offset==address
+                    &&!strcmp(item->root,root)&&!strcmp(item->name,name)
+                    &&(uint64_t)bytes<=QUICKSTEP_SAVE_BYTES-item->size) {
+                seen=*item;token=item->age;seen.size+=(uint64_t)bytes;found=true;break;
+            }
+        }
+        if(!found){pthread_mutex_unlock(&lock);return;}
+    } else {
+        if(bytes<1024*1024){pthread_mutex_unlock(&lock);return;}
+        unsigned slot=observation_slot(address);
+        if(observations[slot].address==address&&observations[slot].size==QUICKSTEP_SAVE_BYTES
+                &&bytes!=QUICKSTEP_SAVE_BYTES&&!strcmp(observations[slot].root,root)&&!strcmp(observations[slot].name,name)) {
+            pthread_mutex_unlock(&lock);return;
+        }
+    }
+    // Reserve the actual read event before metadata I/O/hash work. A newer
+    // header/read/copy at this address must defeat the old publication.
+    unsigned reserved=observation_slot(seen.address);seen.age=++age;token=seen.age;observations[reserved]=seen;
+    pthread_mutex_unlock(&lock);
+    if(seen.size==QUICKSTEP_SAVE_BYTES)bind_wire(&seen);
+    // Do not hash speculative title/100-slot reads. The confirmed adoption path
+    // opens exact-filename metadata first, then checks the adopted raw payload.
+    pthread_mutex_lock(&lock);unsigned slot=observation_slot(seen.address);
+    if(epoch==lifecycle&&observations[slot].address==seen.address&&observations[slot].age==token) {
+        observations[slot]=seen;
+    }
+    pthread_mutex_unlock(&lock);
 }
 int quickstep_save_prepare(const char *root,const char *path,const void *payload,int64_t offset,int64_t bytes,QuickstepSaveWrite *plan) {
     memset(plan,0,sizeof *plan);const char *name=relative(root,path);if(!name)return 0;
@@ -311,6 +380,71 @@ void quickstep_save_committed(const char *root) {
 }
 
 static bool range(uint64_t p,uint64_t n) { return p>=GUEST_LO&&p<GUEST_HI&&n<=GUEST_HI-p; }
+// Native typed SaveData copies intentionally omit padding. Retain the original
+// validated wire digest, while proving each referenced gem is the exact copied
+// owned instance; rank/potency alone must never recover an association.
+static bool raw_references(uint64_t raw,const QuickstepSnapshot *s) {
+    if(!range(raw,QUICKSTEP_SAVE_BYTES))return false;
+    for(unsigned i=0;i<s->count;++i) {
+        const QuickstepEntry *e=&s->entries[i];
+        if((e->uid&0xffff0000u)!=0x30000u||(e->uid&0xffffu)>=QUICKSTEP_GEM_CAPACITY)return false;
+        uint64_t item=raw+0x2c380+(e->uid&0xffffu)*0x2c;uint8_t fingerprint[32];
+        if(LD32(item)!=e->uid||LD16(item+6)!=3||!LD8(item+0x10)
+                ||LD8(item+0x1a)!=1||LD16(item+0x1c)!=77||!LD8(item+0x1e)||LD8(item+0x1e)>25
+                ||LD8(item+0x16)<1||LD8(item+0x16)>6)return false;
+        memcpy(fingerprint,(void *)(uintptr_t)(item+0xc),4);
+        memcpy(fingerprint+4,(void *)(uintptr_t)(item+4),4);
+        memcpy(fingerprint+8,(void *)(uintptr_t)(item+0x14),24);
+        if(memcmp(fingerprint,e->fingerprint,32))return false;
+    }
+    return true;
+}
+static void invalidate_raw(uint64_t address) {
+    if(!range(address,QUICKSTEP_SAVE_BYTES))return;
+    pthread_mutex_lock(&lock);
+    for(unsigned i=0;i<OBSERVATIONS;++i)if(observations[i].address==address)memset(&observations[i],0,sizeof observations[i]);
+    pthread_mutex_unlock(&lock);
+}
+void quickstep_save_header_copy(Cpu *c) {
+    uint64_t source=c->sp+0x70,destination=c->x[8];
+    if(!range(source,48)||!range(destination,QUICKSTEP_SAVE_BYTES)){invalidate_raw(destination);return;}
+    pthread_mutex_lock(&lock);HeaderRead found={0};
+    for(unsigned i=0;i<CAPTURES;++i)if(headers[i].address==source&&headers[i].age>found.age)found=headers[i];
+    unsigned slot=observation_slot(destination);memset(&observations[slot],0,sizeof observations[slot]);
+    if(found.age&&!memcmp(found.bytes,(void *)(uintptr_t)source,48)
+            &&!memcmp(found.bytes,(void *)(uintptr_t)destination,48)&&get32(found.bytes)!=0x31636278u) {
+        Observation item={.address=destination,.size=48,.assembled=true,.age=++age};
+        strcpy(item.root,found.root);strcpy(item.name,found.name);observations[slot]=item;
+    }
+    pthread_mutex_unlock(&lock);
+}
+static void copied_raw(uint64_t destination,uint64_t source) {
+    if(!range(destination,QUICKSTEP_SAVE_BYTES))return;
+    if(!range(source,QUICKSTEP_SAVE_BYTES)){invalidate_raw(destination);return;}
+    pthread_mutex_lock(&lock);Observation item={0};uint64_t epoch=lifecycle;
+    for(unsigned i=0;i<OBSERVATIONS;++i)if(observations[i].address==source&&observations[i].age>item.age)item=observations[i];
+    unsigned slot=observation_slot(destination);
+    uint64_t destination_age=observations[slot].address==destination?observations[slot].age:0;
+    pthread_mutex_unlock(&lock);
+    bool valid=item.age&&item.size==QUICKSTEP_SAVE_BYTES&&item.wire_known
+        &&raw_references(source,&item.snapshot)&&raw_references(destination,&item.snapshot);
+    if(valid&&!item.copied) {
+        uint8_t hash[32];quickstep_save_hash((void *)(uintptr_t)source,QUICKSTEP_SAVE_BYTES,hash);
+        valid=!memcmp(hash,item.hash,32);
+    }
+    pthread_mutex_lock(&lock);unsigned source_slot=observation_slot(source);slot=observation_slot(destination);
+    uint64_t current_destination_age=observations[slot].address==destination?observations[slot].age:0;
+    if(lifecycle==epoch&&destination_age==current_destination_age) {
+        valid=valid&&observations[source_slot].address==source&&observations[source_slot].age==item.age;
+        memset(&observations[slot],0,sizeof observations[slot]);
+        if(valid){item.address=destination;item.copied=true;item.age=++age;observations[slot]=item;}
+    }
+    pthread_mutex_unlock(&lock);
+}
+void quickstep_save_cache_copy(Cpu *c) { copied_raw(c->x[19],c->x[20]); }
+void quickstep_save_selected_copy(Cpu *c) {
+    if(range(c->x[19],8))copied_raw(c->x[21],LD64(c->x[19]));else invalidate_raw(c->x[21]);
+}
 static uint32_t story(Cpu *c,uint64_t context) {
     Cpu saved=*c;uint64_t fpcr=rt_get_fpcr(),fpsr=rt_get_fpsr();
     if((c->sp&15)||!range(c->sp-0x400,0x400))FATAL("[quickstep-save] invalid native stack\n");
@@ -349,77 +483,153 @@ void quickstep_save_intent(uint32_t value,uint16_t file,bool automatic) {
 }
 void quickstep_save_read_intent(Cpu *c) {
     Cpu saved=*c;uint64_t fpcr=rt_get_fpcr(),fpsr=rt_get_fpsr();
-    pthread_mutex_lock(&lock);has_intent=false;pthread_mutex_unlock(&lock);
-    if(range(c->x[0],16))quickstep_save_intent(story(c,LD64(c->x[0]+8)),(uint16_t)c->x[1],(c->x[2]&1)!=0);
+    // Checked full-read entry87040 uses task+150 as the native raw buffer. A
+    // scan may start another read while the chosen load is pending: retain each
+    // task's intent, never a global "most recently read slot" association.
+    uint64_t task=c->x[0],address=task+0x150;
+    uint16_t file=(uint16_t)c->x[1];bool automatic=(c->x[2]&1)!=0;
+    pthread_mutex_lock(&lock);unsigned slot=0;uint64_t epoch=lifecycle,token=++age;
+    for(unsigned i=0;i<OBSERVATIONS;++i) {
+        if(read_intents[i].address==address){slot=i;break;}
+        if(read_intents[i].age<read_intents[slot].age)slot=i;
+    }
+    // Reserve before the native story helper can yield. A newer read of this
+    // task, or a load/newgame/reset, invalidates this exact pending publication.
+    read_intents[slot]=(ReadIntent){.address=address,.age=token};pthread_mutex_unlock(&lock);
+    if(range(task,0x150)&&range(address,QUICKSTEP_SAVE_BYTES)&&file<99&&(!automatic||!file)) {
+        ReadIntent item={.address=address,.story=story(c,LD64(task+8))};
+        snprintf(item.name,sizeof item.name,"%s%02u%s.sav",item.story?"bfsmeria":"bfsgame",file,automatic?"a":"");
+        pthread_mutex_lock(&lock);
+        if(lifecycle==epoch&&read_intents[slot].address==address&&read_intents[slot].age==token) {
+            item.age=token;read_intents[slot]=item;
+        }
+        pthread_mutex_unlock(&lock);
+    }
     *c=saved;rt_set_fpcr(fpcr);rt_set_fpsr(fpsr);
 }
 void quickstep_save_continue_intent(Cpu *c) {
     Cpu saved=*c;uint64_t fpcr=rt_get_fpcr(),fpsr=rt_get_fpsr();uint64_t owner=c->x[19];
-    pthread_mutex_lock(&lock);has_intent=false;pthread_mutex_unlock(&lock);
+    pthread_mutex_lock(&lock);uint64_t epoch=lifecycle;has_intent=false;pthread_mutex_unlock(&lock);
     if(range(owner,0xb0)) {
         uint64_t holder=LD64(owner+0x10),context=range(holder,0x30)?LD64(holder+0x28):0;
         if(range(context,0x18de4)) {
             uint32_t index=LD32(context+0x18de0);
-            if(index<100)quickstep_save_intent(story(c,LD64(owner+0xa8)),index?(uint16_t)(index-1):0,!index);
+            if(index<100) {
+                uint32_t value=story(c,LD64(owner+0xa8));
+                pthread_mutex_lock(&lock);
+                if(lifecycle==epoch) {
+                    snprintf(intent,sizeof intent,"%s%02u%s.sav",value?"bfsmeria":"bfsgame",index?index-1:0,index?"":"a");
+                    intent_story=value;has_intent=true;
+                }
+                pthread_mutex_unlock(&lock);
+            }
         }
     }
     *c=saved;rt_set_fpcr(fpcr);rt_set_fpsr(fpsr);
 }
 void quickstep_save_loading(void) {
     uint64_t fpcr=rt_get_fpcr(),fpsr=rt_get_fpsr();
-    pthread_mutex_lock(&lock);have_load=false;load_selected=has_intent;
+    pthread_mutex_lock(&transition);
+    pthread_mutex_lock(&lock);++lifecycle;have_load=false;load_selected=has_intent;
     strcpy(selected_name,intent);selected_story=intent_story;has_intent=false;
     pthread_mutex_unlock(&lock);quickstep_slot_suspend();
+    pthread_mutex_unlock(&transition);
     rt_set_fpcr(fpcr);rt_set_fpsr(fpsr);
 }
 void quickstep_save_adopt(Cpu *c) {
     uint64_t raw=c->x[22];if(!range(raw,QUICKSTEP_SAVE_BYTES))return;
     char name[32]={0};uint32_t expected=0;bool selected;Observation found={0};uint8_t hash[32];
-    pthread_mutex_lock(&lock);selected=load_selected;strcpy(name,selected_name);expected=selected_story;
-    if(selected)for(unsigned i=0;i<OBSERVATIONS;++i)
-        if(!strcmp(observations[i].name,name)&&observations[i].age>found.age)found=observations[i];
+    pthread_mutex_lock(&lock);uint64_t epoch=lifecycle;selected=load_selected;strcpy(name,selected_name);expected=selected_story;
+    for(unsigned i=0;i<OBSERVATIONS;++i)if(read_intents[i].age&&read_intents[i].name[0]&&read_intents[i].address==raw) {
+        selected=true;strcpy(name,read_intents[i].name);expected=read_intents[i].story;
+        memset(&read_intents[i],0,sizeof read_intents[i]);break;
+    }
+    // The actual decoded buffer, filename AND mount identify the selected read.
+    // Another profile with the same filename must never provide its sidecar.
+    for(unsigned i=0;i<OBSERVATIONS;++i) {
+        Observation *item=&observations[i];
+        if(item->address!=raw)continue;
+        if(item->age>found.age)found=*item;
+    }
     pthread_mutex_unlock(&lock);
+    // A reused heap address may retain an old task/global intent. The exact
+    // wire-validated native header/copy chain owns this decoded raw object.
+    if(found.wire_known&&(found.assembled||found.copied)) {
+        uint32_t file,automatic;
+        selected=identity(found.name,&expected,&file,&automatic);strcpy(name,found.name);
+    }
     QuickstepSnapshot snapshot={.story=expected};
-    if(selected&&found.age&&found.size==QUICKSTEP_SAVE_BYTES) {
+    bool full=found.age&&found.size==QUICKSTEP_SAVE_BYTES&&!strcmp(found.name,name);
+    const char *reason=!selected?"missing-intent":!full?"missing-full-read":"missing-metadata";
+    if(selected&&full) {
         uint8_t bytes[QUICKSTEP_META_MAX];size_t size;
         if(!metadata_read(found.root,name,bytes,&size)) {
-            quickstep_save_hash((const void *)(uintptr_t)raw,QUICKSTEP_SAVE_BYTES,hash);
-            (void)quickstep_save_decode(name,hash,found.size,bytes,size,&snapshot);
-        }
+            if(found.copied&&found.wire_known)memcpy(hash,found.hash,32);
+            else if(!found.copied)quickstep_save_hash((const void *)(uintptr_t)raw,QUICKSTEP_SAVE_BYTES,hash);
+            else {memset(hash,0,sizeof hash);reason="missing-validated-wire";}
+            if(strcmp(reason,"missing-validated-wire"))
+                reason=quickstep_save_decode(name,hash,found.size,bytes,size,&snapshot)?"invalid-binding":"validated";
+            if(snapshot.count&&found.copied&&!raw_references(raw,&snapshot)){memset(&snapshot,0,sizeof snapshot);snapshot.story=expected;reason="copied-instance-mismatch";}
+        } else if(errno!=ENOENT)reason="metadata-unreadable";
     }
-    pthread_mutex_lock(&lock);load_snapshot=snapshot;load_context=c->x[28];load_playing=c->x[20];have_load=true;
-    load_selected=false;pthread_mutex_unlock(&lock);
+    restore_log(reason,name,snapshot.count);
+    pthread_mutex_lock(&lock);
+    if(lifecycle==epoch) {
+        load_snapshot=snapshot;load_context=c->x[28];load_playing=c->x[20];load_lifecycle=epoch;have_load=true;load_selected=false;
+    }
+    pthread_mutex_unlock(&lock);
 }
 void quickstep_save_loaded(Cpu *c) {
     Cpu saved=*c;uint64_t fpcr=rt_get_fpcr(),fpsr=rt_get_fpsr(),context=c->x[19];
-    QuickstepSnapshot snapshot;uint64_t playing=0;
-    pthread_mutex_lock(&lock);if(have_load&&load_context==context){snapshot=load_snapshot;playing=load_playing;have_load=false;}
+    QuickstepSnapshot snapshot;uint64_t playing=0,epoch=0;
+    pthread_mutex_lock(&lock);if(have_load&&load_context==context){snapshot=load_snapshot;playing=load_playing;epoch=load_lifecycle;have_load=false;}
     pthread_mutex_unlock(&lock);
     if(playing) {
         uint32_t actual=story(c,context);
-        if(snapshot.story!=actual){memset(&snapshot,0,sizeof snapshot);snapshot.story=actual;}
-        quickstep_slot_adopt(playing,actual,&snapshot);quickstep_slot_tick(c,context);
-    }
+        pthread_mutex_lock(&transition);
+        pthread_mutex_lock(&lock);bool same=epoch==lifecycle;pthread_mutex_unlock(&lock);
+        if(!same){pthread_mutex_unlock(&transition);restore_log("stale-finalization",NULL,0);*c=saved;rt_set_fpcr(fpcr);rt_set_fpsr(fpsr);return;}
+        if(snapshot.story!=actual){restore_log("story-mismatch",NULL,snapshot.count);memset(&snapshot,0,sizeof snapshot);snapshot.story=actual;}
+        quickstep_slot_adopt(playing,actual,&snapshot);pthread_mutex_unlock(&transition);
+        quickstep_slot_tick(c,context);
+        QuickstepSnapshot adopted;quickstep_slot_snapshot(&adopted);
+        restore_log(adopted.count==snapshot.count?"adopted":"inventory-rejected",NULL,adopted.count);
+    } else restore_log("context-mismatch",NULL,0);
     *c=saved;rt_set_fpcr(fpcr);rt_set_fpsr(fpsr);
 }
-void quickstep_save_new_game(uint64_t playing,uint32_t value) {
-    QuickstepSnapshot empty={.story=value};pthread_mutex_lock(&lock);has_intent=have_load=load_selected=false;pthread_mutex_unlock(&lock);
+static void new_game_locked(uint64_t playing,uint32_t value) {
+    QuickstepSnapshot empty={.story=value};pthread_mutex_lock(&lock);++lifecycle;has_intent=have_load=load_selected=false;
+    memset(read_intents,0,sizeof read_intents);memset(observations,0,sizeof observations);memset(headers,0,sizeof headers);pthread_mutex_unlock(&lock);
     quickstep_slot_adopt(playing,value,&empty);
+}
+void quickstep_save_new_game(uint64_t playing,uint32_t value) {
+    pthread_mutex_lock(&transition);new_game_locked(playing,value);pthread_mutex_unlock(&transition);
 }
 void quickstep_save_newgame_begin(Cpu *c) {
     Cpu saved=*c;uint64_t fpcr=rt_get_fpcr(),fpsr=rt_get_fpsr();
-    pthread_mutex_lock(&lock);has_intent=have_load=load_selected=false;intent[0]=0;pthread_mutex_unlock(&lock);
-    quickstep_slot_suspend();*c=saved;rt_set_fpcr(fpcr);rt_set_fpsr(fpsr);
+    pthread_mutex_lock(&transition);
+    pthread_mutex_lock(&lock);++lifecycle;has_intent=have_load=load_selected=false;intent[0]=0;
+    memset(read_intents,0,sizeof read_intents);memset(observations,0,sizeof observations);memset(headers,0,sizeof headers);pthread_mutex_unlock(&lock);
+    quickstep_slot_suspend();pthread_mutex_unlock(&transition);*c=saved;rt_set_fpcr(fpcr);rt_set_fpsr(fpsr);
 }
 void quickstep_save_newgame_end(Cpu *c) {
     Cpu saved=*c;uint64_t fpcr=rt_get_fpcr(),fpsr=rt_get_fpsr(),context=c->x[19];
+    pthread_mutex_lock(&lock);uint64_t epoch=lifecycle;pthread_mutex_unlock(&lock);
     if((c->sp&15)||!range(c->sp-0x400,0x400))FATAL("[quickstep-save] invalid new game stack\n");
     uint64_t ref=c->sp-16;ST64(ref,context);c->sp-=0x400;c->x[0]=ref;
     guest_call(c,0x7000592b80ull);uint64_t playing=c->x[0];*c=saved;rt_set_fpcr(fpcr);rt_set_fpsr(fpsr);
-    uint32_t value=story(c,context);quickstep_save_new_game(playing,value);quickstep_slot_tick(c,context);
+    uint32_t value=story(c,context);pthread_mutex_lock(&transition);
+    pthread_mutex_lock(&lock);bool same=epoch==lifecycle;pthread_mutex_unlock(&lock);
+    if(same)new_game_locked(playing,value);
+    pthread_mutex_unlock(&transition);
+    if(same)quickstep_slot_tick(c,context);
+    else restore_log("stale-newgame",NULL,0);
     *c=saved;rt_set_fpcr(fpcr);rt_set_fpsr(fpsr);
 }
 RT_ON_RESET(quickstep_save_reset) {
-    pthread_mutex_lock(&lock);memset(captures,0,sizeof captures);memset(observations,0,sizeof observations);
-    memset(pending,0,sizeof pending);required=has_intent=have_load=load_selected=false;age=0;intent[0]=selected_name[0]=0;pthread_mutex_unlock(&lock);
+    pthread_mutex_lock(&transition);
+    pthread_mutex_lock(&lock);memset(captures,0,sizeof captures);memset(observations,0,sizeof observations);memset(read_intents,0,sizeof read_intents);memset(headers,0,sizeof headers);
+    memset(pending,0,sizeof pending);required=has_intent=have_load=load_selected=false;++lifecycle;age=0;intent[0]=selected_name[0]=0;pthread_mutex_unlock(&lock);
+    quickstep_slot_suspend();pthread_mutex_unlock(&transition);
+    __atomic_store_n(&restore_messages,0,__ATOMIC_RELAXED);
 }

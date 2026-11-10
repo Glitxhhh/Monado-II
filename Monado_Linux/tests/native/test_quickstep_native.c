@@ -45,6 +45,9 @@ static unsigned scratch_allocations;
 static float colors[3][4],offsets[3][4],rim_color[4];
 static unsigned ordinary_clears,ordinary_restores,ordinary_offs,clone_offs;
 static bool ordinary_focus_live=true;
+static unsigned move_sounds;
+static bool reenter_move_sound;
+static uint64_t invalidate_move_at;
 int g_rt_unwind;
 void rt_fatal_trace(void){abort();} void rt_unwind_point(void){}
 uint64_t plat_now_ns(void){return now;}
@@ -52,6 +55,7 @@ static void sf(uint64_t p,float f){memcpy((void*)p,&f,4);}
 static float lf(uint64_t p){float f;memcpy(&f,(void*)p,4);return f;}
 void *hle_alloc(uint64_t bytes){++allocations;assert(bytes==0xa00||bytes==49152);if(bytes==49152)return(void*)RAW;last_scratch=MEMORY+(scratch_allocations++)*0x1000;return(void*)last_scratch;}
 bool quickstep_ui_memory_allow(Cpu*c,uint64_t bytes,const char*consumer){(void)c;assert((bytes==512*1024&&!strcmp(consumer,"quickstep-window"))||(bytes==4*1024*1024&&!strcmp(consumer,"quickstep-gem-control")));++budgets;return budget;}
+#ifndef QUICKSTEP_ROUTE_FIXTURE
 bool quickstep_native_picker_active(uint64_t seq){assert(seq==SEQ);return picker;}
 bool quickstep_native_picker_context_menu_active(uint64_t seq){assert(seq==SEQ);return menu;}
 bool quickstep_native_picker_open(Cpu*c,uint64_t seq){(void)c;assert(seq==SEQ);++opens;picker=true;return true;}
@@ -62,6 +66,7 @@ bool quickstep_slot_get(Cpu*c,uint64_t context,uint32_t character,QuickstepGem*o
  (void)c;assert((context==CONTEXT||context==CONTEXT+0x1000)&&character>0&&character<16);memset(out,0,sizeof*out);
  out->uid=item_uid;memset(out->fingerprint,0x35,32);return item_uid!=0;
 }
+#endif
 static void initialize(void);
 static Cpu cpu(void);
 static void synthetic_clone(uint64_t clone,unsigned offset){
@@ -83,9 +88,15 @@ static void synthetic_clone(uint64_t clone,unsigned offset){
 }
 #undef CR
 
+#ifdef QUICKSTEP_ROUTE_FIXTURE
+static bool quickstep_route_helper(Cpu *c, uint64_t fn);
+#endif
 void guest_call(Cpu*c,uint64_t fn){
  uint64_t a=c->x[0],b=c->x[1],d=c->x[2],e=c->x[3],f=c->x[4],ret=0;float x=0,y=0;
  memcpy(&x,&c->v[0],4);memcpy(&y,&c->v[1],4);++calls;
+#ifdef QUICKSTEP_ROUTE_FIXTURE
+ if(quickstep_route_helper(c,fn)){memset(c,0xad,sizeof*c);c->x[0]=0;return;}
+#endif
  switch(fn){
  case 0x7000749710ull:{assert(!a&&b==RAW);uint64_t n=WINDOW(windows);++windows;memset((void*)n,0,0x1000);ST64(n,0x7000b72bb8ull);ST64(n+0xc0,RAW);ST32(n+0x2b8,9);ST16(n+0x1a8,32);ST16(n+0x1aa,32);ret=n;break;}
  case 0x7000749f90ull:assert(LD64(a)>=WINDOW(0)&&LD64(a)<WINDOW(128));assert(b==7);ST32(LD64(a)+0xc8,b);break;
@@ -108,6 +119,14 @@ void guest_call(Cpu*c,uint64_t fn){
   else{assert(!strcmp((char*)b,"Equip_mc/EquipAnim_mc/Jem_08_mc/rect_item_jem_slot_mc"));ret=a==ORIGINAL||alias_badge?OLD_BADGE:a==CLONE2?BADGE2:BADGE;}break;
  case 0x70001b31c0ull:assert(a==UI+0x30&&!b);++ordinary_clears;ordinary_focus_live=false;break;
  case 0x7000208fe0ull:assert(a==UI&&b==LD32(UI+0x24)&&b<20);++ordinary_restores;ordinary_focus_live=true;break;
+ case 0x70001b7630ull:{
+  assert((a==CONTEXT||a==CONTEXT+0x1000)&&!b&&!d&&!e&&!f);++move_sounds;
+  if(reenter_move_sound){
+   reenter_move_sound=false;unsigned sounds=move_sounds;Cpu saved=*c;
+   bool focused=quickstep_native_bonus_context(SEQ,NULL,NULL,NULL);
+   assert(quickstep_native_input(c,SEQ,focused?QUICKSTEP_NATIVE_RIGHT:QUICKSTEP_NATIVE_LEFT)==focused);
+   assert(move_sounds==sounds);*c=saved;
+  }break;}
  case 0x700074ea30ull:ST32(a+0xb0,b?1:0);break;
  case 0x700074e750ull:assert(x>0&&y>0);sf(a+0xdc,x);sf(a+0xe0,y);break;
  case 0x700074e6a0ull:sf(a+0xd0,x);sf(a+0xd4,y);break;
@@ -147,6 +166,7 @@ void guest_call(Cpu*c,uint64_t fn){
  default:fprintf(stderr,"unexpected helper %llx\n",(unsigned long long)fn);abort();
  }
  if(change_character&&fn==0x7000580bc0ull){change_character=false;ST32(SEQ+0x18b8,2);}
+ if(invalidate_move_at==fn){invalidate_move_at=0;ST32(UI+0x24,12);}
  memset(c,0xad,sizeof*c);c->x[0]=ret;
 }
 static Cpu cpu(void){Cpu c;memset(&c,0x56,sizeof c);c.sp=STACK;c.x[0]=UI;c.x[19]=SEQ;c.x[20]=UI;return c;}
@@ -208,6 +228,59 @@ int main(int argc,char**argv){
  c.x[20]=event;ST32(event,0x201);assert(quickstep_native_input_event(&c)&&picker_confirms==1);c.x[20]=UI;
  picker=false;ST8(UI+0x20,0);quickstep_native_bonus_picker_closed(SEQ);tick(&c);assert(!ordinary_focus_live);
  assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_LEFT));
+ // R2: only successful consumed Right/Left transitions use native cursor
+ // sound1. A blocked held Right, Back, unrelated/native-passthrough action and
+ // failure before the transition's helper returns add no duplicate feedback.
+ unsigned sounds=move_sounds;reenter_move_sound=true;
+ assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_RIGHT)&&move_sounds==sounds+1);
+ assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_RIGHT)&&move_sounds==sounds+1);
+ reenter_move_sound=true;
+ assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_LEFT)&&move_sounds==sounds+2);
+ assert(!quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_LEFT)&&move_sounds==sounds+2);
+ assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_RIGHT)&&move_sounds==sounds+3);
+ assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_BACK)&&move_sounds==sounds+3);
+ assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_RIGHT)&&move_sounds==sounds+4);
+ assert(!quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_OTHER)&&move_sounds==sounds+4);
+ invalidate_move_at=0x70001b31c0ull;
+ assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_RIGHT)&&move_sounds==sounds+4);
+ tick(&c);ST32(UI+0x24,13);tick(&c);
+ assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_RIGHT)&&move_sounds==sounds+5);
+ invalidate_move_at=0x7000208fe0ull;
+ assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_LEFT)&&move_sounds==sounds+5);
+ tick(&c);ST32(UI+0x24,13);tick(&c);
+ // [XCDE] LINUX-044: a native child may consume navigation before the
+ // bonus router hook. Actual native row/pane changes revoke callback ownership
+ // immediately, before tick; the old focus must not clear the new controller.
+ for(unsigned changed=0;changed<3;++changed){
+  ST32(UI+0x24,13);ST32(UI+0x18,2);ST32(SEQ+0x18c0,2);tick(&c);
+  assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_RIGHT));
+  assert(quickstep_native_bonus_context(SEQ,NULL,NULL,NULL));
+  if(changed==0)ST32(UI+0x24,5);
+  if(changed==1)ST32(UI+0x18,1);
+  if(changed==2)ST32(SEQ+0x18c0,1);
+  ordinary_focus_live=true;unsigned clears=ordinary_clears,opened=opens;
+  assert(!quickstep_native_bonus_context(SEQ,NULL,NULL,NULL));
+  assert(!quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_CONFIRM)&&opens==opened);
+  tick(&c);assert(ordinary_focus_live&&ordinary_clears==clears);
+ }
+ // Captured gear5 and gem13 routes return to their own base selection. A
+ // chooser's temporary index13/pane2 is allowed only under its active lease.
+ for(unsigned parent=0;parent<5;++parent){
+  uint32_t base_selected=parent<3?5:13,base_pane=parent<3?1:2;
+  ST32(UI+0x24,base_selected);ST32(UI+0x18,base_pane);ST32(SEQ+0x18c0,base_pane);
+  ST8(UI+0x328+13,parent<3?0:1);tick(&c);
+  assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_RIGHT));
+  assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_CONFIRM));
+  ST32(UI+0x24,13);ST32(UI+0x18,2);ST32(SEQ+0x18c0,2);
+  assert(quickstep_native_bonus_context(SEQ,NULL,NULL,NULL));
+  ST32(UI+0x24,base_selected);ST32(UI+0x18,base_pane);ST32(SEQ+0x18c0,base_pane);picker=false;
+  quickstep_native_bonus_picker_closed(SEQ);tick(&c);
+  assert(quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_LEFT));
+  assert(LD32(UI+0x24)==base_selected&&LD32(UI+0x18)==base_pane&&LD32(SEQ+0x18c0)==base_pane);
+  assert(!quickstep_native_bonus_context(SEQ,NULL,NULL,NULL));
+  unsigned opened=opens;assert(!quickstep_native_input(&c,SEQ,QUICKSTEP_NATIVE_CONFIRM)&&opens==opened);
+ }
+ ST32(UI+0x24,13);ST32(UI+0x18,2);ST32(SEQ+0x18c0,2);tick(&c);
  // Native units/projection and entry scales are independent. The complete
  // original glyph group is translated at1x; its main icon and badge stay1x.
  for(unsigned variant=0;variant<3;variant++){
@@ -288,4 +361,5 @@ int main(int argc,char**argv){
  render=c;render.x[19]=ROOT(742);assert(quickstep_native_filter_background(&render));
  assert(last_scratch==MEMORY+0x2000&&LD32(CLONE2+0x18)==1);quickstep_native_release(&c);
  puts("native Quick Step independent resource/focus/lifetime contracts: PASS");
+ return 0;
 }

@@ -10,9 +10,9 @@ enum { VECTOR = 0xe0, COUNT = 0x1080, CHARACTER = 0x18b8, PANE = 0x18c0,
        UI = 0x1c48, LIST = 0x4c10, SELECTED = 0x24, UI_PANE = 0x18,
        ROW = 0x6c, GEM_BYTES = 0x2c, ITEM_VIEW_BYTES = 0x140 };
 typedef struct {
-    uint64_t seq, context, generation, ui, list, serial;
+    uint64_t seq, context, generation, ui, list, panel, serial;
     uint32_t character, selected, pane, ui_pane;
-    bool active, accepting, closing;
+    bool active, opening, accepting, closing, restoring;
 } Picker;
 static pthread_mutex_t picker_lock = PTHREAD_MUTEX_INITIALIZER;
 static Picker picker;
@@ -85,7 +85,7 @@ bool quickstep_native_picker_context_menu_active(uint64_t seq) {
 static bool live(const Picker *p) {
     uint64_t ctx, gen; uint32_t ch;
     Picker now = snapshot();
-    return p->active && now.active && p->serial == now.serial
+    return p->active && now.active && !now.restoring && p->serial == now.serial
         && g_settings.quickstep_slot && range(p->seq, 0x8a20)
         && range(p->ui, 0x70) && range(p->list, 0xa00)
         && LD64(p->seq + UI) == p->ui && LD64(p->seq + LIST) == p->list
@@ -105,6 +105,14 @@ static bool same_focus(uint64_t seq, uint64_t context, uint32_t character, uint6
     return g_settings.quickstep_slot
         && quickstep_native_bonus_context(seq, &ctx, &ch, &gen)
         && ctx == context && ch == character && gen == generation;
+}
+static bool picker_owner(const Picker *p) {
+    uint64_t seq = 0, ctx = 0, gen = 0;
+    return range(p->seq, 0x8a20) && range(p->ui, 0x70)
+        && LD64(p->seq + UI) == p->ui && LD64(p->seq + LIST) == p->list
+        && LD32(p->seq + CHARACTER) == p->character
+        && quickstep_native_stats_context(p->panel, p->character, &seq, &ctx, &gen)
+        && seq == p->seq && ctx == p->context && gen == p->generation;
 }
 static uint64_t call(Cpu *c, uint64_t fn, uint64_t a, uint64_t b,
                      uint64_t d, uint64_t e) {
@@ -137,7 +145,7 @@ bool quickstep_native_picker_active(uint64_t seq) {
 }
 void quickstep_native_picker_filter(Cpu *c) {
     Picker p = snapshot();
-    if (!p.active || c->x[0] != p.seq + VECTOR) return;
+    if (!p.active || p.restoring || c->x[0] != p.seq + VECTOR) return;
     if (!range(p.seq, COUNT + 8)) return;
     uint64_t keep = 0, rows[QUICKSTEP_GEM_CAPACITY];
     QuickstepGem gems[QUICKSTEP_GEM_CAPACITY];
@@ -165,7 +173,7 @@ void quickstep_native_picker_filter(Cpu *c) {
 }
 void quickstep_native_picker_count(Cpu *c) {
     Picker p = snapshot();
-    if (!p.active || c->x[0] != p.list + 0x58) return;
+    if (!p.active || p.restoring || c->x[0] != p.list + 0x58) return;
     if (!live(&p)) { c->x[1] = 0; return; }
     uint64_t count = LD64(p.seq + COUNT);
     if (count > QUICKSTEP_GEM_CAPACITY) count = 0;
@@ -202,7 +210,7 @@ static bool displayed(const Picker *p, uint64_t item) {
 }
 void quickstep_native_picker_row_style(Cpu *c) {
     Picker p = snapshot();
-    if (!p.active || c->x[20] != p.seq || !range(c->x[0], 0x20)
+    if (!p.active || p.restoring || c->x[20] != p.seq || !range(c->x[0], 0x20)
         || (c->sp & 15) || !range(c->sp, 0x170) || LD64(c->sp + 8) != p.context
         || LD32(c->sp + 0x28) != 3) return;
     // Native316550 has already bound the actual UID's genuine icon/text through
@@ -305,7 +313,7 @@ static void action_result(const Picker *p, const char *route, int32_t row,
 static bool begin_accept(const Picker *p) {
     pthread_mutex_lock(&picker_lock);
     bool start = picker.active && picker.serial == p->serial
-        && !picker.accepting && !picker.closing;
+        && !picker.opening && !picker.accepting && !picker.closing && !picker.restoring;
     if (start) picker.accepting = true;
     pthread_mutex_unlock(&picker_lock);
     return start;
@@ -317,7 +325,7 @@ static void end_accept(const Picker *p) {
 }
 static bool close_picker(Cpu *c, const Picker *p, bool equipped) {
     pthread_mutex_lock(&picker_lock);
-    bool start = picker.active && picker.serial == p->serial && !picker.closing;
+    bool start = picker.active && picker.serial == p->serial && !picker.closing && !picker.restoring;
     if (start) picker.closing = true;
     pthread_mutex_unlock(&picker_lock);
     if (!start) return false;
@@ -521,10 +529,14 @@ bool quickstep_native_picker_open(Cpu *c, uint64_t seq) {
     pthread_mutex_lock(&picker_lock);
     if (picker.active) { pthread_mutex_unlock(&picker_lock); return false; }
     picker = (Picker){.seq=seq,.context=ctx,.generation=gen,.ui=ui,.list=list,
+        .panel=LD64(seq+0x8440),
         .serial=++serial,.character=ch,.selected=LD32(ui+SELECTED),
-        .pane=LD32(seq+PANE),.ui_pane=LD32(ui+UI_PANE),.active=true};
+        .pane=LD32(seq+PANE),.ui_pane=LD32(ui+UI_PANE),.active=true,.opening=true};
     Picker p = picker;
     pthread_mutex_unlock(&picker_lock);
+    // Establish the independent native owner used for close-time restoration
+    // before borrowing any of its selection or inventory cache fields.
+    if (!picker_owner(&p)) goto interrupted;
     // Index13 is a bounded native armour-gem enumeration context, never an
     // equipment assignment. No native staged equipment array is modified.
     ST32(seq + PANE, 2); ST32(ui + UI_PANE, 2); ST32(ui + SELECTED, 13);
@@ -542,11 +554,29 @@ bool quickstep_native_picker_open(Cpu *c, uint64_t seq) {
     if (!live(&p)) goto interrupted;
     call(c, 0x7000240ef0ull, list + 0x58, (uint32_t)row, 0, 0);
     refresh(c, &p);
-    if (live(&p)) return true;
+    if (!live(&p)) goto interrupted;
+    pthread_mutex_lock(&picker_lock);
+    bool ready = picker.active && picker.serial == p.serial && picker.opening
+        && !picker.closing && !picker.restoring;
+    pthread_mutex_unlock(&picker_lock);
+    if (!ready) goto interrupted;
+    // Original native chooser open2F9358/2F9430 uses sound3, volume1. Play
+    // once only after this exact chooser is constructed and still owned. Its
+    // opening phase rejects nested Confirm until the yielding sound returns.
+    call(c, 0x70001b7600ull, p.context, 0, 0, 0);
+    if (!live(&p)) goto interrupted;
+    pthread_mutex_lock(&picker_lock);
+    ready = picker.active && picker.serial == p.serial && picker.opening
+        && !picker.closing && !picker.restoring;
+    if (ready) picker.opening = false;
+    pthread_mutex_unlock(&picker_lock);
+    if (ready) return true;
 interrupted:
-    // The old focus owner may have been destroyed/reused while a helper yielded.
-    // Do not close or write native objects belonging to its replacement.
-    quickstep_native_picker_forget(seq);
+    // A yielding helper may publish a replacement picker at this same Seq.
+    // Retire only our exact serial, never forget that new owner's session.
+    pthread_mutex_lock(&picker_lock);
+    if (picker.active && picker.serial == p.serial) memset(&picker, 0, sizeof picker);
+    pthread_mutex_unlock(&picker_lock);
     return false;
 }
 void quickstep_native_picker_closed(Cpu *c) {
@@ -563,22 +593,41 @@ void quickstep_native_picker_closed(Cpu *c) {
         }
     pthread_mutex_unlock(&picker_lock);
     if(stale_tail)return;
-    // Only restore the same owned equipment UI object; teardown/reuse must not
-    // write a stale native pointer. The guard stays active through native close.
-    bool owner = same_focus(p.seq, p.context, p.character, p.generation)
-        && range(p.seq, 0x8a20) && LD64(p.seq + UI) == p.ui && range(p.ui, 0x70);
+    // [XCDE] LINUX-044: the bonus list is a temporary native inventory lease.
+    // Retire its filter before rebuilding the ordinary cached list. Keep the
+    // exact serial active until that yielding helper returns: nested Confirm /
+    // Cancel must not reopen, assign or close again during restoration.
+    pthread_mutex_lock(&picker_lock);
+    bool restoring = picker.active && picker.serial == p.serial && !picker.restoring;
+    if (restoring) picker.restoring = true;
+    pthread_mutex_unlock(&picker_lock);
+    if (!restoring) return;
+    bool owner = picker_owner(&p);
     if (owner) {
-        ST32(p.ui + SELECTED, p.selected); ST32(p.ui + UI_PANE, p.ui_pane);
-        ST32(p.seq + PANE, p.pane);
+        // A character/pane callback normally cancels before its native change.
+        // If a native route already moved, preserve that actual selection; an
+        // old picker may restore only the temporary mode it still owns.
+        if (LD32(p.ui + SELECTED) == 13 && LD32(p.ui + UI_PANE) == 2
+                && LD32(p.seq + PANE) == 2) {
+            ST32(p.ui + SELECTED, p.selected); ST32(p.ui + UI_PANE, p.ui_pane);
+            ST32(p.seq + PANE, p.pane);
+        }
+        // Native Confirm reuses this vector; merely resetting the input
+        // controller on Left does not run native navigation's list rebuild.
+        // Re-enumerate live inventory rather than restore copied/stale item
+        // pointers or fabricate ordinary socket/equipment ownership.
+        if (LD32(p.ui + SELECTED) < 20)
+            call(c, 0x70002fb9b0ull, p.seq, 1, 0, 0);
     }
     pthread_mutex_lock(&picker_lock);
-    if (picker.serial == p.serial) memset(&picker, 0, sizeof picker);
+    bool cleared = picker.active && picker.serial == p.serial;
+    if (cleared) memset(&picker, 0, sizeof picker);
     pthread_mutex_unlock(&picker_lock);
-    if (owner) quickstep_native_bonus_picker_closed(p.seq);
+    if (cleared && owner && picker_owner(&p)) quickstep_native_bonus_picker_closed(p.seq);
 }
 void quickstep_native_picker_cancel(Cpu *c, uint64_t seq) {
     Picker p = snapshot();
-    if (!p.active || p.seq != seq || p.closing) return;
+    if (!p.active || p.seq != seq || p.closing || p.restoring) return;
     (void)close_picker(c, &p, false);
 }
 void quickstep_native_picker_cancel_callback(Cpu *c) {

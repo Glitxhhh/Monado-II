@@ -32,13 +32,17 @@ static bool focus=true, empty_visible, invalidate_list, invalidate_get, raw_owne
 static uint64_t generation=1, invalidate_at;
 static uint64_t context=BASE+0x1000;
 static unsigned closed, set_calls, list_calls, detail_calls, count_calls, stats_refreshes;
-static unsigned sound_calls, close_calls, restore_calls;
+static unsigned sound_calls, open_sound_calls, close_calls, restore_calls;
+static bool confirm_on_open, cancel_on_open;
 static uint64_t reenter_at, replace_at;
 static bool reject_set,cancel_after_set,migrate_tail,reset_during_close;
 static uint32_t assigned, native_count, character=1;
 static QuickstepGem gems[500];
 static size_t gem_count;
 static uint64_t native_rows[500];
+static uint64_t gear_rows[4];
+static unsigned gear_count, enumerations;
+static bool category_catalog;
 static unsigned char staged[0x160], inventory[500*0x2c];
 void rt_fatal_trace(void) { abort(); }
 void rt_unwind_point(void) {}
@@ -47,7 +51,7 @@ bool quickstep_native_bonus_context(uint64_t seq,uint64_t *ctx,uint32_t *ch,uint
     *ctx=context;*ch=character;*gen=generation;return true;
 }
 bool quickstep_native_stats_context(uint64_t panel,uint32_t ch,uint64_t*seq,uint64_t*ctx,uint64_t*gen) {
-    if(!raw_owner||!g_settings.quickstep_slot||panel!=PANEL||ch!=character)return false;
+    if(!raw_owner||panel!=PANEL||ch!=character)return false;
     *seq=SEQ;*ctx=context;*gen=generation;return true;
 }
 void quickstep_native_bonus_picker_closed(uint64_t seq) { assert(seq==SEQ);++closed; }
@@ -122,10 +126,14 @@ static void *worker_close_tail(void *argument) {
 void guest_call(Cpu*c,uint64_t function) {
     uint64_t a=c->x[0],b=c->x[1],d=c->x[2];
     switch(function) {
-    case 0x70002fb9b0ull:
-        assert(a==SEQ&&b==1&&LD32(UI+0x24)==13&&LD32(SEQ+0x18c0)==2);
-        for(unsigned i=0;i<native_count;i++)ST64(SEQ+0xe0+i*8,native_rows[i]);
-        ST64(SEQ+0x1080,native_count);native_filter(c);native_count_set(c);break;
+    case 0x70002fb9b0ull: {
+        assert(a==SEQ&&b==1&&LD32(UI+0x24)<20);++enumerations;
+        bool gear = category_catalog && LD32(UI+0x24)==5;
+        unsigned count = gear ? gear_count : native_count;
+        for(unsigned i=0;i<count;i++)ST64(SEQ+0xe0+i*8,gear?gear_rows[i]:native_rows[i]);
+        ST64(SEQ+0x1080,count);ST32(SEQ+0x1090,gear?5:3);ST32(SEQ+0x1098,LD32(UI+0x24));
+        native_filter(c);native_count_set(c);helper_reentry(c,function);break;
+    }
     case 0x700020af90ull:assert(a==LIST);empty_visible=b;++count_calls;break;
     case 0x700020a510ull:assert(a==UI&&b==1);break;
     case 0x70002fec10ull:assert(a==SEQ);ST8(LIST+0x19,1);ST32(LIST+0x6c,0);break;
@@ -144,6 +152,24 @@ void guest_call(Cpu*c,uint64_t function) {
         assert(LD32(b)==expect);
         assert(LD32(d)==assigned);++detail_calls;break;}
     case 0x70002369c0ull:assert(a==DETAIL||a==TOOLTIP);++detail_calls;break;
+    case 0x70001b7600ull:{
+        // Native helper supplies sound3 and volume1 internally. This adapter
+        // reaches it only after the exact native chooser is visible and ready.
+        assert(a==context&&!b&&!d&&quickstep_native_picker_active(SEQ)&&LD8(LIST+0x19));
+        ++open_sound_calls;
+        if(confirm_on_open){
+            confirm_on_open=false;Cpu saved=*c;unsigned sets=set_calls,sounds=sound_calls;
+            c->x[0]=CALLBACK;assert(quickstep_native_picker_confirm(c)&&c->x[0]==1);*c=saved;
+            assert(quickstep_native_picker_input_event(c,SEQ,0x201));
+            assert(set_calls==sets&&sound_calls==sounds&&quickstep_native_picker_active(SEQ));
+        }
+        if(cancel_on_open){
+            cancel_on_open=false;unsigned closes=close_calls,sets=set_calls;
+            quickstep_native_picker_cancel(c,SEQ);
+            assert(close_calls==closes+1&&set_calls==sets&&!quickstep_native_picker_active(SEQ));
+        }
+        helper_reentry(c,function);break;
+    }
     case 0x70001b75f0ull:{
         float volume;memcpy(&volume,&c->v[0],sizeof volume);
         assert(a==context&&b==0x14&&!d&&volume==1.f&&assigned);
@@ -187,8 +213,8 @@ static void make_gem(unsigned n,unsigned rank,unsigned availability) {
 static void reset(void) {
     quickstep_native_picker_forget(SEQ);focus=true;generation++;character=1;context=BASE+0x1000;
     invalidate_get=false;raw_owner=true;reject_set=cancel_after_set=migrate_tail=reset_during_close=false;
-    invalidate_at=0;reenter_at=replace_at=0;
-    gem_count=0;native_count=0;assigned=0;set_calls=0;empty_visible=false;
+    invalidate_at=0;reenter_at=replace_at=0;confirm_on_open=cancel_on_open=false;
+    gem_count=0;native_count=0;gear_count=0;category_catalog=false;assigned=0;set_calls=0;empty_visible=false;
     memset((void*)SEQ,0,0x8a20);memset((void*)UI,0,0x70);memset((void*)LIST,0,0xa00);
     ST64(SEQ+0x1c48,UI);ST64(SEQ+0x4c10,LIST);ST64(SEQ+0x8448,DETAIL);
     ST64(SEQ+0x5da0,TOOLTIP);ST64(SEQ+0x5e20,TOOLTIP);ST32(SEQ+0x18b8,1);
@@ -277,6 +303,93 @@ int main(void) {
         assert(!quickstep_native_picker_input_event(&c,SEQ,native_other[i]));
     assert(!quickstep_native_picker_input_event(&c,SEQ+8,0x201));
     assert(set_calls==accepted_before+1&&!memcmp(&c,&before,sizeof c));
+    // R2: successful bonus chooser opening has native Confirm feedback once.
+    // Repeated open and Confirm reentry while that helper yields cannot equip,
+    // play equip feedback, or open a second chooser before opening completes.
+    reset();make_gem(0,5,QUICKSTEP_FREE);c=cpu();before=c;
+    unsigned opening_sounds=open_sound_calls;confirm_on_open=true;
+    assert(quickstep_native_picker_open(&c,SEQ)&&!memcmp(&c,&before,sizeof c));
+    assert(open_sound_calls==opening_sounds+1&&!set_calls&&!assigned);
+    assert(!quickstep_native_picker_open(&c,SEQ)&&open_sound_calls==opening_sounds+1);
+    quickstep_native_picker_cancel(&c,SEQ);assert(open_sound_calls==opening_sounds+1);
+    // Cancellation during opening closes the exact owner; a later failure or
+    // native retry cannot replay feedback for that old session.
+    reset();make_gem(0,5,QUICKSTEP_FREE);c=cpu();before=c;opening_sounds=open_sound_calls;
+    cancel_on_open=true;
+    assert(!quickstep_native_picker_open(&c,SEQ)&&!quickstep_native_picker_active(SEQ));
+    assert(open_sound_calls==opening_sounds+1&&!set_calls&&!memcmp(&c,&before,sizeof c));
+    // A yielding sound may publish a new picker at the same sequence address.
+    // The returning old opener must never clear that replacement serial.
+    reset();make_gem(0,5,QUICKSTEP_FREE);c=cpu();before=c;opening_sounds=open_sound_calls;
+    replace_at=0x70001b7600ull;
+    assert(!quickstep_native_picker_open(&c,SEQ)&&quickstep_native_picker_active(SEQ));
+    assert(open_sound_calls==opening_sounds+2&&!memcmp(&c,&before,sizeof c));
+    quickstep_native_picker_cancel(&c,SEQ);
+    // Invalidation before chooser readiness stays silent.
+    reset();make_gem(0,5,QUICKSTEP_FREE);c=cpu();opening_sounds=open_sound_calls;
+    invalidate_list=true;assert(!quickstep_native_picker_open(&c,SEQ)&&open_sound_calls==opening_sounds);
+    // [XCDE] LINUX-044 reproducer: ordinary Confirm opens cached native rows;
+    // Left only restores its input controller. Closing the temporary chooser
+    // must therefore recover full live inventory before the ordinary route can
+    // reopen, including bare/socketless/unique/drone gear routes (index5).
+    for (unsigned parent=0;parent<5;++parent) for (unsigned equip=0;equip<2;++equip) {
+        reset();category_catalog=true;
+        uint32_t selected=parent<3?5:13;
+        ST32(UI+0x24,selected);ST32(UI+0x18,parent<3?1:2);ST32(SEQ+0x18c0,parent<3?1:2);
+        make_gem(0,5,QUICKSTEP_FREE);make_gem(1,2,QUICKSTEP_FREE);
+        // A normal non-Quickstep gem remains visible only in the ordinary list.
+        ST16(ITEM(1)+0x1c,22);--gem_count;
+        gear_rows[0]=ITEM(20);gear_rows[1]=ITEM(21);gear_count=2;
+        c=cpu();assert(quickstep_native_picker_open(&c,SEQ));
+        assert(LD64(SEQ+0x1080)==1&&LD64(SEQ+0xe0)==ITEM(0));
+        // Inventory changes while open must survive: never restore copied rows.
+        native_rows[native_count++]=ITEM(2);
+        unsigned calls_before=enumerations;before=c;
+        if(equip) assert(quickstep_native_picker_input_event(&c,SEQ,0x201));
+        else quickstep_native_picker_cancel(&c,SEQ);
+        assert(!memcmp(&c,&before,sizeof c)&&!quickstep_native_picker_active(SEQ));
+        assert(enumerations==calls_before+1&&LD32(UI+0x24)==selected);
+        assert(LD32(UI+0x18)==(parent<3?1u:2u)&&LD32(SEQ+0x18c0)==(parent<3?1u:2u));
+        // Actual ordinary callback ownership must pass through after Left.
+        focus=false;c.x[0]=CALLBACK;assert(!quickstep_native_picker_confirm(&c));
+        c.x[0]=SEQ;assert(!quickstep_native_picker_preview(&c)&&!quickstep_native_picker_commit(&c));
+        assert(LD64(SEQ+0x1080)==(selected==5?2u:3u));
+        assert(LD64(SEQ+0xe0)==(selected==5?ITEM(20):ITEM(0)));
+        assert(LD64(SEQ+0xe8)==(selected==5?ITEM(21):ITEM(1)));
+        assert(LD32(SEQ+0x1090)==(selected==5?5u:3u)&&LD32(SEQ+0x1098)==selected);
+        unchanged();
+    }
+    // Keep an in-flight restoration serial owned across a native helper yield:
+    // nested Confirm/Cancel cannot mutate, reopen, close or re-filter its list.
+    reset();make_gem(0,2,QUICKSTEP_FREE);make_gem(1,3,QUICKSTEP_ORDINARY_EQUIPPED);
+    c=cpu();assert(quickstep_native_picker_open(&c,SEQ));reenter_at=0x70002fb9b0ull;
+    quickstep_native_picker_cancel(&c,SEQ);
+    assert(!quickstep_native_picker_active(SEQ)&&LD64(SEQ+0x1080)==2&&!set_calls);
+    // Native Cancel may reach its tail without the host close wrapper's
+    // closing flag. The restoring phase itself rejects nested actions too.
+    reset();make_gem(0,2,QUICKSTEP_FREE);c=cpu();assert(quickstep_native_picker_open(&c,SEQ));
+    reenter_at=0x70002fb9b0ull;c.x[0]=SEQ;before=c;quickstep_native_picker_closed(&c);
+    assert(!quickstep_native_picker_active(SEQ)&&!memcmp(&c,&before,sizeof c)&&!set_calls);
+    // A replacement owner published during that helper keeps its new picker.
+    reset();make_gem(0,2,QUICKSTEP_FREE);c=cpu();assert(quickstep_native_picker_open(&c,SEQ));
+    replace_at=0x70002fb9b0ull;quickstep_native_picker_cancel(&c,SEQ);
+    assert(quickstep_native_picker_active(SEQ)&&LD32(UI+0x24)==13&&LD32(SEQ+0x18c0)==2);
+    quickstep_native_picker_cancel(&c,SEQ);
+    // Restore temporary native state even if the option or visual focus changed
+    // during the old native close. A changed native route is never overwritten.
+    reset();make_gem(0,2,QUICKSTEP_FREE);ST32(UI+0x24,5);ST32(UI+0x18,1);ST32(SEQ+0x18c0,1);
+    c=cpu();assert(quickstep_native_picker_open(&c,SEQ));g_settings.quickstep_slot=false;focus=false;
+    c.x[0]=SEQ;quickstep_native_picker_closed(&c);
+    assert(!quickstep_native_picker_active(SEQ)&&LD32(UI+0x24)==5&&LD32(SEQ+0x18c0)==1);
+    reset();make_gem(0,2,QUICKSTEP_FREE);c=cpu();assert(quickstep_native_picker_open(&c,SEQ));
+    ST32(UI+0x24,4);ST32(UI+0x18,1);ST32(SEQ+0x18c0,1);focus=false;
+    c.x[0]=SEQ;quickstep_native_picker_closed(&c);
+    assert(!quickstep_native_picker_active(SEQ)&&LD32(UI+0x24)==4&&LD32(SEQ+0x18c0)==1);
+    // Restore the original fixture's mixed inventory scenario for later checks.
+    reset();for(unsigned n=0;n<500;n++)make_gem(n,1+n%6,QUICKSTEP_FREE);
+    ST16(ITEM(0)+4,0);fp(0,gems[0].fingerprint);ST8(ITEM(0)+0x11,1);
+    gems[1].availability=QUICKSTEP_ORDINARY_EQUIPPED;gems[2].availability=QUICKSTEP_ASSIGNED_ELSEWHERE;assigned=UID(3);
+    memcpy(inventory,(void*)ITEM(0),sizeof inventory);c=cpu();before=c;
     // Change native category/sort enumeration independently: same restriction applies.
     assert(quickstep_native_picker_open(&c,SEQ));
     ST64(SEQ+0xe0,ITEM(2));ST64(SEQ+0xe8,ITEM(0));ST64(SEQ+0x1080,2);
@@ -377,6 +490,12 @@ int main(void) {
     assert(LD64(SEQ+0x1080)==0xfeedbeef);
     for(unsigned i=0;i<500*8;i++)assert(LD8(SEQ+0xe0+i)==0xa5);
     unchanged();
+    // A focus boolean alone cannot authorize borrowing native selection/cache;
+    // establish the independent exact owner before the first native mutation.
+    reset();make_gem(0,3,QUICKSTEP_FREE);raw_owner=false;c=cpu();before=c;
+    unsigned enum_before=enumerations;
+    assert(!quickstep_native_picker_open(&c,SEQ)&&!quickstep_native_picker_active(SEQ));
+    assert(enumerations==enum_before&&LD32(UI+0x24)==12&&!memcmp(&c,&before,sizeof c));unchanged();
     // Setting disabled is transparent and does not query inventory/native UI.
     reset();g_settings.quickstep_slot=false;unsigned calls=list_calls;c=cpu();
     assert(!quickstep_native_picker_open(&c,SEQ)&&list_calls==calls);unchanged();

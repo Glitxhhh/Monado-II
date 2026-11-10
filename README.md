@@ -9,12 +9,12 @@ do with that information what you will.
 
 <img width="1259" height="795" alt="image" src="https://github.com/user-attachments/assets/69fabc08-665d-41bc-8900-f707138d630f" />
 
-Linux 0.1.10 adds an optional dedicated Quick Step gem slot, fixes the reported
-NPC trading crash, and supplies checked private media dependencies for more
-reliable builds across distributions. **Quick Step is experimental and off by
-default:** it can be hit-or-miss or show UI quirks; further fixes and polish are
-planned. See the [changelog](CHANGELOG.md), [Quick Step guide](docs/QUICKSTEP.md)
-and [Linux requirements](docs/BUILD_LINUX.md).
+Linux 0.1.11 stabilizes the optional dedicated Quick Step gem slot, including
+save/Continue restoration, equipped indicators and native menu feedback, and
+corrects the reported Bionis Interior crash. **Quick Step remains off by default**
+for players who prefer the original equipment setup. See the
+[changelog](CHANGELOG.md), [Quick Step guide](docs/QUICKSTEP.md) and
+[Linux requirements](docs/BUILD_LINUX.md).
 
 ## You must supply your own legally dumped game
 
@@ -37,7 +37,7 @@ generated locally on each player's machine and must stay out of Git and releases
 
 | Platform | Source status | Validation |
 |---|---|---|
-| Linux x86-64 | Native SDL/Vulkan port, high-refresh timing fixes, menu-speed preference, native DLSS/DLAA, optional shader preparation, expanded saves and an experimental Quick Step slot | Opening cutscenes/battles through first character control tested by the maintainer; expanded saves, scan responsiveness, Quick Step and the trading fix received positive manual feedback; full game, Future Connected and save/recovery coverage remain incomplete |
+| Linux x86-64 | Native SDL/Vulkan port, high-refresh timing fixes, menu-speed preference, native DLSS/DLAA, optional shader preparation, expanded saves and an optional stable Quick Step slot | Opening cutscenes/battles through first character control tested by the maintainer; expanded saves, scan responsiveness, Quick Step, trading and the Bionis Interior crash fix received positive manual feedback; full game, Future Connected and save/recovery coverage remain incomplete |
 | Windows x86-64 | Original Monado implementation retained | Original author reported full-game playability on NVIDIA RTX; this fork has not independently built or validated Windows, and Linux backports are not currently planned |
 
 **Linux frame generation is experimental. Performance varies: it may run worse,
@@ -68,8 +68,8 @@ remains incomplete.
 
 ## Setup downloads and local builds
 
-Download the [Linux setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.10/monado-ii-0.1.10-linux-setup.tar.gz)
-or [Windows setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.10/monado-ii-0.1.10-windows-setup.zip)
+Download the [Linux setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.11/monado-ii-0.1.11-linux-setup.tar.gz)
+or [Windows setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.11/monado-ii-0.1.11-windows-setup.zip)
 from the release, and verify its checksum. These contain source and setup tools;
 you provide your own input and build locally. For Linux app launchers such as
 Quiver, select **`App_Monado_II.sh`**: it shows first-build progress in an installed
@@ -101,9 +101,11 @@ retain the verified game build. Other updates rebuild the game locally. Saves,
 settings and the shared input stay in the original installation; failed or
 cancelled preparation keeps the previous version selected.
 
-**Updating to 0.1.10 requires a full local game rebuild** for the new native
-Quick Step, trading and runtime changes. The updater performs that rebuild and
-keeps the original save/settings profile in place; it does not convert, replace or delete your saves.
+**Updating to 0.1.11 requires a full local game rebuild** for the Quick Step and
+queued-rendering fixes. The updater performs that rebuild and keeps the original
+save/settings profile in place; it does not convert, replace or delete your saves.
+Keep optional Quick Step metadata with the complete save folder, including hidden
+files; native `.sav` formats and filenames remain unchanged.
 
 From 0.1.6, the original folder's `update-version.json` shows the active version.
 Use `./Rollback_Monado_II.sh` for a version-aware rollback; see the Linux guide.
@@ -119,9 +121,9 @@ Releases provide separate **Linux setup `.tar.gz`** and **Windows setup `.zip`**
 kits containing reviewed source. They are **not precompiled playable game downloads**.
 You build the game locally from your own verified dump. No compiled game binary,
 private vendor SDK binary, game-derived cache or user data is distributed.
-Version 0.1.10 uses the regular release channel; Quick Step and frame generation
-remain experimental optional features. A legacy Linux `-source` download remains
-solely for compatibility with installed updaters. New downloads use the `-setup` kit.
+Version 0.1.11 uses the regular stable release channel. Quick Step is stable and
+optional; frame generation remains experimental and off by default. A legacy
+Linux `-source` download remains solely for compatibility with installed updaters. New downloads use the `-setup` kit.
 
 - [Linux build instructions](docs/BUILD_LINUX.md)
 - [Windows build instructions](docs/BUILD_WINDOWS.md)

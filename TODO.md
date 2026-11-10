@@ -38,9 +38,15 @@ Linux FG presentation. Publishing a Windows source kit does not schedule backpor
 
 ## Linux correctness and coverage
 
-- [ ] Improve the experimental dedicated Quick Step slot's remaining UI quirks
-  and inconsistent behavior; keep it off by default and expand character,
-  equipment, save/reload and Future Connected coverage.
+- [x] Stabilize the dedicated Quick Step slot: restore saved bonuses through
+  Load Game/Continue, native row/portrait E markers, normal chooser restoration
+  and native menu feedback. Keep it off by default for the original-game preference.
+- [ ] Expand Quick Step character, equipment, save/recovery and Future Connected
+  coverage beyond the accepted manual scenarios.
+- [x] Preserve recorded shader programs and compiler constants for queued draws;
+  the Bionis Interior crash correction received positive manual feedback.
+- [ ] Investigate reported shadow boxes in Valak/Makna. They are not fixed in
+  0.1.11; exact causes and affected scenes remain to be established.
 - [ ] Confirm actual CachyOS/AMD/Wayland gameplay and additional distribution
   builds. Isolated Arch userspace loading/media passes do not cover native GPU,
   audio/session or optional plugin behavior.

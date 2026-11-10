@@ -6,19 +6,22 @@ not playable game binaries. Each player generates game code locally from their
 own legally dumped input. No game content, generated code, translated shaders,
 caches, seeds, keys, firmware, saves, mods or private SDK binaries are distributed.
 
-Version 0.1.10 is a regular release, with GitHub's prerelease option disabled.
+Version 0.1.11 is a regular release, with GitHub's prerelease option disabled.
 A regular release does not establish Windows game-build or full-game coverage.
 The exact reviewed generated launcher illustration is included with its
 [provenance](../Monado_Linux/tools/launcher/assets/ARTWORK_PROVENANCE.md) and root
 notice; other unreviewed imagery remains excluded.
 
-The 0.1.10 dedicated Quick Step slot, NPC trading fix and runtime compatibility
-changes are Linux-only. The Windows kit retains its existing implementation;
-parity work is not currently planned. Release notes must retain the **Quick Step
-experimental, off-by-default, hit-or-miss/UI-quirks and future-polish disclaimer**.
-They must distinguish the maintainer's positive Quick Step/trading feedback from
-unqualified character/equipment/save/recovery/full-game coverage. Isolated Arch
-userspace loading/media checks are not CachyOS/AMD/Wayland gameplay qualification.
+The 0.1.11 Quick Step save/UI and queued-rendering fixes are Linux-only. The
+Windows kit retains its existing implementation; parity work is not currently
+planned. Quick Step is stable following the maintainer's manual acceptance and
+remains **off by default** for players who prefer the original equipment setup.
+Keep the experimental/off-by-default warning for frame generation. Release notes
+must distinguish the accepted Quick Step and Bionis Interior crash fixes from unqualified
+character/equipment/save-recovery, exact-scene and full-game coverage. The reported
+Valak/Makna shadow boxes remain queued, not fixed. Preserve the historical 0.1.10
+changelog as a record of that release's earlier Quick Step limitations. Isolated
+Arch userspace loading/media checks are not CachyOS/AMD/Wayland gameplay qualification.
 
 The native/generator/runtime changes require a full local game rebuild through
 the Linux updater while retaining the original saves/settings profile and
@@ -74,8 +77,8 @@ From a reviewed clean public checkout:
 MONADO_RELEASE_SOURCE="$(pwd -P)"
 MONADO_RELEASE_PARENT="$(dirname "$MONADO_RELEASE_SOURCE")"
 python -B tools/publication_guard.py "$MONADO_RELEASE_SOURCE"
-python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform linux --version 0.1.10 --output "$MONADO_RELEASE_PARENT/monado-ii-linux-release"
-python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform windows --version 0.1.10 --output "$MONADO_RELEASE_PARENT/monado-ii-windows-release"
+python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform linux --version 0.1.11 --output "$MONADO_RELEASE_PARENT/monado-ii-linux-release"
+python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform windows --version 0.1.11 --output "$MONADO_RELEASE_PARENT/monado-ii-windows-release"
 ```
 
 Outputs must be fresh. The packager verifies the exact publication manifest and
@@ -101,7 +104,7 @@ setup and compatibility alias must have equal bytes and digests. For example,
 from the parent of the two fresh local packaging output directories:
 
 ```sh
-MONADO_RELEASE_VERSION=0.1.10
+MONADO_RELEASE_VERSION=0.1.11
 (cd monado-ii-linux-release && sha256sum -c SHA256SUMS)
 (cd monado-ii-windows-release && sha256sum -c SHA256SUMS)
 cmp "monado-ii-linux-release/monado-ii-${MONADO_RELEASE_VERSION}-linux-setup.tar.gz" "monado-ii-linux-release/monado-ii-${MONADO_RELEASE_VERSION}-linux-source.tar.gz"

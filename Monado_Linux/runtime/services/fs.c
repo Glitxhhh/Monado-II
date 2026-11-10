@@ -465,7 +465,10 @@ static void file(Service *s, IpcReq *req, IpcResp *resp) {
             extern void flags_ext_save_read(const char *path, uint64_t addr, int64_t off, int64_t size);
             flags_ext_save_read(f->path, b->addr, off, n);
         }
-        OUT(int64_t, 0) = n < 0 ? 0 : n;
+        // [XCDE] LINUX-044: IpcResp.data follows a 32-bit result and is not
+        // int64-aligned. Keep the same wire bytes without an undefined store.
+        int64_t count = n < 0 ? 0 : n;
+        memcpy(resp->data, &count, sizeof count);
         if (n < 0) resp->result = errno_result();
         resp_size(resp, 8);
         break;

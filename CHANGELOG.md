@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.1.11 — November 10, 2026
+
+- Make the optional dedicated **Quick Step gem slot** stable following the
+  maintainer's manual acceptance. It remains **off by default** for players who
+  prefer the original equipment setup; normal gem ownership, potency and caps
+  remain in effect.
+- Restore the saved assignment and its actual movement bonus through Load Game
+  and Continue. Preserve the selected save's identity through native save caches
+  so the matching optional metadata is applied after loading.
+- Correct equipped **E** markers on gem rows and character portraits, including
+  the distinction between the current character and another owner. Restore the
+  ordinary gem chooser after leaving the bonus slot and use native menu sounds
+  for its actions.
+- Preserve recorded shader programs and shader-compiler constants until queued
+  rendering consumes them, correcting the reported Bionis Interior crash. The
+  maintainer reports that everything looks in order after this fix; exact scene
+  coverage and full-game rendering remain unqualified.
+- Keep native `.sav` formats and filenames unchanged. Optional Quick Step
+  metadata stays with its save in the hidden `.monado-quickstep` directory;
+  back up the **complete save folder, including hidden files**. No conversion
+  or update-time profile move is required.
+- Updating requires a **full local game rebuild**. The Linux updater retains
+  the original input, saves and settings. Linux and Windows source/setup kits
+  continue, including the Linux `-source` compatibility download; these fixes are
+  Linux-only and the Windows implementation is unchanged.
+- Frame generation remains **experimental and off by default**. Reported shadow
+  boxes in Valak/Makna are queued for investigation and are **not fixed** by this
+  release. Broader character/equipment/save-recovery, Future Connected, hardware
+  and full-game coverage remain incomplete.
+
 ## 0.1.10 — November 9, 2026
 
 - Add an optional, character-owned **Quick Step gem slot** beside boots in

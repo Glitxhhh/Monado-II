@@ -69,7 +69,7 @@ void ipc_return_object(IpcResp *r,Service *s){r->objects[r->nobjects++]=s;}
 void save_editor_file_read(const char *p,uint64_t a,int64_t o,int64_t n){(void)p;(void)a;(void)o;(void)n;}
 void flags_ext_save_read(const char *p,uint64_t a,int64_t o,int64_t n){(void)p;(void)a;(void)o;(void)n;}
 void flags_ext_save_written(const char *p,uint64_t a,int64_t o,int64_t n){(void)p;(void)a;(void)o;(void)n;}
-void quickstep_slot_snapshot(QuickstepSnapshot *s){*s=exported;}
+void quickstep_slot_snapshot(QuickstepSnapshot *s){*s=imported;}
 bool quickstep_slot_snapshot_for_save(uint64_t p,QuickstepSnapshot *s){assert(p==raw);*s=exported;return export_ok;}
 void quickstep_slot_suspend(void){}
 void quickstep_slot_adopt(uint64_t p,uint32_t story,const QuickstepSnapshot *s){
@@ -218,6 +218,10 @@ static void namespaces(void){
     }
     for(unsigned i=0;i<4;++i){
         quickstep_save_intent(i/2,i%2?0:98,i%2!=0);quickstep_save_loading();
+        // The selected native read owns this raw destination. A previous scan
+        // using the same buffer for another filename is not that read.
+        char path[128];snprintf(path,sizeof path,"save/%s",names[i]);
+        quickstep_save_observe("save",path,(void*)(uintptr_t)raw,0,QUICKSTEP_SAVE_BYTES);
         quickstep_save_intent(1-i/2,0,true); // Cannot retarget an already-started load.
         Cpu c=cpu();c.x[20]=playing;c.x[22]=raw;c.x[28]=context;quickstep_save_adopt(&c);
         ST8(view+0x150,i<2?0:8);c=cpu();c.x[19]=context;quickstep_save_loaded(&c);

@@ -24,6 +24,8 @@ class QuickstepPickerTests(unittest.TestCase):
                        '-pthread', '-Wl,--no-gc-sections', '-I', str(PORT / 'runtime'),
                        str(PORT / 'tests/native/test_quickstep_picker.c'),
                        str(PORT / 'runtime/hle/quickstep_picker.c'), '-o', str(binary)]
+            if os.environ.get('MONADO_TEST_UBSAN') == '1':
+                command[1:1] = ['-fsanitize=undefined', '-fno-sanitize-recover=all']
             result = subprocess.run(command, capture_output=True, text=True, timeout=120)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             result = subprocess.run([str(binary)], cwd=temporary,

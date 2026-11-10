@@ -30,6 +30,8 @@ class QuickstepSlotTests(unittest.TestCase):
                                     capture_output=True, text=True, timeout=45)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn('mutation contracts: PASS', result.stdout)
+            self.assertIn('native E marker', result.stdout)
+            self.assertIn('portrait owner', result.stdout)
             self.assertEqual({p.name for p in Path(temporary).iterdir()}, {binary.name})
 
 

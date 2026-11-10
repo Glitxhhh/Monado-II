@@ -12,6 +12,8 @@
 #define DATA (BASE+0x100000)
 #define CONTEXT (BASE+0x1000)
 #define VIEW (BASE+0x2000)
+#define ITEM_VIEW (BASE+0x4000)
+#define OWNER_CACHE (BASE+0x5000)
 #define STACK (BASE+0x1000000)
 #define ITEM(n) (DATA+0x41c0+0x28870+(n)*0x2c)
 #define UID(n) (0x30000u|(n))
@@ -22,6 +24,8 @@ static bool required_flag,reenter,reset_during_call;
 static bool refresh_effect;
 static uint64_t suspend_after,replace_after;
 static uint64_t readopt_after;
+static uint64_t marker_cache=OWNER_CACHE;
+static bool marker_rebind,marker_replace;
 static QuickstepSnapshot readopt_snapshot;
 static uint32_t seen_count;
 static void effect(Cpu *c,unsigned character,unsigned count);
@@ -43,6 +47,11 @@ void guest_call(Cpu *c,uint64_t function) {
     switch(function) {
     case 0x7000592b80ull: assert(LD64(a)==CONTEXT);ret=resolved;break;
     case 0x7000592a30ull: assert(LD64(a)==CONTEXT);ret=VIEW;break;
+    case 0x7000174ed0ull:
+        assert(a==CONTEXT&&!b&&!d&&!e&&!f);ret=marker_cache;
+        if(marker_rebind) {marker_rebind=false;ST64(ITEM_VIEW+0x138,ITEM(0));}
+        if(marker_replace) {marker_replace=false;ST32(ITEM(5)+0xc,LD32(ITEM(5)+0xc)+1);}
+        break;
     case 0x70000afab0ull:assert(a==CONTEXT&&b>0&&b<16);ret=DATA+0x154630+(b-1)*0x3480;break;
     case 0x700008b860ull:
         assert(a==DATA+0x154634+(d-1)*0x3480&&b==CONTEXT&&!e);++refreshed[d];
@@ -287,6 +296,83 @@ int main(void) {
     g_settings.quickstep_slot=false;
     assert(!quickstep_slot_reference_matches(CONTEXT,1,&item,&adopted));
     g_settings.quickstep_slot=true;
+    // Two equally ranked native instances remain two owned rows. A read-only
+    // presentation query identifies the exact assigned one without hiding it
+    // from ordinary native transfer, cloning it or inventing a gear parent.
+    owned(4,2050,20);owned(5,2051,20);assign(&c,1,5);
+    QuickstepGem owner;uint64_t owner_epoch=0;calls_before=native_calls;
+    unsigned char inventory_before[0x2c*6];memcpy(inventory_before,(void*)ITEM(0),sizeof inventory_before);
+    assert(quickstep_slot_owner(CONTEXT,ITEM(5),&owner,&owner_epoch));
+    assert(owner.assigned&&owner.character==1&&owner.uid==UID(5)&&owner_epoch);
+    assert(!quickstep_slot_owner(CONTEXT,ITEM(4),&owner,&owner_epoch));
+    assert(!quickstep_slot_owner(CONTEXT,ITEM(5)+1,&owner,&owner_epoch));
+    assert(!quickstep_slot_owner(CONTEXT,ITEM(5)+0x400000,&owner,&owner_epoch));
+    assert(!quickstep_slot_owner(CONTEXT+8,ITEM(5),&owner,&owner_epoch));
+    assert(!quickstep_slot_owner(CONTEXT,ITEM(5),NULL,&owner_epoch));
+    assert(!quickstep_slot_owner(CONTEXT,ITEM(5),&owner,NULL));
+    assert(native_calls==calls_before&&!memcmp(inventory_before,(void*)ITEM(0),sizeof inventory_before));
+    quickstep_slot_snapshot(&snapshot);quickstep_slot_adopt(DATA,0,&snapshot);
+    assert(!quickstep_slot_owner(CONTEXT,ITEM(5),&owner,&owner_epoch));
+    assert(quickstep_slot_get(&c,CONTEXT,1,&item));
+    assert(!quickstep_slot_owner(CONTEXT,ITEM(5),&owner,&owner_epoch)); // Old epoch.
+    owner_epoch=0;assert(quickstep_slot_owner(CONTEXT,ITEM(5),&owner,&owner_epoch));
+    // Actual row binder uses the game's own E renderer: -1 none, 1 this
+    // character, 0 another character, 3 attached to unworn ordinary gear.
+    // Native status and ordinary ownership queries are never overridden.
+    memset((void*)ITEM_VIEW,0,0x140);ST64(ITEM_VIEW+8,CONTEXT);
+    ST32(ITEM_VIEW+0x28,3);ST64(ITEM_VIEW+0x138,ITEM(5));
+    for(unsigned selected=0;selected<16;selected++) {
+        ST32(OWNER_CACHE+8,selected);c=cpu();c.x[20]=ITEM_VIEW;c.x[0]=UINT32_MAX;before=c;
+        quickstep_slot_native_marker(&c);before.x[0]=selected==1?1:0;
+        assert(!memcmp(&c,&before,sizeof c));
+    }
+    // Item Details portraits have a separate native owning-character query.
+    // Keep the real native owner intact and supply only a validated bonus
+    // owner for native0. The original portrait comparison chooses the E mark.
+    c=cpu();c.x[20]=ITEM_VIEW;c.x[0]=0;before=c;calls_before=native_calls;
+    quickstep_slot_native_portrait_owner(&c);before.x[0]=1;
+    assert(!memcmp(&c,&before,sizeof c)&&native_calls==calls_before);
+    for(unsigned native_owner=1;native_owner<16;native_owner++) {
+        c.x[0]=native_owner;before=c;quickstep_slot_native_portrait_owner(&c);
+        assert(!memcmp(&c,&before,sizeof c)&&native_calls==calls_before);
+    }
+    c.x[0]=0;ST32(ITEM_VIEW+0x28,4);before=c;quickstep_slot_native_portrait_owner(&c);
+    assert(!memcmp(&c,&before,sizeof c));ST32(ITEM_VIEW+0x28,3);
+    ST64(ITEM_VIEW+0x138,ITEM(4));before=c;quickstep_slot_native_portrait_owner(&c);
+    assert(!memcmp(&c,&before,sizeof c));ST64(ITEM_VIEW+0x138,ITEM(5));
+    g_settings.quickstep_slot=false;before=c;quickstep_slot_native_portrait_owner(&c);
+    assert(!memcmp(&c,&before,sizeof c));g_settings.quickstep_slot=true;
+    ST64(ITEM_VIEW+8,CONTEXT+8);before=c;quickstep_slot_native_portrait_owner(&c);
+    assert(!memcmp(&c,&before,sizeof c));ST64(ITEM_VIEW+8,CONTEXT);
+    calls_before=native_calls;
+    for(unsigned result=0;result<4;result++) {
+        c=cpu();c.x[20]=ITEM_VIEW;c.x[0]=result;before=c;quickstep_slot_native_marker(&c);
+        assert(!memcmp(&c,&before,sizeof c)&&native_calls==calls_before);
+    }
+    ST64(ITEM_VIEW+0x138,ITEM(4));c.x[0]=UINT32_MAX;before=c;
+    quickstep_slot_native_marker(&c);assert(!memcmp(&c,&before,sizeof c)&&native_calls==calls_before);
+    ST64(ITEM_VIEW+0x138,ITEM(5));g_settings.quickstep_slot=false;before=c;
+    quickstep_slot_native_marker(&c);assert(!memcmp(&c,&before,sizeof c)&&native_calls==calls_before);
+    assert(!quickstep_slot_owner(CONTEXT,ITEM(5),&owner,&owner_epoch));g_settings.quickstep_slot=true;
+    marker_cache=0;before=c;quickstep_slot_native_marker(&c);assert(!memcmp(&c,&before,sizeof c));marker_cache=OWNER_CACHE;
+    quickstep_slot_snapshot(&readopt_snapshot);readopt_after=0x7000174ed0ull;
+    before=c;quickstep_slot_native_marker(&c);assert(!memcmp(&c,&before,sizeof c));
+    assert(quickstep_slot_get(&c,CONTEXT,1,&item));
+    marker_rebind=true;before=c;quickstep_slot_native_marker(&c);assert(!memcmp(&c,&before,sizeof c));
+    ST64(ITEM_VIEW+0x138,ITEM(5));marker_replace=true;before=c;
+    quickstep_slot_native_marker(&c);assert(!memcmp(&c,&before,sizeof c));
+    assert(!quickstep_slot_get(&c,CONTEXT,1,&item));assign(&c,1,5);assert(quickstep_slot_get(&c,CONTEXT,1,&item));
+    // A normal accepted write still transfers a displayed bonus gem. The read-
+    // only marker cannot create a fake native parent or make transfer a reject.
+    boots=gear(8,false,0,1);incoming(&c,boots,0,UID(5));before=c;quickstep_slot_native_equip(&c);
+    assert(!memcmp(&c,&before,sizeof c));owner_epoch=0;
+    assert(!quickstep_slot_owner(CONTEXT,ITEM(5),&owner,&owner_epoch));
+    assert(!quickstep_slot_get(&c,CONTEXT,1,&item));assign(&c,1,5);assert(quickstep_slot_get(&c,CONTEXT,1,&item));
+    owner_epoch=0;ST32(boots+0x18,UID(5));
+    assert(!quickstep_slot_owner(CONTEXT,ITEM(5),&owner,&owner_epoch));
+    c.x[20]=ITEM_VIEW;c.x[0]=0;before=c;quickstep_slot_native_portrait_owner(&c);
+    assert(!memcmp(&c,&before,sizeof c));ST32(boots+0x18,0);
+    assert(!memcmp(inventory_before,(void*)ITEM(0),5*0x2c));
     // A crafted UID reused for an identical-looking new acquisition is distinct.
     QuickstepGem stale=item;ST32(ITEM(5)+0xc,9000);
     assert(!quickstep_slot_reference_matches(CONTEXT,1,&item,&adopted));
@@ -300,5 +386,25 @@ int main(void) {
     assert(LD32(boots+0x18)==UID(0)&&LD16(ITEM(0)+4)==0);
     ST16(ITEM(0)+6,9);ST32(ITEM(1)+0xc,0);
     assert(quickstep_slot_list(&c,CONTEXT,1,gems,8)==4);
-    puts("quickstep owned gem, stale serial, active story, native merge, lease, OFF and mutation contracts: PASS");
+    // Display lookup follows every supported character/story and fails closed
+    // when the current native story changes even before the next UI tick.
+    memset((void*)(DATA+0x41c0),0,0x42870);owned(0,2200,20);
+    for(unsigned story=0;story<2;story++)for(unsigned ch=1;ch<16;ch++) {
+        bool allowed=story==0?ch<=8:(ch==1||ch==7||ch==14||ch==15);
+        if(!allowed)continue;
+        ST8(VIEW+0x150,story?8:0);quickstep_slot_adopt(DATA,story,NULL);assign(&c,ch,0);
+        owner_epoch=0;assert(quickstep_slot_owner(CONTEXT,ITEM(0),&owner,&owner_epoch));
+        assert(owner.character==ch&&owner.assigned);
+        ST64(ITEM_VIEW+0x138,ITEM(0));ST32(OWNER_CACHE+8,ch);
+        c=cpu();c.x[20]=ITEM_VIEW;c.x[0]=UINT32_MAX;before=c;
+        quickstep_slot_native_marker(&c);before.x[0]=1;assert(!memcmp(&c,&before,sizeof c));
+        c.x[0]=0;before=c;quickstep_slot_native_portrait_owner(&c);before.x[0]=ch;
+        assert(!memcmp(&c,&before,sizeof c));
+        ST8(VIEW+0x150,story?0:8);calls_before=native_calls;c.x[0]=UINT32_MAX;before=c;
+        assert(!quickstep_slot_owner(CONTEXT,ITEM(0),&owner,&owner_epoch));
+        quickstep_slot_native_marker(&c);assert(!memcmp(&c,&before,sizeof c)&&native_calls==calls_before);
+        c.x[0]=0;before=c;quickstep_slot_native_portrait_owner(&c);
+        assert(!memcmp(&c,&before,sizeof c)&&native_calls==calls_before);
+    }
+    puts("quickstep owned gem, stale serial, active story, native merge, lease, OFF, native E marker, portrait owner and mutation contracts: PASS");
 }
