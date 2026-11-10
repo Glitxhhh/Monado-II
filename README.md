@@ -7,13 +7,14 @@ original project and the game. This fork adds native Linux work and continues
 maintenance (no plans to add my improvements like 99 save slots, high fps stability, etc to Windows at this point); it is independent of Nintendo and Monolith Soft. This was developed entirely using AI,
 do with that information what you will.
 
+Overhauled Launcher!
 <img width="1259" height="795" alt="image" src="https://github.com/user-attachments/assets/69fabc08-665d-41bc-8900-f707138d630f" />
 
 Dedicated Quickstep Gem Slot! (Optional)
-<img width="960" height="504" alt="quickstep" src="https://github.com/user-attachments/assets/c90305c4-7b92-4f11-a0b0-0086d4f6659f" />
+<img width="870" height="489" alt="quickstep" src="https://github.com/user-attachments/assets/ec5a4ae7-495b-4208-8cbe-e851116582ee" />
 
 99 Save Slots!
-<img width="960" height="504" alt="99-save-slots" src="https://github.com/user-attachments/assets/76e5b163-2a8d-41a4-82a2-060e61174bab" />
+<img width="870" height="489" alt="99-save-slots" src="https://github.com/user-attachments/assets/8899b35a-1867-4712-9c4a-0372738c01c0" />
 
 Linux 0.1.11 stabilizes the optional dedicated Quick Step gem slot, including
 save/Continue restoration, equipped indicators and native menu feedback, and
