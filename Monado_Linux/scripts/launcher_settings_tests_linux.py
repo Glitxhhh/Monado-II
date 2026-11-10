@@ -14,7 +14,7 @@ import time
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = 'tests/native/test_launcher_settings_linux.c'
-CASES = ('roundtrip', 'selection', 'clamps', 'bindings-invalid', 'linux-fallback', 'menu-navigation')
+CASES = ('roundtrip', 'selection', 'clamps', 'bindings-invalid', 'linux-fallback', 'menu-navigation', 'quickstep')
 GAPS = ('invalid-volume', 'invalid-fps', 'invalid-window', 'unknown-key', 'save-io-error')
 
 

@@ -432,6 +432,40 @@ def game_features(game):
     return receipt
 
 
+
+def verify_runtime_selection(workspace, state):
+    """Recheck real game/GUI loading before selecting an update; no state writes."""
+    workspace = ordinary(Path(workspace))
+    port = workspace / 'Monado_Linux'
+    layout = layout_module(workspace)
+    image = pair(workspace / IMAGE)
+    roots = []
+    for key in ('launcher', 'game'):
+        name = image.get(key)
+        if not isinstance(name, str):
+            raise ValueError('Update image has no receipted native ' + key + ' selection')
+        relative = Path(name)
+        if (relative.is_absolute() or '..' in relative.parts or len(relative.parts) < 4
+                or relative.parts[0] != 'Monado_Linux'
+                or relative.parts[1] not in ('build', 'runs', 'accepted')):
+            raise ValueError('Invalid update native selection path')
+        selected_root = layout.game_port(port).parent if key == 'game' else workspace
+        roots.append(ordinary(selected_root / relative))
+    # Run the current authored validator, not code copied from an unselected
+    # candidate. It understands preserved legacy receipts without blessing them
+    # as a new closed dependency graph.
+    path = ROOT / 'Monado_Linux/scripts/run_linux.py'
+    spec = importlib.util.spec_from_file_location('_monado_update_runtime_launch', path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    checks = []
+    for executable in roots:
+        launch = module.plan(executable, state, port=port)
+        checks.append(module.validate_runtime(launch))
+    return {'schema': 1, 'status': 'passed', 'checks': checks,
+            'scope': 'Current native dependency checks before update activation; no game/UI or profile writes'}
+
+
 def build_command(workspace, game, rebuild):
     command = [str(workspace / 'Build_Monado_II.sh')]
     receipt = game_features(game)
@@ -637,6 +671,7 @@ class Session:
         installed_sources(self.workspace)
         installed_sources(workspace)
         image_receipt = pair(workspace / IMAGE)
+        runtime_validation = verify_runtime_selection(workspace, self.state)
         # The builder's final AppImage --dry-run checks the exact input, selected
         # native receipts/resources and stable state without opening a game/UI.
         record = {'schema': 1, 'version': self.offer['version'], 'id': identifier,
@@ -645,7 +680,8 @@ class Session:
                   'receipt_sha256': digest(workspace / (IMAGE + '.receipt.json')),
                   'source_manifest_sha256': digest(workspace / 'publication-manifest.json')}
         active_record(self.owner, record)
-        self.prepared = {'record': record, 'previous': prior, 'transaction': str(transaction), 'rebuild': rebuild}
+        self.prepared = {'record': record, 'previous': prior, 'transaction': str(transaction), 'rebuild': rebuild,
+                         'runtime_validation': runtime_validation}
         write_new(transaction / 'prepared.json', self.prepared)
         progress({'phase': 'ready', 'message': 'Update built and checked. Restarting the launcher; saves stay in place.'})
         return self.prepared
@@ -661,6 +697,7 @@ class Session:
         actual = json_read(selected, 8192) if selected.exists() else None
         if actual != prepared['previous']:
             raise ValueError('active selection changed; preserve the prepared update and retry safely')
+        verify_runtime_selection(workspace, self.state)
         original, marker_before = _prepare_version_state(self.owner, workspace)
         # Previous record is durable before the one-file commit. Until replace,
         # crashes leave the old selection. Images, code and saves stay in place;

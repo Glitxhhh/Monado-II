@@ -178,7 +178,9 @@ def main():
                 elif mode == 'language':
                     click(10, item(base, kind='Combo', label='Launcher language'))
                     events.extend(['20 key-down 82', '21 key-up 82', '25 key-down 40', '26 key-up 40'])
-            native = ['--project-root', str(ROOT), '--input-root', str(ROOT.parent / 'game_files'), '--game-executable', str(args.game_executable.resolve()), '--state-root', str(state), '--shot', str(shot), '--shot-tab', str(tab), '--shot-frame', '90' if mode == 'tooltip' else '50']
+            # [XCDE] LINUX-039: shared input may be a link; the native launcher
+            # requires the canonical selected path, just like its normal wrapper.
+            native = ['--project-root', str(ROOT), '--input-root', str((ROOT.parent / 'game_files').resolve()), '--game-executable', str(args.game_executable.resolve()), '--state-root', str(state), '--shot', str(shot), '--shot-tab', str(tab), '--shot-frame', '90' if mode == 'tooltip' else '50']
             if events:
                 script = state / 'test.events'
                 script.write_text('\n'.join(events) + '\n')

@@ -6,19 +6,26 @@ not playable game binaries. Each player generates game code locally from their
 own legally dumped input. No game content, generated code, translated shaders,
 caches, seeds, keys, firmware, saves, mods or private SDK binaries are distributed.
 
-Version 0.1.9 is a regular release, with GitHub's prerelease option disabled.
-This channel change does not establish Windows game-build or full-game coverage.
+Version 0.1.10 is a regular release, with GitHub's prerelease option disabled.
+A regular release does not establish Windows game-build or full-game coverage.
 The exact reviewed generated launcher illustration is included with its
 [provenance](../Monado_Linux/tools/launcher/assets/ARTWORK_PROVENANCE.md) and root
 notice; other unreviewed imagery remains excluded.
 
-The 0.1.9 expanded save slots and bounded initial scan are Linux-only. The Windows
-kit retains its existing implementation; parity work is not currently planned.
-Release notes must distinguish the maintainer's positive manual feedback from
-unqualified 99-slot, recovery or full-game coverage. The native hook changes
-require a full local game rebuild through the Linux updater while retaining
-the original saves/settings profile and read-only input. Do not package profiles
-or perform save conversion as part of an update.
+The 0.1.10 dedicated Quick Step slot, NPC trading fix and runtime compatibility
+changes are Linux-only. The Windows kit retains its existing implementation;
+parity work is not currently planned. Release notes must retain the **Quick Step
+experimental, off-by-default, hit-or-miss/UI-quirks and future-polish disclaimer**.
+They must distinguish the maintainer's positive Quick Step/trading feedback from
+unqualified character/equipment/save/recovery/full-game coverage. Isolated Arch
+userspace loading/media checks are not CachyOS/AMD/Wayland gameplay qualification.
+
+The native/generator/runtime changes require a full local game rebuild through
+the Linux updater while retaining the original saves/settings profile and
+read-only input. Do not package profiles or perform save conversion as part of
+an update. Preserve optional Quick Step assignment metadata with its save folder.
+The builder fetches the compatible media libraries privately; source kits and
+launcher images do not distribute those runtime libraries or vendor SDK binaries.
 
 The Linux kit includes `Build_Monado_II.sh` and `Play_Monado_II.sh`. Users create
 their launcher AppImage locally beside their own input/build workspace; neither
@@ -67,8 +74,8 @@ From a reviewed clean public checkout:
 MONADO_RELEASE_SOURCE="$(pwd -P)"
 MONADO_RELEASE_PARENT="$(dirname "$MONADO_RELEASE_SOURCE")"
 python -B tools/publication_guard.py "$MONADO_RELEASE_SOURCE"
-python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform linux --version 0.1.9 --output "$MONADO_RELEASE_PARENT/monado-ii-linux-release"
-python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform windows --version 0.1.9 --output "$MONADO_RELEASE_PARENT/monado-ii-windows-release"
+python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform linux --version 0.1.10 --output "$MONADO_RELEASE_PARENT/monado-ii-linux-release"
+python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform windows --version 0.1.10 --output "$MONADO_RELEASE_PARENT/monado-ii-windows-release"
 ```
 
 Outputs must be fresh. The packager verifies the exact publication manifest and
@@ -94,7 +101,7 @@ setup and compatibility alias must have equal bytes and digests. For example,
 from the parent of the two fresh local packaging output directories:
 
 ```sh
-MONADO_RELEASE_VERSION=0.1.9
+MONADO_RELEASE_VERSION=0.1.10
 (cd monado-ii-linux-release && sha256sum -c SHA256SUMS)
 (cd monado-ii-windows-release && sha256sum -c SHA256SUMS)
 cmp "monado-ii-linux-release/monado-ii-${MONADO_RELEASE_VERSION}-linux-setup.tar.gz" "monado-ii-linux-release/monado-ii-${MONADO_RELEASE_VERSION}-linux-source.tar.gz"

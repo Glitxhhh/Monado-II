@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""[XCDE] LINUX-002: verify/extract pinned Ubuntu graphics headers/shared libraries locally.
+"""[XCDE] LINUX-002/042: verify/extract pinned private graphics/runtime libraries.
 
 No APT installation, maintainer scripts, system writes or compiler changes. This
-is a development sysroot on the recorded Ubuntu host, not a distributable bundle.
-Installed host libraries supply its transitive runtime dependencies. Run with
+is a project-local sysroot, not a distributable binary bundle. Its declared
+non-platform runtime closure is pinned; native host interfaces are checked by
+the build/runner preflight rather than copied from the build host. Run with
 --offline after caching the exact locked .deb files; all hashes are rechecked.
 """
 import argparse
@@ -283,6 +284,54 @@ def inspect_archive(path):
             process.wait()
 
 
+def runtime_policy_digest(policy):
+    raw = json.dumps(policy, sort_keys=True, separators=(',', ':')).encode()
+    return hashlib.sha256(raw).hexdigest()
+
+
+def validate_private_runtime(sysroot, lock, previous=None):
+    """Check the owned graph without binding it to this setup host's libraries.
+
+    Declared platform interfaces deliberately remain unresolved here. The build
+    and launch preflight validates those actual native providers and the loader
+    separately. Every other missing or wrong-version dependency is a failure.
+    """
+    policy = lock.get('runtime')
+    if policy is None:  # Existing legacy lock fixtures have no closure claim.
+        return {}
+    if policy.get('schema') != 1:
+        raise ValueError('unsupported private runtime policy schema')
+    packages = {package['package'] for package in lock['packages']}
+    if (not policy.get('root_sonames') or not isinstance(policy.get('owned_sonames'), dict)
+            or any(name not in policy['owned_sonames'] for name in policy['root_sonames'])
+            or any(meta.get('package') not in packages for meta in policy['owned_sonames'].values())):
+        raise ValueError('runtime roots/providers do not bind locked packages')
+    module_path = Path(__file__).with_name('linux_runtime_graph.py')
+    spec = importlib.util.spec_from_file_location('_graphics_runtime_graph', module_path)
+    graph = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(graph)
+    roots = [sysroot / policy['owned_sonames'][name]['path'] for name in policy['root_sonames']]
+    result = graph.audit_closure(roots, sysroot, policy, {})
+    errors = [item for item in result['errors'] if item['kind'] != 'host_missing']
+    if errors:
+        raise ValueError('private runtime dependency closure failed: ' + json.dumps(errors[:16], sort_keys=True))
+    actual = {item['soname']: item for item in result['objects']}
+    if set(actual) != set(policy['owned_sonames']):
+        raise ValueError('private runtime policy does not describe the complete reachable owned graph')
+    owned = {name: {'path': meta['path'], 'sha256': actual[name]['sha256'],
+                    'bytes': actual[name]['bytes']}
+             for name, meta in policy['owned_sonames'].items()}
+    metadata = {'runtime_policy': policy, 'runtime_policy_sha256': runtime_policy_digest(policy),
+                'owned_runtime_files': owned,
+                'required_host_interfaces': sorted({edge['needed'] for edge in result['edges']
+                                                     if edge['needed'] in policy['host_sonames']}),
+                'runtime_scope': 'Private native DT_NEEDED/version closure verified; '
+                                 'host providers and dlopen/GPU plugins require separate preflight.'}
+    if previous is not None and any(previous.get(key) != value for key, value in metadata.items()):
+        raise ValueError('existing private runtime metadata/files changed; preserve and investigate the sysroot')
+    return metadata
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--offline', action='store_true')
@@ -314,6 +363,7 @@ def main():
     if target.exists():
         if target.is_symlink() or not marker.is_file() or json.loads(marker.read_text())['lock_sha256'] != identity:
             raise RuntimeError('existing sysroot has unknown identity; refusing to overwrite')
+        validate_private_runtime(target, lock, json.loads(marker.read_text()))
     else:
         with tempfile.TemporaryDirectory(prefix='extract-', dir=parent) as temporary:
             stage = Path(temporary) / 'sysroot'
@@ -321,7 +371,9 @@ def main():
             for package, archive in zip(lock['packages'], archives):
                 inspect_archive(archive)
                 subprocess.run(['dpkg-deb', '--extract', str(archive), str(stage)], check=True)
-            write_managed_text(stage / '.monado-deps.json', json.dumps({'lock_sha256': identity, 'packages': lock['packages']}, indent=2) + '\n')
+            runtime = validate_private_runtime(stage, lock)
+            write_managed_text(stage / '.monado-deps.json', json.dumps(
+                {'lock_sha256': identity, 'packages': lock['packages'], **runtime}, indent=2) + '\n')
             reject_managed_symlinks(target)
             stage.rename(target)
     reject_managed_symlinks(bin_dir)

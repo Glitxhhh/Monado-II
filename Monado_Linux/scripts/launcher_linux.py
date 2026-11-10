@@ -388,6 +388,9 @@ def main(argv=None):
         if args.dry_run:
             print(json.dumps(launch, indent=2))
             return 0
+        # Validate both actual artifacts before acquiring or writing the profile.
+        for executable in (args.launcher_executable, args.game_executable):
+            run_linux.validate_runtime(run_linux.plan(executable, args.state_root))
         os.umask(0o077)
         state = Path(launch['state'])
         lock_fd = acquire_lock(state)

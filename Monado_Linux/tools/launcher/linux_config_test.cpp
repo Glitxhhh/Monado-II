@@ -32,6 +32,25 @@ static void check_saved_key(const std::string &text, const char *value) {
 int main(int argc, char **argv) {
     CHECK(argc == 2); CHECK(mkdir(argv[1], 0700) == 0); g_root = argv[1];
     CHECK(!SDL_WasInit(0)); CHECK(!SDL_GetCurrentVideoDriver());
+    // [XCDE] LINUX-039: actual launcher load/save, no window or real profile.
+    CHECK(!Cfg{}.quickstep_slot);
+    g.quickstep_slot = true; load(); CHECK(!g.quickstep_slot);
+    const char *qvalues[] = {"0", "1", "", "true", "01", "-1", "2", "1 extra"};
+    for (unsigned i = 0; i < sizeof qvalues / sizeof *qvalues; ++i) {
+        reset(); g.quickstep_slot = true;
+        std::string text = std::string("quickstep_slot = ") + qvalues[i] + "\nfps = 120\n";
+        write_config(text.c_str()); load(); CHECK(g.quickstep_slot == (i == 1));
+        CHECK(!g_extra.count("quickstep_slot") && !g_custom.count("quickstep_slot"));
+        CHECK(contents() == text); CHECK(save());
+        std::string saved = contents(), line = std::string("quickstep_slot = ") + (i == 1 ? "1\n" : "0\n");
+        auto at = saved.find(line); CHECK(at != std::string::npos && saved.find("quickstep_slot = ", at + line.size()) == std::string::npos);
+        g.quickstep_slot = i != 1; load(); CHECK(g.quickstep_slot == (i == 1));
+    }
+    write_config("quickstep_slot = 1\n"); load(); CHECK(g.quickstep_slot);
+    write_config("fps = 60\n"); load(); CHECK(!g.quickstep_slot);
+    write_config("quickstep_slot = 1\nquickstep_slot = invalid\n"); load(); CHECK(!g.quickstep_slot);
+    write_config("quickstep_slot = 0\nquickstep_slot = 1\n"); load(); CHECK(g.quickstep_slot);
+    write_config(""); reset();
     CHECK(Cfg{}.menu_navigation_speed == 0);
     g.menu_navigation_speed = 1; load(); CHECK(g.menu_navigation_speed == 0);
 

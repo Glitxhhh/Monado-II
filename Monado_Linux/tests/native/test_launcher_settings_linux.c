@@ -105,6 +105,23 @@ int main(int argc, char **argv) {
     }
     if (!strcmp(mode, "roundtrip")) {
         load(valid); check_valid(); settings_save(); reset(); settings_load(); check_valid();
+    } else if (!strcmp(mode, "quickstep")) {
+        // [XCDE] LINUX-039: explicit opt-in and canonical runtime persistence.
+        assert(!defaults.quickstep_slot);
+        const char *values[] = {"0", "1", "", "true", "01", "-1", "2", "1 extra"};
+        for (unsigned i = 0; i < sizeof values / sizeof *values; ++i) {
+            char text[192]; snprintf(text, sizeof text, "quickstep_slot = %s\nfps = 120\n", values[i]);
+            g_settings.quickstep_slot = true; load(text);
+            assert(g_settings.quickstep_slot == (i == 1) && g_settings.fps == 120);
+            settings_save(); char *saved = read_all("xcde.ini");
+            assert(strstr(saved, i == 1 ? "quickstep_slot = 1\n" : "quickstep_slot = 0\n"));
+            free(saved); reset(); settings_load(); assert(g_settings.quickstep_slot == (i == 1));
+        }
+        load("quickstep_slot = 1\n"); assert(g_settings.quickstep_slot);
+        load("fps = 60\n"); assert(!g_settings.quickstep_slot && g_settings.fps == 60);
+        load("quickstep_slot = 1\nquickstep_slot = invalid\n"); assert(!g_settings.quickstep_slot);
+        load("quickstep_slot = 0\nquickstep_slot = 1\n"); assert(g_settings.quickstep_slot);
+        load(" \tquickstep_slot \t= \t1\r\n"); assert(g_settings.quickstep_slot);
     } else if (!strcmp(mode, "menu-navigation")) {
         assert(defaults.menu_navigation_speed == MENU_NAV_NORMAL);
         load("menu_navigation_speed = fast\nfps = 120\nvolume = 73\nbind_key_a = F3\n");

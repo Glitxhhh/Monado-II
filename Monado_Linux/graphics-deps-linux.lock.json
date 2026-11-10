@@ -1,9 +1,9 @@
 {
   "schema": 1,
-  "task": "LINUX-002",
+  "task": "LINUX-042",
   "platform": "Ubuntu 26.04 resolute amd64",
-  "purpose": "Local dynamic-link development sysroot; extraction only, no maintainer scripts/system installation. Transitive runtime dependencies use installed host packages and require link validation.",
-  "metadata_source": "Existing host APT package indexes (candidate versions); package bytes verified against indexed SHA256.",
+  "purpose": "Project-local pinned development and non-platform runtime sysroot; verified archive extraction only, no maintainer scripts or system installation. Explicit host interfaces and exact ABI requirements are audited separately.",
+  "metadata_source": "Existing official Ubuntu resolute APT indexes; exact Package/Version/Architecture/Filename/Size/SHA256 verified and recorded in the private LINUX-042 provenance receipt.",
   "packages": [
     {
       "package": "libsdl3-dev",
@@ -474,6 +474,1834 @@
       "size": 61786,
       "sha256": "10084666f747247550c3e82f9a12cbfd9184c19241a42eb34d8893ecb8e03b35",
       "depends": "libc6 (>= 2.14)"
+    },
+    {
+      "package": "libvpx12",
+      "version": "1.16.0-3",
+      "architecture": "amd64",
+      "filename": "libvpx12_1.16.0-3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libv/libvpx/libvpx12_1.16.0-3_amd64.deb",
+      "size": 1243784,
+      "sha256": "e1b852dfaa099fbcc60ab08d4e340553a7701c501544089609838c9417ba5fa0",
+      "depends": "libc6 (>= 2.34)"
+    },
+    {
+      "package": "libwebpmux3",
+      "version": "1.5.0-0.1build1",
+      "architecture": "amd64",
+      "filename": "libwebpmux3_1.5.0-0.1build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libw/libwebp/libwebpmux3_1.5.0-0.1build1_amd64.deb",
+      "size": 26446,
+      "sha256": "e4da6abdb642623afd2e4a60ef354539f8b74ba0f2daaaeb0e058a392d4ae571",
+      "depends": "libc6 (>= 2.29), libwebp7 (>= 1.5.0)"
+    },
+    {
+      "package": "liblzma5",
+      "version": "5.8.3-1ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "liblzma5_5.8.3-1ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/x/xz-utils/liblzma5_5.8.3-1ubuntu0.1_amd64.deb",
+      "size": 145800,
+      "sha256": "da480a60b02a80fd529904dc0a92dae5d537864a9412909e45fbd9dd46f26e2f",
+      "depends": "libc6 (>= 2.34)"
+    },
+    {
+      "package": "libdav1d7",
+      "version": "1.5.3-1",
+      "architecture": "amd64",
+      "filename": "libdav1d7_1.5.3-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/d/dav1d/libdav1d7_1.5.3-1_amd64.deb",
+      "size": 626070,
+      "sha256": "d5171827e3b466f65ba50b886128ae3aaa7c28523293bdcd337e4a10a8929ebe",
+      "depends": "libc6 (>= 2.34)"
+    },
+    {
+      "package": "librsvg2-2",
+      "version": "2.61.3+dfsg-3ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "librsvg2-2_2.61.3+dfsg-3ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libr/librsvg/librsvg2-2_2.61.3+dfsg-3ubuntu0.1_amd64.deb",
+      "size": 1849824,
+      "sha256": "49a535a1d8903eca4c0fdb651ee1461a6bc732a9774b2f6bae0f171f02abb779",
+      "depends": "libc6 (>= 2.34), libcairo-gobject2 (>= 1.10.0), libcairo2 (>= 1.15.8), libgcc-s1 (>= 4.2), libgdk-pixbuf-2.0-0 (>= 2.25.2), libglib2.0-0t64 (>= 2.54.0), libpango-1.0-0 (>= 1.48.11), libpangocairo-1.0-0 (>= 1.48.11), libxml2-16 (>= 2.14.1)"
+    },
+    {
+      "package": "libcairo2",
+      "version": "1.18.4-3",
+      "architecture": "amd64",
+      "filename": "libcairo2_1.18.4-3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/c/cairo/libcairo2_1.18.4-3_amd64.deb",
+      "size": 578678,
+      "sha256": "525ab7b5ad6529ea35aa09308ddd1fd2325c85ad70e7483ba66b526d8ee9f7a7",
+      "depends": "libc6 (>= 2.38), libfontconfig1 (>= 2.12.6), libfreetype6 (>= 2.11.1), libpixman-1-0 (>= 0.40.0), libpng16-16t64 (>= 1.6.46), libx11-6, libxcb-render0, libxcb-shm0, libxcb1 (>= 1.6), libxext6, libxrender1 (>= 1:0.9.12), zlib1g (>= 1:1.1.4)"
+    },
+    {
+      "package": "libglib2.0-0t64",
+      "version": "2.88.0-1ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "libglib2.0-0t64_2.88.0-1ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/g/glib2.0/libglib2.0-0t64_2.88.0-1ubuntu0.1_amd64.deb",
+      "size": 1597886,
+      "sha256": "7868fd4b24fd4b6e644a63685b6d0c282c6b636deac842d1455d71ff5c9ecd07",
+      "depends": "libatomic1 (>= 4.8), libc6 (>= 2.43), libffi8 (>= 3.4), libmount1 (>= 2.40~rc2), libpcre2-8-0 (>= 10.22), libselinux1 (>= 3.1~), zlib1g (>= 1:1.2.2)"
+    },
+    {
+      "package": "libzvbi0t64",
+      "version": "0.2.44-1ubuntu2",
+      "architecture": "amd64",
+      "filename": "libzvbi0t64_0.2.44-1ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/z/zvbi/libzvbi0t64_0.2.44-1ubuntu2_amd64.deb",
+      "size": 263544,
+      "sha256": "fa7938ef744ac9f56548ed754af9d7e474e2dd35961c3268fca2d475ab8b87cb",
+      "depends": "libc6 (>= 2.38), libpng16-16t64 (>= 1.6.46), libzvbi-common (= 0.2.44-1ubuntu2)"
+    },
+    {
+      "package": "libsnappy1v5",
+      "version": "1.2.2-2",
+      "architecture": "amd64",
+      "filename": "libsnappy1v5_1.2.2-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/s/snappy/libsnappy1v5_1.2.2-2_amd64.deb",
+      "size": 30830,
+      "sha256": "1679c696614780a0137e2b484ade47fc226177556e261bace9a779ae98b29346",
+      "depends": "libc6 (>= 2.14), libstdc++6 (>= 5.2)"
+    },
+    {
+      "package": "libaom3",
+      "version": "3.13.1-2ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "libaom3_3.13.1-2ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/a/aom/libaom3_3.13.1-2ubuntu0.1_amd64.deb",
+      "size": 1969262,
+      "sha256": "74d46764b6b336d15682fb7d6203e6e1052be4ffb1ec371237989bab59fa829d",
+      "depends": "libc6 (>= 2.43)"
+    },
+    {
+      "package": "libcodec2-1.2",
+      "version": "1.2.0-4",
+      "architecture": "amd64",
+      "filename": "libcodec2-1.2_1.2.0-4_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/c/codec2/libcodec2-1.2_1.2.0-4_amd64.deb",
+      "size": 9014894,
+      "sha256": "1e585d61c9993704947df3fe2d1dedae4f9173d2eb087ad891ccb862c369c32e",
+      "depends": "libc6 (>= 2.32)"
+    },
+    {
+      "package": "libgsm1",
+      "version": "1.0.23-2",
+      "architecture": "amd64",
+      "filename": "libgsm1_1.0.23-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libg/libgsm/libgsm1_1.0.23-2_amd64.deb",
+      "size": 28948,
+      "sha256": "8c1d81d0275cd72fa35cf819ec3c8d7dc919d67461430ddd3ea5d534dcda75fd",
+      "depends": "libc6 (>= 2.4)"
+    },
+    {
+      "package": "libjxl0.11",
+      "version": "0.11.1-6ubuntu4.2",
+      "architecture": "amd64",
+      "filename": "libjxl0.11_0.11.1-6ubuntu4.2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/j/jpeg-xl/libjxl0.11_0.11.1-6ubuntu4.2_amd64.deb",
+      "size": 1269230,
+      "sha256": "ad047c32784c7e3d1119f32c164876ae8f60c545c25354c9d673a958eef183df",
+      "depends": "libbrotli1 (>= 0.6.0), libc6 (>= 2.43), libgcc-s1 (>= 3.4), libhwy1t64 (>= 1.0.3), liblcms2-2 (>= 2.13), libstdc++6 (>= 12)"
+    },
+    {
+      "package": "libmp3lame0",
+      "version": "3.101~svn6525+dfsg-2ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "libmp3lame0_3.101~svn6525+dfsg-2ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/l/lame/libmp3lame0_3.101~svn6525+dfsg-2ubuntu0.1_amd64.deb",
+      "size": 121480,
+      "sha256": "bc765461943344b160f208572c296360011a9aa14ca886fac5865dac4ba8730c",
+      "depends": "libc6 (>= 2.43), libmpg123-0t64 (>= 1.28.0)"
+    },
+    {
+      "package": "libopenjp2-7",
+      "version": "2.5.4-1ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "libopenjp2-7_2.5.4-1ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/o/openjpeg2/libopenjp2-7_2.5.4-1ubuntu0.1_amd64.deb",
+      "size": 186936,
+      "sha256": "e004284779778e47573997b8994109120b5d5101e6b6c7dfa9b30b346c819845",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "librav1e0.8",
+      "version": "0.8.1-7",
+      "architecture": "amd64",
+      "filename": "librav1e0.8_0.8.1-7_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/r/rust-rav1e/librav1e0.8_0.8.1-7_amd64.deb",
+      "size": 1062212,
+      "sha256": "e6d97b85c9d5b253db981460e212e81e12b89d1992b73996169bf919a9644a69",
+      "depends": "libc6 (>= 2.34), libgcc-s1 (>= 4.2)"
+    },
+    {
+      "package": "libshine3",
+      "version": "3.1.1-3build1",
+      "architecture": "amd64",
+      "filename": "libshine3_3.1.1-3build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/s/shine/libshine3_3.1.1-3build1_amd64.deb",
+      "size": 23472,
+      "sha256": "db8512aab103ab04320acd50828b0ce3e89315e09257ddf0ec8134a48b9c34d2",
+      "depends": "libc6 (>= 2.29)"
+    },
+    {
+      "package": "libspeex1",
+      "version": "1.2.1-3build1",
+      "architecture": "amd64",
+      "filename": "libspeex1_1.2.1-3build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/s/speex/libspeex1_1.2.1-3build1_amd64.deb",
+      "size": 63298,
+      "sha256": "a680f573914fde02780f169e03d754cfc905b04fa4ef24663eb8d27f10033804",
+      "depends": "libc6 (>= 2.29)"
+    },
+    {
+      "package": "libsvtav1enc2",
+      "version": "2.3.0+dfsg-1build1",
+      "architecture": "amd64",
+      "filename": "libsvtav1enc2_2.3.0+dfsg-1build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/s/svt-av1/libsvtav1enc2_2.3.0+dfsg-1build1_amd64.deb",
+      "size": 2742484,
+      "sha256": "921aba1d564804d521dea0898242bff4e3a33bba41811eb4a21960f8753a3106",
+      "depends": "libc6 (>= 2.34)"
+    },
+    {
+      "package": "libtheoraenc2",
+      "version": "1.2.0+dfsg-6",
+      "architecture": "amd64",
+      "filename": "libtheoraenc2_1.2.0+dfsg-6_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libt/libtheora/libtheoraenc2_1.2.0+dfsg-6_amd64.deb",
+      "size": 106272,
+      "sha256": "fee798e4313614856255942dafa86975f0f68538974e0edc600a844e1f151166",
+      "depends": "libc6 (>= 2.14), libogg0 (>= 1.1.0)"
+    },
+    {
+      "package": "libtheoradec2",
+      "version": "1.2.0+dfsg-6",
+      "architecture": "amd64",
+      "filename": "libtheoradec2_1.2.0+dfsg-6_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libt/libtheora/libtheoradec2_1.2.0+dfsg-6_amd64.deb",
+      "size": 55638,
+      "sha256": "ba95870a379eb408156f76922ddebceef0a9293ce92abb9112a86ada0751eb84",
+      "depends": "libc6 (>= 2.14), libcairo2 (>= 1.2.4)"
+    },
+    {
+      "package": "libtwolame0",
+      "version": "0.4.0-2build4",
+      "architecture": "amd64",
+      "filename": "libtwolame0_0.4.0-2build4_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/t/twolame/libtwolame0_0.4.0-2build4_amd64.deb",
+      "size": 52614,
+      "sha256": "f83717d357ca0d038ff333615d9aba6d19a888b93630e8142815f81e16cb0f22",
+      "depends": "libc6 (>= 2.29)"
+    },
+    {
+      "package": "libvorbis0a",
+      "version": "1.3.7-3build2",
+      "architecture": "amd64",
+      "filename": "libvorbis0a_1.3.7-3build2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libv/libvorbis/libvorbis0a_1.3.7-3build2_amd64.deb",
+      "size": 100972,
+      "sha256": "e8577fd985c3a2bc61212be338207cc2a95e7d6892acaeccb3d455da13e4a480",
+      "depends": "libc6 (>= 2.35), libogg0 (>= 1.1.0)"
+    },
+    {
+      "package": "libvorbisenc2",
+      "version": "1.3.7-3build2",
+      "architecture": "amd64",
+      "filename": "libvorbisenc2_1.3.7-3build2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libv/libvorbis/libvorbisenc2_1.3.7-3build2_amd64.deb",
+      "size": 79598,
+      "sha256": "b4230d0064eee971727b204e3d0644a4deb4a3d882eaac2304d379e7a5439f2a",
+      "depends": "libc6 (>= 2.4), libvorbis0a (= 1.3.7-3build2)"
+    },
+    {
+      "package": "libwebp7",
+      "version": "1.5.0-0.1build1",
+      "architecture": "amd64",
+      "filename": "libwebp7_1.5.0-0.1build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libw/libwebp/libwebp7_1.5.0-0.1build1_amd64.deb",
+      "size": 263542,
+      "sha256": "0a846cf63522d9c1f28d31bdd53e35e223d590a0971bb6927b3ee5092934ce9d",
+      "depends": "libc6 (>= 2.34), libsharpyuv0 (>= 1.5.0)"
+    },
+    {
+      "package": "libx264-165",
+      "version": "2:0.165.3222+gitb35605ac-3build1",
+      "architecture": "amd64",
+      "filename": "libx264-165_0.165.3222+gitb35605ac-3build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/x/x264/libx264-165_0.165.3222+gitb35605ac-3build1_amd64.deb",
+      "size": 608898,
+      "sha256": "241892e87536b734becdae89571e22ad68db6fa3be8f274df7b1690afe9b7738",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "libx265-215",
+      "version": "4.1-4",
+      "architecture": "amd64",
+      "filename": "libx265-215_4.1-4_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/x/x265/libx265-215_4.1-4_amd64.deb",
+      "size": 1330674,
+      "sha256": "42119a16e5382db41fa96ad779b0dc5771dce0f0d2109047132607ccd2be9ba3",
+      "depends": "libc6 (>= 2.38), libnuma1 (>= 2.0.11), libstdc++6 (>= 4.1.1)"
+    },
+    {
+      "package": "libxvidcore4",
+      "version": "2:1.3.7-3",
+      "architecture": "amd64",
+      "filename": "libxvidcore4_1.3.7-3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/x/xvidcore/libxvidcore4_1.3.7-3_amd64.deb",
+      "size": 219576,
+      "sha256": "8d16af6b2ad24eb312f471f7dbea7098947b25359a4c8f3f4a3e2e1065b96074",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "libx11-6",
+      "version": "2:1.8.13-1ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "libx11-6_1.8.13-1ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libx11/libx11-6_1.8.13-1ubuntu0.1_amd64.deb",
+      "size": 657516,
+      "sha256": "495363a728a03c9a9eee73439ec15a6ea78d6ec544a696c2e97dc5f3559547ae",
+      "depends": "libc6 (>= 2.38), libxcb1 (>= 1.11.1), libx11-data"
+    },
+    {
+      "package": "libxext6",
+      "version": "2:1.3.4-1build3",
+      "architecture": "amd64",
+      "filename": "libxext6_1.3.4-1build3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxext/libxext6_1.3.4-1build3_amd64.deb",
+      "size": 30840,
+      "sha256": "b867ba9daa9437ba3f18cba9646d9e3db55e5197bd4feb53184b1414c05210ca",
+      "depends": "libc6 (>= 2.14), libx11-6 (>= 2:1.6.0)"
+    },
+    {
+      "package": "libxcursor1",
+      "version": "1:1.2.3-1build1",
+      "architecture": "amd64",
+      "filename": "libxcursor1_1.2.3-1build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxcursor/libxcursor1_1.2.3-1build1_amd64.deb",
+      "size": 22108,
+      "sha256": "0f3d9816a3a557590ca1b31f2548b1988ad7ec9de976bad07cc24cc7d69b4ee7",
+      "depends": "libc6 (>= 2.38), libx11-6 (>= 2:1.4.99.1), libxfixes3, libxrender1 (>= 1:0.9.12)"
+    },
+    {
+      "package": "libxi6",
+      "version": "2:1.8.2-2",
+      "architecture": "amd64",
+      "filename": "libxi6_1.8.2-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxi/libxi6_1.8.2-2_amd64.deb",
+      "size": 33120,
+      "sha256": "b975dd89cac8c32a3cf622e1b7f5434db59f37eda87dfee399d0806d9953db0a",
+      "depends": "libc6 (>= 2.14), libx11-6 (>= 2:1.6.0), libxext6"
+    },
+    {
+      "package": "libxfixes3",
+      "version": "1:6.0.0-2build2",
+      "architecture": "amd64",
+      "filename": "libxfixes3_6.0.0-2build2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxfixes/libxfixes3_6.0.0-2build2_amd64.deb",
+      "size": 11102,
+      "sha256": "f3a71f6aa12000480c419e44f3aa5bdca7eb862b720d0307661b4e886db1c5f8",
+      "depends": "libc6 (>= 2.14), libx11-6 (>= 2:1.6.0)"
+    },
+    {
+      "package": "libxrandr2",
+      "version": "2:1.5.4-1build1",
+      "architecture": "amd64",
+      "filename": "libxrandr2_1.5.4-1build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxrandr/libxrandr2_1.5.4-1build1_amd64.deb",
+      "size": 19622,
+      "sha256": "d0052315ac1417234777c0872568a86fce4d3a3316c041e5a2200da70f43a855",
+      "depends": "libc6 (>= 2.14), libx11-6 (>= 2:1.6.0), libxext6, libxrender1 (>= 1:0.9.12)"
+    },
+    {
+      "package": "libxss1",
+      "version": "1:1.2.3-1build4",
+      "architecture": "amd64",
+      "filename": "libxss1_1.2.3-1build4_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxss/libxss1_1.2.3-1build4_amd64.deb",
+      "size": 7084,
+      "sha256": "04339441bb49c8b9c6d3297bb569b3b774de61e422f5e7334c34225b08709035",
+      "depends": "libc6 (>= 2.4), libx11-6 (>= 2:1.4.99.1), libxext6, x11-common"
+    },
+    {
+      "package": "libxtst6",
+      "version": "2:1.2.5-1ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "libxtst6_1.2.5-1ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxtst/libxtst6_1.2.5-1ubuntu0.1_amd64.deb",
+      "size": 13152,
+      "sha256": "09fc9803cfd2d00987e4e55123f845b1b77c3bf98eaf7ad2549caa938ac73fdd",
+      "depends": "libc6 (>= 2.4), libx11-6 (>= 2:1.6.0), libxext6, x11-common"
+    },
+    {
+      "package": "libfribidi0",
+      "version": "1.0.16-5",
+      "architecture": "amd64",
+      "filename": "libfribidi0_1.0.16-5_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/f/fribidi/libfribidi0_1.0.16-5_amd64.deb",
+      "size": 26594,
+      "sha256": "47fb50e96401a46c06d5122cd04cc42316f65530b9f868d2d450576a379d5d34",
+      "depends": "libc6 (>= 2.4)"
+    },
+    {
+      "package": "libwayland-egl1",
+      "version": "1.24.0-2",
+      "architecture": "amd64",
+      "filename": "libwayland-egl1_1.24.0-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/w/wayland/libwayland-egl1_1.24.0-2_amd64.deb",
+      "size": 6248,
+      "sha256": "692358c252186b132f6807548cffffe6f358d5b2139e8d57d0763b1f3ba28c61",
+      "depends": "libc6 (>= 2.2.5)"
+    },
+    {
+      "package": "libwayland-cursor0",
+      "version": "1.24.0-2",
+      "architecture": "amd64",
+      "filename": "libwayland-cursor0_1.24.0-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/w/wayland/libwayland-cursor0_1.24.0-2_amd64.deb",
+      "size": 10770,
+      "sha256": "941affa9ef61b0cca5cfac1fab13e8e78168af306709df4adf546c76be82a1de",
+      "depends": "libc6 (>= 2.28), libwayland-client0 (>= 1.20.0)"
+    },
+    {
+      "package": "libwayland-client0",
+      "version": "1.24.0-2",
+      "architecture": "amd64",
+      "filename": "libwayland-client0_1.24.0-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/w/wayland/libwayland-client0_1.24.0-2_amd64.deb",
+      "size": 28530,
+      "sha256": "094db0e190b53872e4d5310cd5fa09ca28ee3936386cd09e5f7d13e645aa12ab",
+      "depends": "libc6 (>= 2.38), libffi8 (>= 3.4)"
+    },
+    {
+      "package": "libxkbcommon0",
+      "version": "1.13.1-1",
+      "architecture": "amd64",
+      "filename": "libxkbcommon0_1.13.1-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxkbcommon/libxkbcommon0_1.13.1-1_amd64.deb",
+      "size": 159038,
+      "sha256": "7988d2375d10277ab4a54641aa6181accfaf3f5d25e48b050bf42a9583d4f926",
+      "depends": "xkb-data, libc6 (>= 2.38)"
+    },
+    {
+      "package": "libsoxr0",
+      "version": "0.1.3-4.1",
+      "architecture": "amd64",
+      "filename": "libsoxr0_0.1.3-4.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libs/libsoxr/libsoxr0_0.1.3-4.1_amd64.deb",
+      "size": 82730,
+      "sha256": "fea29b07ff35638b714c1607cf0969e238dceda43e1b44cee9bcefacfb5c988a",
+      "depends": "libc6 (>= 2.29), libgomp1 (>= 4.9)"
+    },
+    {
+      "package": "libxml2-16",
+      "version": "2.15.2+dfsg-0.1ubuntu0.3",
+      "architecture": "amd64",
+      "filename": "libxml2-16_2.15.2+dfsg-0.1ubuntu0.3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxml2/libxml2-16_2.15.2+dfsg-0.1ubuntu0.3_amd64.deb",
+      "size": 606694,
+      "sha256": "e82ce35fd61483c1febf83232e76e54a296a6a78391983a24a904ff640b75c09",
+      "depends": "libc6 (>= 2.38), zlib1g (>= 1:1.2.2.3)"
+    },
+    {
+      "package": "libbz2-1.0",
+      "version": "1.0.8-6ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "libbz2-1.0_1.0.8-6ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/b/bzip2/libbz2-1.0_1.0.8-6ubuntu0.1_amd64.deb",
+      "size": 36158,
+      "sha256": "f4a008f8219118acb7d5e0356d615f4fc6829a9f5a838394d0f7e101e9c5ebf8",
+      "depends": "libc6 (>= 2.4)"
+    },
+    {
+      "package": "libdvdnav4",
+      "version": "7.0.0-2",
+      "architecture": "amd64",
+      "filename": "libdvdnav4_7.0.0-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libd/libdvdnav/libdvdnav4_7.0.0-2_amd64.deb",
+      "size": 40296,
+      "sha256": "dcf724e6405bfa7f951d438dab1a6705fbd13da4156b3d1d931ebebf993fefbe",
+      "depends": "libc6 (>= 2.4), libdvdread8t64 (>= 6.1.0)"
+    },
+    {
+      "package": "libdvdread8t64",
+      "version": "7.0.1-1",
+      "architecture": "amd64",
+      "filename": "libdvdread8t64_7.0.1-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libd/libdvdread/libdvdread8t64_7.0.1-1_amd64.deb",
+      "size": 63272,
+      "sha256": "116b19d8623328523b5326efae99f0ec9e2d5546d8771c9c896c52213f9ae8d7",
+      "depends": "libc6 (>= 2.34)"
+    },
+    {
+      "package": "libgme0",
+      "version": "0.6.4-1",
+      "architecture": "amd64",
+      "filename": "libgme0_0.6.4-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/g/game-music-emu/libgme0_0.6.4-1_amd64.deb",
+      "size": 146074,
+      "sha256": "d3402c5b6069e995c8c9f58f602e879ad1b03e2b03f14a39e7cd08438d2779ea",
+      "depends": "libc6 (>= 2.38), libstdc++6 (>= 4.1.1), zlib1g (>= 1:1.1.4)"
+    },
+    {
+      "package": "libopenmpt0t64",
+      "version": "0.8.4-1",
+      "architecture": "amd64",
+      "filename": "libopenmpt0t64_0.8.4-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libo/libopenmpt/libopenmpt0t64_0.8.4-1_amd64.deb",
+      "size": 744406,
+      "sha256": "e9ee7ae791853dfad79a06f2b9c1b195080fbf15135932b333abd69763fd39c3",
+      "depends": "libc6 (>= 2.32), libgcc-s1 (>= 4.0), libmpg123-0t64 (>= 1.33.0), libstdc++6 (>= 13.1), libvorbis0a (>= 1.1.2), libvorbisfile3 (>= 1.1.2), zlib1g (>= 1:1.1.4)"
+    },
+    {
+      "package": "libchromaprint1",
+      "version": "1.6.0-2build1",
+      "architecture": "amd64",
+      "filename": "libchromaprint1_1.6.0-2build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/c/chromaprint/libchromaprint1_1.6.0-2build1_amd64.deb",
+      "size": 33416,
+      "sha256": "eff562e39c964044a830a61cd10ca2dae393f74b79eafe0ed63f55ca99b2f667",
+      "depends": "libc6 (>= 2.29), libgcc-s1 (>= 3.3.1), libstdc++6 (>= 13.1)"
+    },
+    {
+      "package": "libbluray3",
+      "version": "1:1.4.1-1",
+      "architecture": "amd64",
+      "filename": "libbluray3_1.4.1-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libb/libbluray/libbluray3_1.4.1-1_amd64.deb",
+      "size": 132558,
+      "sha256": "b7d30ca5c9c1482293a83c39d30ebaab723ba1962745bbe968fb3747aa80eda7",
+      "depends": "libc6 (>= 2.34), libfontconfig1 (>= 2.12.6), libfreetype6 (>= 2.2.1), libudfread3 (>= 1.2.0), libxml2-16 (>= 2.14.1)"
+    },
+    {
+      "package": "libgnutls30t64",
+      "version": "3.8.12-2ubuntu1.1",
+      "architecture": "amd64",
+      "filename": "libgnutls30t64_3.8.12-2ubuntu1.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/g/gnutls28/libgnutls30t64_3.8.12-2ubuntu1.1_amd64.deb",
+      "size": 1028572,
+      "sha256": "b08d4e2842cd53dbe1565a46bd11d6f7ecb36bc08b236802ae4da744cae9f691",
+      "depends": "libc6 (>= 2.43), libgmp10 (>= 2:6.3.0+dfsg), libhogweed6t64 (>= 3.10), libidn2-0 (>= 2.0.0), libnettle8t64 (>= 3.10), libp11-kit0 (>= 0.25.1), libtasn1-6 (>= 4.14), libunistring5 (>= 1.1)"
+    },
+    {
+      "package": "librabbitmq4",
+      "version": "0.15.0-1ubuntu0.26.04.2",
+      "architecture": "amd64",
+      "filename": "librabbitmq4_0.15.0-1ubuntu0.26.04.2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libr/librabbitmq/librabbitmq4_0.15.0-1ubuntu0.26.04.2_amd64.deb",
+      "size": 37666,
+      "sha256": "33e1ae7ae44315ef8ee8ef2fa4504ad829116cf9fbdcf876ab63ab55ec4a0752",
+      "depends": "libc6 (>= 2.17), libssl3t64 (>= 3.0.0)"
+    },
+    {
+      "package": "librist4",
+      "version": "0.2.11+dfsg-1build1",
+      "architecture": "amd64",
+      "filename": "librist4_0.2.11+dfsg-1build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libr/librist/librist4_0.2.11+dfsg-1build1_amd64.deb",
+      "size": 76030,
+      "sha256": "8ac5e57d8c723da1803adbd65b8bd62908295cd0495e97637a0e881d17f94ab9",
+      "depends": "libc6 (>= 2.38), libcjson1 (>= 1.7.5), libmbedcrypto16 (>= 3.6.0)"
+    },
+    {
+      "package": "libsrt1.5-gnutls",
+      "version": "1.5.4-3",
+      "architecture": "amd64",
+      "filename": "libsrt1.5-gnutls_1.5.4-3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/s/srt/libsrt1.5-gnutls_1.5.4-3_amd64.deb",
+      "size": 333656,
+      "sha256": "1109325c26d6359acf7251a12a78ba9a99ae1759e6ecf61087da921aa01b7b92",
+      "depends": "libc6 (>= 2.38), libgcc-s1 (>= 3.3.1), libgnutls30t64 (>= 3.7.0), libnettle8t64, libstdc++6 (>= 14)"
+    },
+    {
+      "package": "libssh-4",
+      "version": "0.11.3-1ubuntu2.1",
+      "architecture": "amd64",
+      "filename": "libssh-4_0.11.3-1ubuntu2.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libs/libssh/libssh-4_0.11.3-1ubuntu2.1_amd64.deb",
+      "size": 208302,
+      "sha256": "f2c70d1f4c88e3209d858d5a59a36b667e7eb5aa19a10e49675cca89f9905239",
+      "depends": "libc6 (>= 2.42), libgssapi-krb5-2 (>= 1.17), libssl3t64 (>= 3.0.0), zlib1g (>= 1:1.1.4)"
+    },
+    {
+      "package": "libzmq5",
+      "version": "4.3.5-1build3",
+      "architecture": "amd64",
+      "filename": "libzmq5_4.3.5-1build3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/z/zeromq3/libzmq5_4.3.5-1build3_amd64.deb",
+      "size": 261944,
+      "sha256": "73ca1de0bf1cb42dc071b0dbd8bb0647a400dbbf30d4f371fe467b7a0fa36d2c",
+      "depends": "libbsd0 (>= 0.0), libc6 (>= 2.38), libgcc-s1 (>= 3.3.1), libgssapi-krb5-2 (>= 1.17), libnorm1t64 (>= 1.5r6), libpgm-5.3-0t64 (>= 5.1.116~dfsg), libsodium23 (>= 1.0.3), libstdc++6 (>= 12)"
+    },
+    {
+      "package": "libgdk-pixbuf-2.0-0",
+      "version": "2.44.5+dfsg-4ubuntu1",
+      "architecture": "amd64",
+      "filename": "libgdk-pixbuf-2.0-0_2.44.5+dfsg-4ubuntu1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/g/gdk-pixbuf/libgdk-pixbuf-2.0-0_2.44.5+dfsg-4ubuntu1_amd64.deb",
+      "size": 100992,
+      "sha256": "ccd902384546225842384de0c46dad4670ccdda17b697bed4518610ed2e08e89",
+      "depends": "glycin-thumbnailers (>= 2.0.8), libgdk-pixbuf2.0-common (>= 2.44.5+dfsg-4ubuntu1), shared-mime-info, libc6 (>= 2.34), libglib2.0-0t64 (>= 2.80.0), libglycin-2-0 (>= 2.0.8)"
+    },
+    {
+      "package": "libcairo-gobject2",
+      "version": "1.18.4-3",
+      "architecture": "amd64",
+      "filename": "libcairo-gobject2_1.18.4-3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/c/cairo/libcairo-gobject2_1.18.4-3_amd64.deb",
+      "size": 127288,
+      "sha256": "1d48661d59bb164fc27e88bb8e6a8dab0cdfdbf35ea5d2bbf3ebffe849a38822",
+      "depends": "libcairo2 (= 1.18.4-3), libglib2.0-0t64 (>= 2.68.0)"
+    },
+    {
+      "package": "libpangocairo-1.0-0",
+      "version": "1.57.0-1",
+      "architecture": "amd64",
+      "filename": "libpangocairo-1.0-0_1.57.0-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/p/pango1.0/libpangocairo-1.0-0_1.57.0-1_amd64.deb",
+      "size": 29026,
+      "sha256": "a989e666bb0d64636a10a1253c949f92a282782d79d1725e0e1acc17282909a5",
+      "depends": "libc6 (>= 2.4), libcairo2 (>= 1.18.0), libfontconfig1 (>= 2.17.1), libglib2.0-0t64 (>= 2.82), libharfbuzz0b (>= 11.4.5), libpango-1.0-0 (= 1.57.0-1), libpangoft2-1.0-0 (= 1.57.0-1)"
+    },
+    {
+      "package": "libpango-1.0-0",
+      "version": "1.57.0-1",
+      "architecture": "amd64",
+      "filename": "libpango-1.0-0_1.57.0-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/p/pango1.0/libpango-1.0-0_1.57.0-1_amd64.deb",
+      "size": 240576,
+      "sha256": "309f30a8ea77e0264a3c8b66811188f5b788fe87b33be3cafd97c8f221235591",
+      "depends": "fontconfig (>= 2.17.0), libc6 (>= 2.38), libfribidi0 (>= 1.0.0), libglib2.0-0t64 (>= 2.82), libharfbuzz0b (>= 11.4.5), libthai0 (>= 0.1.25)"
+    },
+    {
+      "package": "libpng16-16t64",
+      "version": "1.6.57-1ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "libpng16-16t64_1.6.57-1ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libp/libpng1.6/libpng16-16t64_1.6.57-1ubuntu0.1_amd64.deb",
+      "size": 194520,
+      "sha256": "f24a7f7c0428d74e33ea934696987b7336ec0962f212535185f0493792e7536e",
+      "depends": "libc6 (>= 2.29), zlib1g (>= 1:1.2.3.4)"
+    },
+    {
+      "package": "libfontconfig1",
+      "version": "2.17.1-3ubuntu1",
+      "architecture": "amd64",
+      "filename": "libfontconfig1_2.17.1-3ubuntu1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/f/fontconfig/libfontconfig1_2.17.1-3ubuntu1_amd64.deb",
+      "size": 144082,
+      "sha256": "72ba4fc43155566b46442b741a6892d5d1f1581ba58cdfd037aabf47ad9080f7",
+      "depends": "libc6 (>= 2.38), libexpat1 (>= 2.0.1), libfreetype6 (>= 2.9.1), fontconfig-config (>= 2.17.1-3ubuntu1)"
+    },
+    {
+      "package": "libfreetype6",
+      "version": "2.14.2+dfsg-1ubuntu0.2",
+      "architecture": "amd64",
+      "filename": "libfreetype6_2.14.2+dfsg-1ubuntu0.2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/f/freetype/libfreetype6_2.14.2+dfsg-1ubuntu0.2_amd64.deb",
+      "size": 408756,
+      "sha256": "6d7d532b7d0c57639deb3b228f1f0d786cf5305d613ef7df9ba76c776a0f8373",
+      "depends": "libbrotli1 (>= 0.6.0), libbz2-1.0, libc6 (>= 2.38), libpng16-16t64 (>= 1.6.46), zlib1g (>= 1:1.1.4)"
+    },
+    {
+      "package": "libxrender1",
+      "version": "1:0.9.12-1build1",
+      "architecture": "amd64",
+      "filename": "libxrender1_0.9.12-1build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxrender/libxrender1_0.9.12-1build1_amd64.deb",
+      "size": 19204,
+      "sha256": "60b2f01e8124318e2a11049b82c764fd4c05c21adba11312e93ab116d6594f1e",
+      "depends": "libc6 (>= 2.14), libx11-6 (>= 2:1.6.0)"
+    },
+    {
+      "package": "libxcb1",
+      "version": "1.17.0-2ubuntu1",
+      "architecture": "amd64",
+      "filename": "libxcb1_1.17.0-2ubuntu1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxcb/libxcb1_1.17.0-2ubuntu1_amd64.deb",
+      "size": 49022,
+      "sha256": "069e64705e4a5721a223b4d22643bbaeaa63a6efbb56ebd3d7c4a31c4a26fa1c",
+      "depends": "libc6 (>= 2.38), libxau6 (>= 1:1.0.11), libxdmcp6 (>= 1:1.1.5)"
+    },
+    {
+      "package": "libxcb-render0",
+      "version": "1.17.0-2ubuntu1",
+      "architecture": "amd64",
+      "filename": "libxcb-render0_1.17.0-2ubuntu1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxcb/libxcb-render0_1.17.0-2ubuntu1_amd64.deb",
+      "size": 16208,
+      "sha256": "2bdd10dd88c99523a62bfcc2b71b59fdf93ee396e8baf617c76fc3ec38f39bde",
+      "depends": "libc6 (>= 2.14), libxcb1 (>= 1.8)"
+    },
+    {
+      "package": "libxcb-shm0",
+      "version": "1.17.0-2ubuntu1",
+      "architecture": "amd64",
+      "filename": "libxcb-shm0_1.17.0-2ubuntu1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxcb/libxcb-shm0_1.17.0-2ubuntu1_amd64.deb",
+      "size": 5808,
+      "sha256": "e70d52936aabd7a90e9cd8af0f54ca050cde244f8382ffc5524ba65117c199c4",
+      "depends": "libc6 (>= 2.4), libxcb1 (>= 1.12)"
+    },
+    {
+      "package": "libpixman-1-0",
+      "version": "0.46.4-1",
+      "architecture": "amd64",
+      "filename": "libpixman-1-0_0.46.4-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/p/pixman/libpixman-1-0_0.46.4-1_amd64.deb",
+      "size": 287322,
+      "sha256": "55a274db32d4824a1f1a48c42e959fe4293a4e4b545d400d89949cfabe160cc3",
+      "depends": "libc6 (>= 2.29)"
+    },
+    {
+      "package": "libffi8",
+      "version": "3.5.2-4",
+      "architecture": "amd64",
+      "filename": "libffi8_3.5.2-4_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libf/libffi/libffi8_3.5.2-4_amd64.deb",
+      "size": 26348,
+      "sha256": "4a7423124bbd459c0aa38b7389ec7802fa6899654767a95fc27de70967fedd48",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "libatomic1",
+      "version": "16-20260322-1ubuntu1",
+      "architecture": "amd64",
+      "filename": "libatomic1_16-20260322-1ubuntu1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-16/libatomic1_16-20260322-1ubuntu1_amd64.deb",
+      "size": 11396,
+      "sha256": "82fa61135e7154d7958feaa91ec1808a688eb1e0e06822ab35e99e2480feb148",
+      "depends": "gcc-16-base (= 16-20260322-1ubuntu1), libc6 (>= 2.14)"
+    },
+    {
+      "package": "libpcre2-8-0",
+      "version": "10.46-1ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "libpcre2-8-0_10.46-1ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/p/pcre2/libpcre2-8-0_10.46-1ubuntu0.1_amd64.deb",
+      "size": 257422,
+      "sha256": "44ebbeb6493eacffbc460ca71446959ba86a00b2e23515e4cfb1a5cc317d6672",
+      "depends": "libc6 (>= 2.34)"
+    },
+    {
+      "package": "libhwy1t64",
+      "version": "1.3.0-2",
+      "architecture": "amd64",
+      "filename": "libhwy1t64_1.3.0-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/h/highway/libhwy1t64_1.3.0-2_amd64.deb",
+      "size": 767902,
+      "sha256": "8b4e74f6fc7c9a08956f1430fe5d80f4d8970a08fe24df9e187d57753f652c7a",
+      "depends": "libc6 (>= 2.38), libgcc-s1 (>= 13), libstdc++6 (>= 5.2)"
+    },
+    {
+      "package": "libbrotli1",
+      "version": "1.2.0-3ubuntu0.1",
+      "architecture": "amd64",
+      "filename": "libbrotli1_1.2.0-3ubuntu0.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/b/brotli/libbrotli1_1.2.0-3ubuntu0.1_amd64.deb",
+      "size": 343132,
+      "sha256": "bedeef1cf3268f90338c411cdb0a45b224d0660fd2240f310f380316c8244606",
+      "depends": "libc6 (>= 2.29)"
+    },
+    {
+      "package": "libmpg123-0t64",
+      "version": "1.33.3-2",
+      "architecture": "amd64",
+      "filename": "libmpg123-0t64_1.33.3-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/m/mpg123/libmpg123-0t64_1.33.3-2_amd64.deb",
+      "size": 176430,
+      "sha256": "5bb06d8890eecd357da520a21e592a93267bb4b48a4f8946d6d67c366f511bbd",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "libogg0",
+      "version": "1.3.6-2",
+      "architecture": "amd64",
+      "filename": "libogg0_1.3.6-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libo/libogg/libogg0_1.3.6-2_amd64.deb",
+      "size": 23394,
+      "sha256": "9d62d5e64a55ecfc17a7aeb00a5ca5fdf095bd68c1c397146c81867bec35c31f",
+      "depends": "libc6 (>= 2.14)"
+    },
+    {
+      "package": "libsharpyuv0",
+      "version": "1.5.0-0.1build1",
+      "architecture": "amd64",
+      "filename": "libsharpyuv0_1.5.0-0.1build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libw/libwebp/libsharpyuv0_1.5.0-0.1build1_amd64.deb",
+      "size": 17650,
+      "sha256": "4e2c0a8aa97dafd923f00d77ca017d14f16ab79d3b1120892c8215a0b5fb7892",
+      "depends": "libc6 (>= 2.29)"
+    },
+    {
+      "package": "libnuma1",
+      "version": "2.0.19-1build1",
+      "architecture": "amd64",
+      "filename": "libnuma1_2.0.19-1build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/n/numactl/libnuma1_2.0.19-1build1_amd64.deb",
+      "size": 23654,
+      "sha256": "af7bc28b60948609a36719c249a89aef834812833909774538c19f9d984bef31",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "libgomp1",
+      "version": "16-20260322-1ubuntu1",
+      "architecture": "amd64",
+      "filename": "libgomp1_16-20260322-1ubuntu1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/g/gcc-16/libgomp1_16-20260322-1ubuntu1_amd64.deb",
+      "size": 162278,
+      "sha256": "add19738c63794d2aa9ac529d3b8aebe2e88980faecb6c1c59f07aefd6c3c314",
+      "depends": "gcc-16-base (= 16-20260322-1ubuntu1), libc6 (>= 2.38)"
+    },
+    {
+      "package": "libvorbisfile3",
+      "version": "1.3.7-3build2",
+      "architecture": "amd64",
+      "filename": "libvorbisfile3_1.3.7-3build2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libv/libvorbis/libvorbisfile3_1.3.7-3build2_amd64.deb",
+      "size": 17248,
+      "sha256": "8cd42cc285e34f915e0e769bcffab29c4267fb6453295ed309d50f8f376eef37",
+      "depends": "libc6 (>= 2.14), libogg0 (>= 1.1.0), libvorbis0a (= 1.3.7-3build2)"
+    },
+    {
+      "package": "libudfread3",
+      "version": "1.2.0-2",
+      "architecture": "amd64",
+      "filename": "libudfread3_1.2.0-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libu/libudfread/libudfread3_1.2.0-2_amd64.deb",
+      "size": 17332,
+      "sha256": "407c49e42154ac810db4e088287b4f8bbbcc308a21384a1d9ec6765bf2208145",
+      "depends": "libc6 (>= 2.14)"
+    },
+    {
+      "package": "libp11-kit0",
+      "version": "0.26.2-2",
+      "architecture": "amd64",
+      "filename": "libp11-kit0_0.26.2-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/p/p11-kit/libp11-kit0_0.26.2-2_amd64.deb",
+      "size": 312508,
+      "sha256": "e70d3422e24b267293215134458f340944bf10e92b27147594c69a7dd2823089",
+      "depends": "libc6 (>= 2.38), libffi8 (>= 3.4)"
+    },
+    {
+      "package": "libidn2-0",
+      "version": "2.3.8-4build1",
+      "architecture": "amd64",
+      "filename": "libidn2-0_2.3.8-4build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libi/libidn2/libidn2-0_2.3.8-4build1_amd64.deb",
+      "size": 67564,
+      "sha256": "92bdac0f443a648859d06dee3defb9c96864fd76df6cfe617ca70bb261344767",
+      "depends": "libc6 (>= 2.14), libunistring5 (>= 1.1)"
+    },
+    {
+      "package": "libunistring5",
+      "version": "1.3-2build1",
+      "architecture": "amd64",
+      "filename": "libunistring5_1.3-2build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libu/libunistring/libunistring5_1.3-2build1_amd64.deb",
+      "size": 610496,
+      "sha256": "88c0163f1acb384abde07641b7e13fcaea36e0a3b88fc57a653779fc429fc46a",
+      "depends": "libc6 (>= 2.34)"
+    },
+    {
+      "package": "libtasn1-6",
+      "version": "4.21.0-2",
+      "architecture": "amd64",
+      "filename": "libtasn1-6_4.21.0-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libt/libtasn1-6/libtasn1-6_4.21.0-2_amd64.deb",
+      "size": 45272,
+      "sha256": "59c74951324ead0ff77ab945d561feb1b21bc189b793600b8e2b7cf4d39b1ee5",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "libhogweed6t64",
+      "version": "3.10.2-1",
+      "architecture": "amd64",
+      "filename": "libhogweed6t64_3.10.2-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/n/nettle/libhogweed6t64_3.10.2-1_amd64.deb",
+      "size": 200902,
+      "sha256": "1c8c808ab24ff3018ac886e3f311edee0f2d4d97d12d3908be52343e89807046",
+      "depends": "libc6 (>= 2.14), libgmp10 (>= 2:6.3.0+dfsg), libnettle8t64"
+    },
+    {
+      "package": "libnettle8t64",
+      "version": "3.10.2-1",
+      "architecture": "amd64",
+      "filename": "libnettle8t64_3.10.2-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/n/nettle/libnettle8t64_3.10.2-1_amd64.deb",
+      "size": 185378,
+      "sha256": "83a2a924c11759a2ed6e6f98f456d28e1b026974ce9e6e7ef12c9ac43b2d543e",
+      "depends": "libc6 (>= 2.17)"
+    },
+    {
+      "package": "libgmp10",
+      "version": "2:6.3.0+dfsg-5ubuntu2",
+      "architecture": "amd64",
+      "filename": "libgmp10_6.3.0+dfsg-5ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/g/gmp/libgmp10_6.3.0+dfsg-5ubuntu2_amd64.deb",
+      "size": 256686,
+      "sha256": "a9bbe9d4a4bcd5875bbd0f53e67c379bc881d1c1a80522d51dfb4b107cc31819",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "libssl3t64",
+      "version": "3.5.5-1ubuntu3.7",
+      "architecture": "amd64",
+      "filename": "libssl3t64_3.5.5-1ubuntu3.7_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl3t64_3.5.5-1ubuntu3.7_amd64.deb",
+      "size": 2368026,
+      "sha256": "3ff73e121f6cd4f19e80ab4329dfd914108b3936c9db3708200203a9b245b34d",
+      "depends": "libc6 (>= 2.38), libzstd1 (>= 1.5.5), zlib1g (>= 1:1.1.4), openssl-provider-legacy"
+    },
+    {
+      "package": "libmbedcrypto16",
+      "version": "3.6.5-0.1ubuntu2",
+      "architecture": "amd64",
+      "filename": "libmbedcrypto16_3.6.5-0.1ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/m/mbedtls/libmbedcrypto16_3.6.5-0.1ubuntu2_amd64.deb",
+      "size": 258752,
+      "sha256": "dd320215c1bd6e954d5aea07e640f7063865af9ef55bd64c5d9cd3cbd1bf7555",
+      "depends": "libc6 (>= 2.25)"
+    },
+    {
+      "package": "libcjson1",
+      "version": "1.7.19-2",
+      "architecture": "amd64",
+      "filename": "libcjson1_1.7.19-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/c/cjson/libcjson1_1.7.19-2_amd64.deb",
+      "size": 22806,
+      "sha256": "1c47d315a46d610708aecdcafbc5b2c59c28f174dfb8a562290a17620bda3549",
+      "depends": "libc6 (>= 2.14)"
+    },
+    {
+      "package": "libgssapi-krb5-2",
+      "version": "1.22.1-2ubuntu4.1",
+      "architecture": "amd64",
+      "filename": "libgssapi-krb5-2_1.22.1-2ubuntu4.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libgssapi-krb5-2_1.22.1-2ubuntu4.1_amd64.deb",
+      "size": 146908,
+      "sha256": "d156dd940bff6dec8b6880cd0da4d515398d03d7b2e8b3163a935e701f80aa27",
+      "depends": "libkrb5-3 (= 1.22.1-2ubuntu4.1), libc6 (>= 2.38), libcom-err2 (>= 1.43.9), libk5crypto3 (>= 1.20), libkrb5support0 (= 1.22.1-2ubuntu4.1)"
+    },
+    {
+      "package": "libbsd0",
+      "version": "0.12.2-2build2",
+      "architecture": "amd64",
+      "filename": "libbsd0_0.12.2-2build2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libb/libbsd/libbsd0_0.12.2-2build2_amd64.deb",
+      "size": 42312,
+      "sha256": "62019928a6baeaba8d12d2d4cb7c1e4c9a9550a1eb4541b8de0cacfeae1d09e3",
+      "depends": "libc6 (>= 2.38), libmd0 (>= 1.0.3-2)"
+    },
+    {
+      "package": "libsodium23",
+      "version": "1.0.18-2",
+      "architecture": "amd64",
+      "filename": "libsodium23_1.0.18-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libs/libsodium/libsodium23_1.0.18-2_amd64.deb",
+      "size": 164826,
+      "sha256": "1699432ba66e904268e069d27f9737c9a0b60ee8c035d1151010f61bc5bf8d38",
+      "depends": "libc6 (>= 2.34)"
+    },
+    {
+      "package": "libpgm-5.3-0t64",
+      "version": "5.3.128~dfsg-2.1build2",
+      "architecture": "amd64",
+      "filename": "libpgm-5.3-0t64_5.3.128~dfsg-2.1build2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/libp/libpgm/libpgm-5.3-0t64_5.3.128~dfsg-2.1build2_amd64.deb",
+      "size": 167660,
+      "sha256": "69b1932266f59fec8cb0acb6f2cfeedd858a0e053fcfebb107d8061e8458409e",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "libnorm1t64",
+      "version": "1.5.9+dfsg-4",
+      "architecture": "amd64",
+      "filename": "libnorm1t64_1.5.9+dfsg-4_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/universe/n/norm/libnorm1t64_1.5.9+dfsg-4_amd64.deb",
+      "size": 157596,
+      "sha256": "c3d9277fa4e6b0685a906b573fe493ace87fcb798a638779f32cdb70f061bb8d",
+      "depends": "libc6 (>= 2.38), libgcc-s1 (>= 3.3.1), libstdc++6 (>= 14)"
+    },
+    {
+      "package": "libmount1",
+      "version": "2.41.3-3ubuntu2.2",
+      "architecture": "amd64",
+      "filename": "libmount1_2.41.3-3ubuntu2.2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libmount1_2.41.3-3ubuntu2.2_amd64.deb",
+      "size": 159292,
+      "sha256": "7b8f05d4346049c50d846e1947ec12aff36f3dd44cbd5ee4e8505245cd86b461",
+      "depends": "libblkid1 (= 2.41.3-3ubuntu2.2), libc6 (>= 2.38), libselinux1 (>= 3.1~)"
+    },
+    {
+      "package": "libselinux1",
+      "version": "3.9-4build1",
+      "architecture": "amd64",
+      "filename": "libselinux1_3.9-4build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libs/libselinux/libselinux1_3.9-4build1_amd64.deb",
+      "size": 90316,
+      "sha256": "3ce3aea44b2ec00780c48b1b8e1f7e672166ec3ccac14b0eae8890e55983061e",
+      "depends": "libc6 (>= 2.38), libpcre2-8-0 (>= 10.22)"
+    },
+    {
+      "package": "libglycin-2-0",
+      "version": "2.1.5+ds-0ubuntu0.2",
+      "architecture": "amd64",
+      "filename": "libglycin-2-0_2.1.5+ds-0ubuntu0.2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/g/glycin/libglycin-2-0_2.1.5+ds-0ubuntu0.2_amd64.deb",
+      "size": 1486686,
+      "sha256": "df5f6ac3af28284f678834b13ab90ebd5bebf80e3352bee517755f7125139d09",
+      "depends": "glycin-loaders (>= 2~), libc6 (>= 2.39), libfontconfig1 (>= 2.12.6), libgcc-s1 (>= 4.2), libglib2.0-0t64 (>= 2.68.0), liblcms2-2 (>= 2.2+git20110628), libseccomp2 (>= 2.1.0)"
+    },
+    {
+      "package": "libpangoft2-1.0-0",
+      "version": "1.57.0-1",
+      "architecture": "amd64",
+      "filename": "libpangoft2-1.0-0_1.57.0-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/p/pango1.0/libpangoft2-1.0-0_1.57.0-1_amd64.deb",
+      "size": 53260,
+      "sha256": "c1e08ebf03feded26a42a0f07f94789e5995b402d704d2faafdc86fffda0b28b",
+      "depends": "libc6 (>= 2.38), libfontconfig1 (>= 2.17.1), libfreetype6 (>= 2.2.1), libglib2.0-0t64 (>= 2.82), libharfbuzz0b (>= 11.4.5), libpango-1.0-0 (= 1.57.0-1)"
+    },
+    {
+      "package": "libharfbuzz0b",
+      "version": "12.3.2-2",
+      "architecture": "amd64",
+      "filename": "libharfbuzz0b_12.3.2-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/h/harfbuzz/libharfbuzz0b_12.3.2-2_amd64.deb",
+      "size": 519090,
+      "sha256": "ec93ea39ddeb5a98179b60eab4af234b6c676f1958106645d1f4b19280d4cd09",
+      "depends": "libc6 (>= 2.38), libfreetype6 (>= 2.11.1), libglib2.0-0t64 (>= 2.32.0), libgraphite2-3 (>= 1.2.2)"
+    },
+    {
+      "package": "libthai0",
+      "version": "0.1.30-1",
+      "architecture": "amd64",
+      "filename": "libthai0_0.1.30-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libt/libthai/libthai0_0.1.30-1_amd64.deb",
+      "size": 19174,
+      "sha256": "c06f206be1ef7aa8208110b38945205ebc742dd777cbb39142baa555fe61390a",
+      "depends": "libthai-data (>= 0.1.10), libc6 (>= 2.14), libdatrie1 (>= 0.2.0)"
+    },
+    {
+      "package": "libexpat1",
+      "version": "2.7.4-1ubuntu0.2",
+      "architecture": "amd64",
+      "filename": "libexpat1_2.7.4-1ubuntu0.2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/e/expat/libexpat1_2.7.4-1ubuntu0.2_amd64.deb",
+      "size": 98836,
+      "sha256": "0063e68d742facfd3c46d7d7df9eb0d85f13e0fc294908a4f138d45557607837",
+      "depends": ""
+    },
+    {
+      "package": "libxau6",
+      "version": "1:1.0.11-1build2",
+      "architecture": "amd64",
+      "filename": "libxau6_1.0.11-1build2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxau/libxau6_1.0.11-1build2_amd64.deb",
+      "size": 7502,
+      "sha256": "6c0b2dd4654db30449754e6e1adf84a34d8a8d7dddeb75f8c9c463ad86645274",
+      "depends": "libc6 (>= 2.33)"
+    },
+    {
+      "package": "libxdmcp6",
+      "version": "1:1.1.5-2",
+      "architecture": "amd64",
+      "filename": "libxdmcp6_1.1.5-2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libx/libxdmcp/libxdmcp6_1.1.5-2_amd64.deb",
+      "size": 10800,
+      "sha256": "d5d51e67063ff11e81698d8ee90bab5af763dc0a793929f33712bb74e7633768",
+      "depends": "libc6 (>= 2.36)"
+    },
+    {
+      "package": "liblcms2-2",
+      "version": "2.17-1ubuntu0.2",
+      "architecture": "amd64",
+      "filename": "liblcms2-2_2.17-1ubuntu0.2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/l/lcms2/liblcms2-2_2.17-1ubuntu0.2_amd64.deb",
+      "size": 169156,
+      "sha256": "0fcc048872daa6a242d548b78b76749044800d3be5a883123ca45eb4c8c65e05",
+      "depends": "libc6 (>= 2.43)"
+    },
+    {
+      "package": "libzstd1",
+      "version": "1.5.7+dfsg-3",
+      "architecture": "amd64",
+      "filename": "libzstd1_1.5.7+dfsg-3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libz/libzstd/libzstd1_1.5.7+dfsg-3_amd64.deb",
+      "size": 308174,
+      "sha256": "34365d611ccf1f717f90a92fbe52ed96ae1829ab9be363c68a83563322797f8f",
+      "depends": "libc6 (>= 2.34)"
+    },
+    {
+      "package": "libkrb5-3",
+      "version": "1.22.1-2ubuntu4.1",
+      "architecture": "amd64",
+      "filename": "libkrb5-3_1.22.1-2ubuntu4.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libkrb5-3_1.22.1-2ubuntu4.1_amd64.deb",
+      "size": 360714,
+      "sha256": "54612a2019863c44d80218f40d40670c3684108f4b2a760aae644ab68457e239",
+      "depends": "libkrb5support0 (= 1.22.1-2ubuntu4.1), libc6 (>= 2.38), libcom-err2 (>= 1.43.9), libk5crypto3 (>= 1.20), libkeyutils1 (>= 1.5.9), libssl3t64 (>= 3.0.0)"
+    },
+    {
+      "package": "libk5crypto3",
+      "version": "1.22.1-2ubuntu4.1",
+      "architecture": "amd64",
+      "filename": "libk5crypto3_1.22.1-2ubuntu4.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libk5crypto3_1.22.1-2ubuntu4.1_amd64.deb",
+      "size": 81998,
+      "sha256": "8e99ef104a6bf49bea708747fdf4c28eb4fcebd6dba9e55ecfa919211eb5ab75",
+      "depends": "libc6 (>= 2.38), libkrb5support0 (= 1.22.1-2ubuntu4.1)"
+    },
+    {
+      "package": "libcom-err2",
+      "version": "1.47.2-3ubuntu4",
+      "architecture": "amd64",
+      "filename": "libcom-err2_1.47.2-3ubuntu4_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/e/e2fsprogs/libcom-err2_1.47.2-3ubuntu4_amd64.deb",
+      "size": 27824,
+      "sha256": "180b6ea0b9c07d4fd2ede79e29ee8eca830cd9384f856507e28dc24d1d3ae514",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "libkrb5support0",
+      "version": "1.22.1-2ubuntu4.1",
+      "architecture": "amd64",
+      "filename": "libkrb5support0_1.22.1-2ubuntu4.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/krb5/libkrb5support0_1.22.1-2ubuntu4.1_amd64.deb",
+      "size": 33546,
+      "sha256": "127d735efece139dfb7109ac3709da7eb8923bef090c20a10dbaf4c4fa45001d",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "libmd0",
+      "version": "1.1.0-2build4",
+      "architecture": "amd64",
+      "filename": "libmd0_1.1.0-2build4_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libm/libmd/libmd0_1.1.0-2build4_amd64.deb",
+      "size": 27252,
+      "sha256": "da684bb562e167721ae38366586aaee0b4cc580b9ee6d0220128b15ef9c5be75",
+      "depends": "libc6 (>= 2.33)"
+    },
+    {
+      "package": "libblkid1",
+      "version": "2.41.3-3ubuntu2.2",
+      "architecture": "amd64",
+      "filename": "libblkid1_2.41.3-3ubuntu2.2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/u/util-linux/libblkid1_2.41.3-3ubuntu2.2_amd64.deb",
+      "size": 126098,
+      "sha256": "929ebedb610fa4dfa16cada763cea7e8ed4bd37c68573563410614189bd4e537",
+      "depends": "libc6 (>= 2.38)"
+    },
+    {
+      "package": "libseccomp2",
+      "version": "2.6.0-2ubuntu5",
+      "architecture": "amd64",
+      "filename": "libseccomp2_2.6.0-2ubuntu5_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libs/libseccomp/libseccomp2_2.6.0-2ubuntu5_amd64.deb",
+      "size": 53010,
+      "sha256": "c5e4b198f251da0ede226fd179830bd8767482821a1773f835358f726795cb16",
+      "depends": "libc6 (>= 2.14)"
+    },
+    {
+      "package": "libgraphite2-3",
+      "version": "1.3.14-11ubuntu1.1",
+      "architecture": "amd64",
+      "filename": "libgraphite2-3_1.3.14-11ubuntu1.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/g/graphite2/libgraphite2-3_1.3.14-11ubuntu1.1_amd64.deb",
+      "size": 72928,
+      "sha256": "b4a4fbeb00c8553a20c31874c153cbcd856cfc1dda1c9b8252fa1d9bfbec24fc",
+      "depends": "libc6 (>= 2.4)"
+    },
+    {
+      "package": "libdatrie1",
+      "version": "0.2.14-1",
+      "architecture": "amd64",
+      "filename": "libdatrie1_0.2.14-1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libd/libdatrie/libdatrie1_0.2.14-1_amd64.deb",
+      "size": 19776,
+      "sha256": "1ba5a9190119370912ec5955c8129cdf2780a098ed6c80e9ecca05cc515bd039",
+      "depends": "libc6 (>= 2.14)"
+    },
+    {
+      "package": "libkeyutils1",
+      "version": "1.6.3-6ubuntu3",
+      "architecture": "amd64",
+      "filename": "libkeyutils1_1.6.3-6ubuntu3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/k/keyutils/libkeyutils1_1.6.3-6ubuntu3_amd64.deb",
+      "size": 10634,
+      "sha256": "ea7d3cc642ffe2459c35a85c894f80e92499b9eba13bdcb225e0aa751c0970be",
+      "depends": "libc6 (>= 2.38)"
     }
-  ]
+  ],
+  "runtime": {
+    "schema": 1,
+    "root_sonames": [
+      "libSDL3.so.0",
+      "libavcodec.so.62",
+      "libavformat.so.62",
+      "libavutil.so.60",
+      "libopus.so.0",
+      "libshaderc.so.1",
+      "libswresample.so.6",
+      "libswscale.so.9",
+      "libvulkan.so.1",
+      "libz.so.1"
+    ],
+    "library_dirs": [
+      "usr/lib/x86_64-linux-gnu"
+    ],
+    "owned_sonames": {
+      "libSDL3.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libSDL3.so.0",
+        "package": "libsdl3-0"
+      },
+      "libSvtAv1Enc.so.2": {
+        "path": "usr/lib/x86_64-linux-gnu/libSvtAv1Enc.so.2",
+        "package": "libsvtav1enc2"
+      },
+      "libX11.so.6": {
+        "path": "usr/lib/x86_64-linux-gnu/libX11.so.6",
+        "package": "libx11-6"
+      },
+      "libXau.so.6": {
+        "path": "usr/lib/x86_64-linux-gnu/libXau.so.6",
+        "package": "libxau6"
+      },
+      "libXcursor.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libXcursor.so.1",
+        "package": "libxcursor1"
+      },
+      "libXdmcp.so.6": {
+        "path": "usr/lib/x86_64-linux-gnu/libXdmcp.so.6",
+        "package": "libxdmcp6"
+      },
+      "libXext.so.6": {
+        "path": "usr/lib/x86_64-linux-gnu/libXext.so.6",
+        "package": "libxext6"
+      },
+      "libXfixes.so.3": {
+        "path": "usr/lib/x86_64-linux-gnu/libXfixes.so.3",
+        "package": "libxfixes3"
+      },
+      "libXi.so.6": {
+        "path": "usr/lib/x86_64-linux-gnu/libXi.so.6",
+        "package": "libxi6"
+      },
+      "libXrandr.so.2": {
+        "path": "usr/lib/x86_64-linux-gnu/libXrandr.so.2",
+        "package": "libxrandr2"
+      },
+      "libXrender.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libXrender.so.1",
+        "package": "libxrender1"
+      },
+      "libXss.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libXss.so.1",
+        "package": "libxss1"
+      },
+      "libXtst.so.6": {
+        "path": "usr/lib/x86_64-linux-gnu/libXtst.so.6",
+        "package": "libxtst6"
+      },
+      "libaom.so.3": {
+        "path": "usr/lib/x86_64-linux-gnu/libaom.so.3",
+        "package": "libaom3"
+      },
+      "libatomic.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libatomic.so.1",
+        "package": "libatomic1"
+      },
+      "libavcodec.so.62": {
+        "path": "usr/lib/x86_64-linux-gnu/libavcodec.so.62",
+        "package": "libavcodec-dev"
+      },
+      "libavformat.so.62": {
+        "path": "usr/lib/x86_64-linux-gnu/libavformat.so.62",
+        "package": "libavformat-dev"
+      },
+      "libavutil.so.60": {
+        "path": "usr/lib/x86_64-linux-gnu/libavutil.so.60",
+        "package": "libavutil-dev"
+      },
+      "libblkid.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libblkid.so.1",
+        "package": "libblkid1"
+      },
+      "libbluray.so.3": {
+        "path": "usr/lib/x86_64-linux-gnu/libbluray.so.3",
+        "package": "libbluray3"
+      },
+      "libbrotlicommon.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libbrotlicommon.so.1",
+        "package": "libbrotli1"
+      },
+      "libbrotlidec.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libbrotlidec.so.1",
+        "package": "libbrotli1"
+      },
+      "libbrotlienc.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libbrotlienc.so.1",
+        "package": "libbrotli1"
+      },
+      "libbsd.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libbsd.so.0",
+        "package": "libbsd0"
+      },
+      "libbz2.so.1.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libbz2.so.1.0",
+        "package": "libbz2-1.0"
+      },
+      "libcairo-gobject.so.2": {
+        "path": "usr/lib/x86_64-linux-gnu/libcairo-gobject.so.2",
+        "package": "libcairo-gobject2"
+      },
+      "libcairo.so.2": {
+        "path": "usr/lib/x86_64-linux-gnu/libcairo.so.2",
+        "package": "libcairo2"
+      },
+      "libchromaprint.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libchromaprint.so.1",
+        "package": "libchromaprint1"
+      },
+      "libcjson.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libcjson.so.1",
+        "package": "libcjson1"
+      },
+      "libcodec2.so.1.2": {
+        "path": "usr/lib/x86_64-linux-gnu/libcodec2.so.1.2",
+        "package": "libcodec2-1.2"
+      },
+      "libcom_err.so.2": {
+        "path": "usr/lib/x86_64-linux-gnu/libcom_err.so.2",
+        "package": "libcom-err2"
+      },
+      "libcrypto.so.3": {
+        "path": "usr/lib/x86_64-linux-gnu/libcrypto.so.3",
+        "package": "libssl3t64"
+      },
+      "libdatrie.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libdatrie.so.1",
+        "package": "libdatrie1"
+      },
+      "libdav1d.so.7": {
+        "path": "usr/lib/x86_64-linux-gnu/libdav1d.so.7",
+        "package": "libdav1d7"
+      },
+      "libdvdnav.so.4": {
+        "path": "usr/lib/x86_64-linux-gnu/libdvdnav.so.4",
+        "package": "libdvdnav4"
+      },
+      "libdvdread.so.8": {
+        "path": "usr/lib/x86_64-linux-gnu/libdvdread.so.8",
+        "package": "libdvdread8t64"
+      },
+      "libexpat.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libexpat.so.1",
+        "package": "libexpat1"
+      },
+      "libffi.so.8": {
+        "path": "usr/lib/x86_64-linux-gnu/libffi.so.8",
+        "package": "libffi8"
+      },
+      "libfontconfig.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libfontconfig.so.1",
+        "package": "libfontconfig1"
+      },
+      "libfreetype.so.6": {
+        "path": "usr/lib/x86_64-linux-gnu/libfreetype.so.6",
+        "package": "libfreetype6"
+      },
+      "libfribidi.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libfribidi.so.0",
+        "package": "libfribidi0"
+      },
+      "libgdk_pixbuf-2.0.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libgdk_pixbuf-2.0.so.0",
+        "package": "libgdk-pixbuf-2.0-0"
+      },
+      "libgio-2.0.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libgio-2.0.so.0",
+        "package": "libglib2.0-0t64"
+      },
+      "libglib-2.0.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libglib-2.0.so.0",
+        "package": "libglib2.0-0t64"
+      },
+      "libglycin-2.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libglycin-2.so.0",
+        "package": "libglycin-2-0"
+      },
+      "libgme.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libgme.so.0",
+        "package": "libgme0"
+      },
+      "libgmodule-2.0.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libgmodule-2.0.so.0",
+        "package": "libglib2.0-0t64"
+      },
+      "libgmp.so.10": {
+        "path": "usr/lib/x86_64-linux-gnu/libgmp.so.10",
+        "package": "libgmp10"
+      },
+      "libgnutls.so.30": {
+        "path": "usr/lib/x86_64-linux-gnu/libgnutls.so.30",
+        "package": "libgnutls30t64"
+      },
+      "libgobject-2.0.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libgobject-2.0.so.0",
+        "package": "libglib2.0-0t64"
+      },
+      "libgomp.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libgomp.so.1",
+        "package": "libgomp1"
+      },
+      "libgraphite2.so.3": {
+        "path": "usr/lib/x86_64-linux-gnu/libgraphite2.so.3",
+        "package": "libgraphite2-3"
+      },
+      "libgsm.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libgsm.so.1",
+        "package": "libgsm1"
+      },
+      "libgssapi_krb5.so.2": {
+        "path": "usr/lib/x86_64-linux-gnu/libgssapi_krb5.so.2",
+        "package": "libgssapi-krb5-2"
+      },
+      "libharfbuzz.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libharfbuzz.so.0",
+        "package": "libharfbuzz0b"
+      },
+      "libhogweed.so.6": {
+        "path": "usr/lib/x86_64-linux-gnu/libhogweed.so.6",
+        "package": "libhogweed6t64"
+      },
+      "libhwy.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libhwy.so.1",
+        "package": "libhwy1t64"
+      },
+      "libidn2.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libidn2.so.0",
+        "package": "libidn2-0"
+      },
+      "libjxl.so.0.11": {
+        "path": "usr/lib/x86_64-linux-gnu/libjxl.so.0.11",
+        "package": "libjxl0.11"
+      },
+      "libjxl_cms.so.0.11": {
+        "path": "usr/lib/x86_64-linux-gnu/libjxl_cms.so.0.11",
+        "package": "libjxl0.11"
+      },
+      "libjxl_threads.so.0.11": {
+        "path": "usr/lib/x86_64-linux-gnu/libjxl_threads.so.0.11",
+        "package": "libjxl0.11"
+      },
+      "libk5crypto.so.3": {
+        "path": "usr/lib/x86_64-linux-gnu/libk5crypto.so.3",
+        "package": "libk5crypto3"
+      },
+      "libkeyutils.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libkeyutils.so.1",
+        "package": "libkeyutils1"
+      },
+      "libkrb5.so.3": {
+        "path": "usr/lib/x86_64-linux-gnu/libkrb5.so.3",
+        "package": "libkrb5-3"
+      },
+      "libkrb5support.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libkrb5support.so.0",
+        "package": "libkrb5support0"
+      },
+      "liblcms2.so.2": {
+        "path": "usr/lib/x86_64-linux-gnu/liblcms2.so.2",
+        "package": "liblcms2-2"
+      },
+      "liblzma.so.5": {
+        "path": "usr/lib/x86_64-linux-gnu/liblzma.so.5",
+        "package": "liblzma5"
+      },
+      "libmbedcrypto.so.16": {
+        "path": "usr/lib/x86_64-linux-gnu/libmbedcrypto.so.16",
+        "package": "libmbedcrypto16"
+      },
+      "libmd.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libmd.so.0",
+        "package": "libmd0"
+      },
+      "libmount.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libmount.so.1",
+        "package": "libmount1"
+      },
+      "libmp3lame.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libmp3lame.so.0",
+        "package": "libmp3lame0"
+      },
+      "libmpg123.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libmpg123.so.0",
+        "package": "libmpg123-0t64"
+      },
+      "libnettle.so.8": {
+        "path": "usr/lib/x86_64-linux-gnu/libnettle.so.8",
+        "package": "libnettle8t64"
+      },
+      "libnorm.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libnorm.so.1",
+        "package": "libnorm1t64"
+      },
+      "libnuma.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libnuma.so.1",
+        "package": "libnuma1"
+      },
+      "libogg.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libogg.so.0",
+        "package": "libogg0"
+      },
+      "libopenjp2.so.7": {
+        "path": "usr/lib/x86_64-linux-gnu/libopenjp2.so.7",
+        "package": "libopenjp2-7"
+      },
+      "libopenmpt.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libopenmpt.so.0",
+        "package": "libopenmpt0t64"
+      },
+      "libopus.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libopus.so.0",
+        "package": "libopus-dev"
+      },
+      "libp11-kit.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libp11-kit.so.0",
+        "package": "libp11-kit0"
+      },
+      "libpango-1.0.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libpango-1.0.so.0",
+        "package": "libpango-1.0-0"
+      },
+      "libpangocairo-1.0.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libpangocairo-1.0.so.0",
+        "package": "libpangocairo-1.0-0"
+      },
+      "libpangoft2-1.0.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libpangoft2-1.0.so.0",
+        "package": "libpangoft2-1.0-0"
+      },
+      "libpcre2-8.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libpcre2-8.so.0",
+        "package": "libpcre2-8-0"
+      },
+      "libpgm-5.3.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libpgm-5.3.so.0",
+        "package": "libpgm-5.3-0t64"
+      },
+      "libpixman-1.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libpixman-1.so.0",
+        "package": "libpixman-1-0"
+      },
+      "libpng16.so.16": {
+        "path": "usr/lib/x86_64-linux-gnu/libpng16.so.16",
+        "package": "libpng16-16t64"
+      },
+      "librabbitmq.so.4": {
+        "path": "usr/lib/x86_64-linux-gnu/librabbitmq.so.4",
+        "package": "librabbitmq4"
+      },
+      "librav1e.so.0.8": {
+        "path": "usr/lib/x86_64-linux-gnu/librav1e.so.0.8",
+        "package": "librav1e0.8"
+      },
+      "librist.so.4": {
+        "path": "usr/lib/x86_64-linux-gnu/librist.so.4",
+        "package": "librist4"
+      },
+      "librsvg-2.so.2": {
+        "path": "usr/lib/x86_64-linux-gnu/librsvg-2.so.2",
+        "package": "librsvg2-2"
+      },
+      "libseccomp.so.2": {
+        "path": "usr/lib/x86_64-linux-gnu/libseccomp.so.2",
+        "package": "libseccomp2"
+      },
+      "libselinux.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libselinux.so.1",
+        "package": "libselinux1"
+      },
+      "libshaderc.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libshaderc.so.1",
+        "package": "libshaderc-dev"
+      },
+      "libsharpyuv.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libsharpyuv.so.0",
+        "package": "libsharpyuv0"
+      },
+      "libshine.so.3": {
+        "path": "usr/lib/x86_64-linux-gnu/libshine.so.3",
+        "package": "libshine3"
+      },
+      "libsnappy.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libsnappy.so.1",
+        "package": "libsnappy1v5"
+      },
+      "libsodium.so.23": {
+        "path": "usr/lib/x86_64-linux-gnu/libsodium.so.23",
+        "package": "libsodium23"
+      },
+      "libsoxr.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libsoxr.so.0",
+        "package": "libsoxr0"
+      },
+      "libspeex.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libspeex.so.1",
+        "package": "libspeex1"
+      },
+      "libsrt-gnutls.so.1.5": {
+        "path": "usr/lib/x86_64-linux-gnu/libsrt-gnutls.so.1.5",
+        "package": "libsrt1.5-gnutls"
+      },
+      "libssh.so.4": {
+        "path": "usr/lib/x86_64-linux-gnu/libssh.so.4",
+        "package": "libssh-4"
+      },
+      "libssl.so.3": {
+        "path": "usr/lib/x86_64-linux-gnu/libssl.so.3",
+        "package": "libssl3t64"
+      },
+      "libswresample.so.6": {
+        "path": "usr/lib/x86_64-linux-gnu/libswresample.so.6",
+        "package": "libswresample-dev"
+      },
+      "libswscale.so.9": {
+        "path": "usr/lib/x86_64-linux-gnu/libswscale.so.9",
+        "package": "libswscale-dev"
+      },
+      "libtasn1.so.6": {
+        "path": "usr/lib/x86_64-linux-gnu/libtasn1.so.6",
+        "package": "libtasn1-6"
+      },
+      "libthai.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libthai.so.0",
+        "package": "libthai0"
+      },
+      "libtheoradec.so.2": {
+        "path": "usr/lib/x86_64-linux-gnu/libtheoradec.so.2",
+        "package": "libtheoradec2"
+      },
+      "libtheoraenc.so.2": {
+        "path": "usr/lib/x86_64-linux-gnu/libtheoraenc.so.2",
+        "package": "libtheoraenc2"
+      },
+      "libtwolame.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libtwolame.so.0",
+        "package": "libtwolame0"
+      },
+      "libudfread.so.3": {
+        "path": "usr/lib/x86_64-linux-gnu/libudfread.so.3",
+        "package": "libudfread3"
+      },
+      "libunistring.so.5": {
+        "path": "usr/lib/x86_64-linux-gnu/libunistring.so.5",
+        "package": "libunistring5"
+      },
+      "libvorbis.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libvorbis.so.0",
+        "package": "libvorbis0a"
+      },
+      "libvorbisenc.so.2": {
+        "path": "usr/lib/x86_64-linux-gnu/libvorbisenc.so.2",
+        "package": "libvorbisenc2"
+      },
+      "libvorbisfile.so.3": {
+        "path": "usr/lib/x86_64-linux-gnu/libvorbisfile.so.3",
+        "package": "libvorbisfile3"
+      },
+      "libvpx.so.12": {
+        "path": "usr/lib/x86_64-linux-gnu/libvpx.so.12",
+        "package": "libvpx12"
+      },
+      "libvulkan.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libvulkan.so.1",
+        "package": "libvulkan1"
+      },
+      "libwayland-client.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libwayland-client.so.0",
+        "package": "libwayland-client0"
+      },
+      "libwayland-cursor.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libwayland-cursor.so.0",
+        "package": "libwayland-cursor0"
+      },
+      "libwayland-egl.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libwayland-egl.so.1",
+        "package": "libwayland-egl1"
+      },
+      "libwebp.so.7": {
+        "path": "usr/lib/x86_64-linux-gnu/libwebp.so.7",
+        "package": "libwebp7"
+      },
+      "libwebpmux.so.3": {
+        "path": "usr/lib/x86_64-linux-gnu/libwebpmux.so.3",
+        "package": "libwebpmux3"
+      },
+      "libx264.so.165": {
+        "path": "usr/lib/x86_64-linux-gnu/libx264.so.165",
+        "package": "libx264-165"
+      },
+      "libx265.so.215": {
+        "path": "usr/lib/x86_64-linux-gnu/libx265.so.215",
+        "package": "libx265-215"
+      },
+      "libxcb-render.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libxcb-render.so.0",
+        "package": "libxcb-render0"
+      },
+      "libxcb-shm.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libxcb-shm.so.0",
+        "package": "libxcb-shm0"
+      },
+      "libxcb.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libxcb.so.1",
+        "package": "libxcb1"
+      },
+      "libxkbcommon.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libxkbcommon.so.0",
+        "package": "libxkbcommon0"
+      },
+      "libxml2.so.16": {
+        "path": "usr/lib/x86_64-linux-gnu/libxml2.so.16",
+        "package": "libxml2-16"
+      },
+      "libxvidcore.so.4": {
+        "path": "usr/lib/x86_64-linux-gnu/libxvidcore.so.4",
+        "package": "libxvidcore4"
+      },
+      "libz.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libz.so.1",
+        "package": "zlib1g-dev"
+      },
+      "libzmq.so.5": {
+        "path": "usr/lib/x86_64-linux-gnu/libzmq.so.5",
+        "package": "libzmq5"
+      },
+      "libzstd.so.1": {
+        "path": "usr/lib/x86_64-linux-gnu/libzstd.so.1",
+        "package": "libzstd1"
+      },
+      "libzvbi.so.0": {
+        "path": "usr/lib/x86_64-linux-gnu/libzvbi.so.0",
+        "package": "libzvbi0t64"
+      }
+    },
+    "host_sonames": {
+      "ld-linux-x86-64.so.2": {
+        "category": "glibc",
+        "reason": "Native host C runtime and ELF loader must stay a matching platform set."
+      },
+      "libEGL.so.1": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      },
+      "libGL.so.1": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      },
+      "libGLX.so.0": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      },
+      "libGLdispatch.so.0": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      },
+      "libOpenCL.so.1": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      },
+      "libOpenGL.so.0": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      },
+      "libasound.so.2": {
+        "category": "native-session",
+        "reason": "Native audio/session plugin and configuration paths must match the host distribution."
+      },
+      "libc.so.6": {
+        "category": "glibc",
+        "reason": "Native host C runtime and ELF loader must stay a matching platform set."
+      },
+      "libdecor-0.so.0": {
+        "category": "native-session",
+        "reason": "Native audio/session plugin and configuration paths must match the host distribution."
+      },
+      "libdl.so.2": {
+        "category": "glibc",
+        "reason": "Native host C runtime and ELF loader must stay a matching platform set."
+      },
+      "libdrm.so.2": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      },
+      "libgbm.so.1": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      },
+      "libgcc_s.so.1": {
+        "category": "gnu-runtime",
+        "reason": "Native GNU runtime must satisfy exact ABI versions and remain compatible with host driver modules."
+      },
+      "libm.so.6": {
+        "category": "glibc",
+        "reason": "Native host C runtime and ELF loader must stay a matching platform set."
+      },
+      "libmvec.so.1": {
+        "category": "glibc",
+        "reason": "Native host C runtime and ELF loader must stay a matching platform set."
+      },
+      "libpthread.so.0": {
+        "category": "glibc",
+        "reason": "Native host C runtime and ELF loader must stay a matching platform set."
+      },
+      "libpulse.so.0": {
+        "category": "native-session",
+        "reason": "Native audio/session plugin and configuration paths must match the host distribution."
+      },
+      "libresolv.so.2": {
+        "category": "glibc",
+        "reason": "Native host C runtime and ELF loader must stay a matching platform set."
+      },
+      "librt.so.1": {
+        "category": "glibc",
+        "reason": "Native host C runtime and ELF loader must stay a matching platform set."
+      },
+      "libstdc++.so.6": {
+        "category": "gnu-runtime",
+        "reason": "Native GNU runtime must satisfy exact ABI versions and remain compatible with host driver modules."
+      },
+      "libutil.so.1": {
+        "category": "glibc",
+        "reason": "Native host C runtime and ELF loader must stay a matching platform set."
+      },
+      "libva-drm.so.2": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      },
+      "libva-x11.so.2": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      },
+      "libva.so.2": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      },
+      "libvdpau.so.1": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      },
+      "libvpl.so.2": {
+        "category": "gpu-interface",
+        "reason": "Native GPU client/vendor search paths must match the installed host driver stack; no drivers are bundled."
+      }
+    },
+    "minimum_glibc": "2.43",
+    "scope": "Complete declared native DT_NEEDED closure of the ten root libraries up to explicit host interfaces. Native host implementations, dlopen plugins, GPU drivers and gameplay are not bundled or qualified by this metadata."
+  }
 }

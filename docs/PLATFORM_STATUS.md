@@ -61,7 +61,7 @@ its origin and limitations. It is not a game screenshot or extracted asset. The
 separate unreviewed sword icon and proprietary-font decoding remain excluded.
 Plain user/system TTF/OTF/TTC font input is supported. Public-only changes require
 further integrated testing. Full-game, save-recovery, long-session, other-GPU and
-clean-machine coverage remain incomplete. A regular 0.1.9 release does not imply
+clean-machine coverage remain incomplete. A regular release does not imply
 Windows game-build or full-game qualification.
 
 Linux0.1.8 adds native Exit to desktop entries on the title screen and System
@@ -85,3 +85,23 @@ not qualification of 99 populated slots, every story/save/recovery case, or the
 full game. Updating requires a local game rebuild; the updater retains the
 original save/settings profile and shared input. No save conversion is required.
 Windows retains its existing save implementation and has no backport scheduled.
+
+
+Linux 0.1.10 adds the experimental, character-owned dedicated Quick Step slot,
+off by default, and fixes missing native dispatch cases in NPC trading. The
+maintainer accepted Quick Step manually and reports no trading crashes in the
+tested development build. Quick Step can still be hit-or-miss or show UI quirks;
+expect quirkiness, with further fixes and polish planned. Broader character,
+equipment, Future Connected, save/reload/recovery and full-game coverage remain
+incomplete. See the [Quick Step guide](QUICKSTEP.md).
+
+Its pinned private runtime now includes ordinary media/codec dependencies that
+previously came from the Ubuntu host. Native driver/audio/session interfaces,
+glibc 2.43+ and required GNU ABI versions remain explicit host requirements.
+Both completed build modes pass game/launcher and native companion load-only
+checks in an isolated official Arch 2026.11 userspace (glibc 2.44, Python 3.14.9),
+with system libbluray.so.4 and no system .so.3. Authored VP9/WebM, H264, Opus,
+scaling and resampling tests also pass. This uses the maintainer's
+host kernel and establishes neither an Arch desktop game run nor AMD/Wayland
+GPU compatibility. Optional FFmpeg plugins and vendor GPU modules require their
+own integration coverage. See the [Linux prerequisites](BUILD_LINUX.md).

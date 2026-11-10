@@ -7,13 +7,17 @@
       "sha256": "495629fc5c463635faae7cd0ea9b51faee0f4bdc2d3251ef659acbb6194e2564",
       "bytes": 268
     },
+    ".github/requirements-ci.lock": {
+      "sha256": "8dec293e340a85e6981633606999bc4aa3083772b493b1789f85ea0670ff81bd",
+      "bytes": 1070
+    },
     ".github/workflows/source-ci.yml": {
-      "sha256": "4fe18986395fa4bdf4712a101da19dc56bbe58bce8b39526e9e58070d375575f",
-      "bytes": 1697
+      "sha256": "6ad28ca4bfe27f376c961c8bd5c0ff3c5550eeb9c2a5cce4ec3970cf9535f85c",
+      "bytes": 2119
     },
     ".github/workflows/source-release.yml": {
-      "sha256": "55c4116f371c31cd4d291cf775c01d2f5b37cf4ee30f301aeaea924a463d0481",
-      "bytes": 2706
+      "sha256": "9b2dcb491fb90630d909d8c2f86e22fe114471d68e22c188baf3b9caf82eee3a",
+      "bytes": 3129
     },
     ".gitignore": {
       "sha256": "84d085c945c53ef1507cf0a4daea81d4e63aa5d77f5ba0517a5b78320177865e",
@@ -28,8 +32,8 @@
       "bytes": 458
     },
     "CHANGELOG.md": {
-      "sha256": "a54cc14c9a8deb932c8b74ffdef690ecda0742957d617faaceccaa7f60fad0b1",
-      "bytes": 18506
+      "sha256": "1eda435419f4ca603a30b4868cce42fbd48591f3dcc73bdecf544e706ae37020",
+      "bytes": 20653
     },
     "CONTRIBUTING.md": {
       "sha256": "d95551debf3771f3a9a0641087125e24f15c492dbe9ef1827cc819b93b13f268",
@@ -76,8 +80,8 @@
       "bytes": 4146
     },
     "Monado_Linux/docs/UPSTREAM.md": {
-      "sha256": "73a0618afa67ab6e95266f2b510a79d9507354615fc404def9781d24a3d56ff9",
-      "bytes": 26876
+      "sha256": "33a1688c7ee211a61438365686eb025aeec7e81abc5f90927a97b0df93c68a23",
+      "bytes": 39429
     },
     "Monado_Linux/docs/adr/0001-base-lasrecomp.md": {
       "sha256": "b30eeb4177a480ae3b6c54338a424395cbf201204e5c612906e2d674154c9bbe",
@@ -136,8 +140,8 @@
       "bytes": 767
     },
     "Monado_Linux/docs/contracts/patch-format.md": {
-      "sha256": "d6286eab2e726bdb9f0cfc2fcf440d9234467f2b89f59c3f94b8099ab8bd692b",
-      "bytes": 366
+      "sha256": "7a868bf524669135e773e2feda52ac468ac960c3fb56c7ac3af10a4582940e7d",
+      "bytes": 1252
     },
     "Monado_Linux/docs/contracts/route-format.md": {
       "sha256": "ca1ae3fb12a8a6cc75a3b3e24a8b1a24e7ad023d73060bd12e6bd97b29098caf",
@@ -156,16 +160,16 @@
       "bytes": 359
     },
     "Monado_Linux/games/xcde/patches.py": {
-      "sha256": "6d5963800827bc786271e580c290ae4e6f82dcd32842caf3da3843e0034d8d0b",
-      "bytes": 25651
+      "sha256": "db9bf959227706139526ef8f4a6ad1a5a85ad42f57f7cbfa2226be1ede8bf86a",
+      "bytes": 39872
     },
     "Monado_Linux/games/xcde/profile.json": {
       "sha256": "9a3466093323f740bf4e80434e5a38d50dafba6b1329b4a43636d0dfdac522ea",
       "bytes": 1299
     },
     "Monado_Linux/graphics-deps-linux.lock.json": {
-      "sha256": "4a1ca53b22a3b372ff5e66aa7702ad7fbe699ff868ab67286a6d662135012d3c",
-      "bytes": 24290
+      "sha256": "e85790dc4e846268ffaee48aa9b321997a58bc9de8786fbcf36f6b538518352d",
+      "bytes": 99801
     },
     "Monado_Linux/requirements-linux.lock": {
       "sha256": "f7ba58c8332d5956f87ec187e932771a05fe85abcc3d27cdb45afe1037ccfcc6",
@@ -299,6 +303,66 @@
       "sha256": "da978eb88047007e9f25b772f3f2587c8dfa43511ac0f4fcd10ea10adcad91a5",
       "bytes": 8548
     },
+    "Monado_Linux/runtime/hle/quickstep_native.c": {
+      "sha256": "950cf8357d28f5d7d664e4ea03ddfdd529f346904f98ac02102edbdd4c1f72fe",
+      "bytes": 40137
+    },
+    "Monado_Linux/runtime/hle/quickstep_native.h": {
+      "sha256": "16463fe892e218acb4623fd510e03402edeae49477702ff0a62aa1b88bb6706b",
+      "bytes": 1268
+    },
+    "Monado_Linux/runtime/hle/quickstep_native_ui.h": {
+      "sha256": "62e36235333e75b0fed09c88ba860a40cffe28e858cb64b610d4dc857827bfd8",
+      "bytes": 964
+    },
+    "Monado_Linux/runtime/hle/quickstep_picker.c": {
+      "sha256": "a462e49744ade84e30b1d33d51bb01bee6b794d51ef059ea945ee8d171795a79",
+      "bytes": 27615
+    },
+    "Monado_Linux/runtime/hle/quickstep_picker.h": {
+      "sha256": "4d2daaf0024ba758cd2313d1f26289d2c5fb826f256afedf7eb0c4a2b338bfff",
+      "bytes": 2870
+    },
+    "Monado_Linux/runtime/hle/quickstep_save.c": {
+      "sha256": "96da9b9b9aa95a73d640177c0264510ae7159b2ac491fec2beeae7cd03123630",
+      "bytes": 23973
+    },
+    "Monado_Linux/runtime/hle/quickstep_save.h": {
+      "sha256": "7aa5211caa02165c5e55135a11e6cdeda4bf3e701c5d5e24cb6cecaf8c6a65e3",
+      "bytes": 2711
+    },
+    "Monado_Linux/runtime/hle/quickstep_slot.c": {
+      "sha256": "41d237a38ee30678e721a6b367aa50557bdc6c84f472fd591e44c5a3e5c892e4",
+      "bytes": 27242
+    },
+    "Monado_Linux/runtime/hle/quickstep_slot.h": {
+      "sha256": "53951b7689ced8540a4d245100393a427ff550091fb8ed81853f04f5314c6b7d",
+      "bytes": 3505
+    },
+    "Monado_Linux/runtime/hle/quickstep_stats.c": {
+      "sha256": "b269ef01200f2859d117371fa4e76cdc5098d9efcb00645499032c7a29f5522e",
+      "bytes": 13182
+    },
+    "Monado_Linux/runtime/hle/quickstep_stats.h": {
+      "sha256": "d0bc7d2db7e02b9a51a650f7251927ead24323c078ac9e179fa1aa123985ce53",
+      "bytes": 561
+    },
+    "Monado_Linux/runtime/hle/quickstep_stats_ui.c": {
+      "sha256": "b8fec22a365f30f4c9df955eb2ae64e0b5ac1e3d7d5b117bd16307fef15cffa5",
+      "bytes": 32425
+    },
+    "Monado_Linux/runtime/hle/quickstep_stats_ui.h": {
+      "sha256": "8e425eb6469736561a1bb654774890f64ad35415ae5953cd531a8a9195642413",
+      "bytes": 470
+    },
+    "Monado_Linux/runtime/hle/quickstep_ui_memory.c": {
+      "sha256": "b20ef1886a883d386f98995378411d004ad7977bf98a32927a9ba3199640dacf",
+      "bytes": 6164
+    },
+    "Monado_Linux/runtime/hle/quickstep_ui_memory.h": {
+      "sha256": "3617170e96f7acf7590be9ebcbb5261c0c75feda648317e800cf649875bebaa1",
+      "bytes": 479
+    },
     "Monado_Linux/runtime/hle/swkbd.c": {
       "sha256": "c2f14ec88afc1e49e72da0fba550c7cbcc767ef2b3080fee7fa63d0d503554ba",
       "bytes": 2042
@@ -348,8 +412,8 @@
       "bytes": 767
     },
     "Monado_Linux/runtime/host/settings_ini.c": {
-      "sha256": "0a4f812ae0e9cef64be1e2e63139da609c4593693c229b669534662ada7fc7a4",
-      "bytes": 10683
+      "sha256": "350f6c5e7d8ead57a2fc1b2c47a9c5f14a1671cba4727433ad6a91ed1b178183",
+      "bytes": 10949
     },
     "Monado_Linux/runtime/host/stubs.c": {
       "sha256": "e3af1d9cf7a24c7154ff11c5c8d893abe395a557b053512fa392a47c2b0d3006",
@@ -624,8 +688,8 @@
       "bytes": 60088
     },
     "Monado_Linux/runtime/services/fs.c": {
-      "sha256": "9c4891e5cc95f0393883f4532ba98c95999e8ea4ab022a3bf4b84d49c60d8278",
-      "bytes": 36410
+      "sha256": "e75698b6169604ff906db3a6747c0f70dee7480d006686a7c2f90352d5c36eec",
+      "bytes": 42107
     },
     "Monado_Linux/runtime/services/hid_set.c": {
       "sha256": "0bfcf986eb05b9be3a92835d904a12258447e302ae623ff96dc76c500a623d56",
@@ -656,8 +720,8 @@
       "bytes": 6118
     },
     "Monado_Linux/runtime/settings.h": {
-      "sha256": "59b1d49efcfe7fbd90f2362237ae0d6f95acbe7c8aa42b8fd80d9b38b93ac5f8",
-      "bytes": 6588
+      "sha256": "68efd59bfb2c105372bc054bd520bd46e6300e736e076f294d0e5af8cdb642ca",
+      "bytes": 6674
     },
     "Monado_Linux/runtime/simd.h": {
       "sha256": "30557d1c7e2cc087a7870d1bc88fa0a2158e4d9ed8987e5351951d463b8e3548",
@@ -696,12 +760,12 @@
       "bytes": 1699
     },
     "Monado_Linux/scripts/build_launcher_linux.py": {
-      "sha256": "fe0b5e35e31ed881b412e56507bc03c4d77aa75f1d22386e2321d56b6b7e3794",
-      "bytes": 14525
+      "sha256": "7e9fe07ac9eab481e937d2064b9ee3cdcb395733e89732ba6f12eb6eaedc08ea",
+      "bytes": 14966
     },
     "Monado_Linux/scripts/build_linux.py": {
-      "sha256": "536dfc8657aaa0ab400c6368d16dcc7af3097707cd5c611a3ddb6f176c9865bf",
-      "bytes": 26788
+      "sha256": "6e87230cb7e425ca9c1f217ffda876d9852dea5bbe02867e23c1eaea16df0071",
+      "bytes": 28214
     },
     "Monado_Linux/scripts/build_rt_gfx.sh": {
       "sha256": "ff6342dccc7e6a7cf6a35baea270a6f699e299bc89cf09a372c60ddfbbc8cd75",
@@ -760,8 +824,8 @@
       "bytes": 7883
     },
     "Monado_Linux/scripts/launcher_linux.py": {
-      "sha256": "a29974c80c9385eaf4f7b917cd7b310a7b31dc97728f60d8082afddd7015196a",
-      "bytes": 22198
+      "sha256": "bcfad175c0094189f3fe9a5a2944878bb8e7f2df3ee79a58bb207218da723c96",
+      "bytes": 22440
     },
     "Monado_Linux/scripts/launcher_precompile_integration_linux.py": {
       "sha256": "54a4a3a7fc12fc6861313547163e6a16d5ab120143c36ec47c88db97c3143817",
@@ -776,12 +840,12 @@
       "bytes": 25546
     },
     "Monado_Linux/scripts/launcher_settings_tests_linux.py": {
-      "sha256": "5e51fc6350fe9799964cd88ccdb8a9e1be9b65d8d22659522b15e495ae2a581d",
-      "bytes": 5198
+      "sha256": "4b3830d6898242fb9124411ad3fe16464b458adcbbc680619e54f0601f622a95",
+      "bytes": 5211
     },
     "Monado_Linux/scripts/launcher_theme_tests_linux.py": {
-      "sha256": "33d93827ec1b0b6d0c9bc51ad2c023d4996eb6455461a2de40a4b185309e3e0c",
-      "bytes": 19452
+      "sha256": "714502058140fe580b658ea6f0ef5fb0933518bb0efbaf8768f7a9fd1f96a216",
+      "bytes": 19626
     },
     "Monado_Linux/scripts/launcher_ui_tests_linux.py": {
       "sha256": "f5cdd09cfa09cd78a73f535cb557c0bf634615c83996a0f3e63f365be6e11997",
@@ -798,6 +862,14 @@
     "Monado_Linux/scripts/link_gfx.sh": {
       "sha256": "f86e56e7fc4c7bd6014e5e7678dceb3a1cf831704d4b6d89936bfd1d8db5cfed",
       "bytes": 1710
+    },
+    "Monado_Linux/scripts/linux_runtime_check.py": {
+      "sha256": "a0293710df551f40e341504647ffc2dfc6f913b40c58fdb6b3455216143c7096",
+      "bytes": 23068
+    },
+    "Monado_Linux/scripts/linux_runtime_graph.py": {
+      "sha256": "bb4446a4f33eabae1cf87a7e1e84d5879db561180a161934142c1e9113ccfc22",
+      "bytes": 12542
     },
     "Monado_Linux/scripts/native_tests.sh": {
       "sha256": "6d9aa7f9fc75ad59d597375547378b7d6e7a18b91e31a55206ca44326a03dad3",
@@ -828,8 +900,8 @@
       "bytes": 9219
     },
     "Monado_Linux/scripts/precompile_linux.py": {
-      "sha256": "3ecd7a300910643336c0dbb551a9e7fecf6c42dceb8ae7e124b6094465d431b3",
-      "bytes": 30702
+      "sha256": "a92d0a0d609f7923723a2483b84e99b0f79ec9ef478a3168bed929b07f38e648",
+      "bytes": 30818
     },
     "Monado_Linux/scripts/precompile_platform_tests_linux.py": {
       "sha256": "8d65b1be3ddbee9d8e959dff6ff83591a3d58b2f94a1300763202599495d2a39",
@@ -860,8 +932,8 @@
       "bytes": 1854
     },
     "Monado_Linux/scripts/run_linux.py": {
-      "sha256": "8c6ddd4f89712e87d42151f397fbc110e924daf992094c70dd9e778b5a8a0ce1",
-      "bytes": 16383
+      "sha256": "f5de44eef533265e1df6efc829a09008ec0a09a06557428fc53e8ee5da89b468",
+      "bytes": 17145
     },
     "Monado_Linux/scripts/save_tests_linux.py": {
       "sha256": "da24d99f491327e1e151360a47539f5ec8faf64731da820941317b460f5d489b",
@@ -876,8 +948,8 @@
       "bytes": 31715
     },
     "Monado_Linux/scripts/setup_linux_graphics.py": {
-      "sha256": "7700af1c9b065b3208572128fbdde0deb4acd9278d1fd632426479a05a0d56a9",
-      "bytes": 15925
+      "sha256": "fd79c58a4adfdd5ea62c9522874f6ac4ca2fd537066287f435424faaf1ffda31",
+      "bytes": 19156
     },
     "Monado_Linux/scripts/soak.sh": {
       "sha256": "d309cee741bae652b69462a814a7a07577572ff1e32e43cfed2ea6697bfcc20e",
@@ -992,8 +1064,12 @@
       "bytes": 4089
     },
     "Monado_Linux/tests/native/test_launcher_settings_linux.c": {
-      "sha256": "623838587d498f8ebb2f3345ae99d88ef673fd369dacf90fca815eb523cd5e19",
-      "bytes": 11707
+      "sha256": "828a5a44c9c592be03bcea4e75f43282fff270fc57150600be2f17978baa527f",
+      "bytes": 12977
+    },
+    "Monado_Linux/tests/native/test_linux_media_runtime.c": {
+      "sha256": "9a911786e5a7db8b550687a053292755aca32a1b29db7d504e34a74c3577454b",
+      "bytes": 9665
     },
     "Monado_Linux/tests/native/test_movie_buf.c": {
       "sha256": "8e29cf65e97da11bff0adafc2550fa11f5b93969fddd196b7eeec8e349d94e71",
@@ -1039,13 +1115,45 @@
       "sha256": "54c5a8dbda9da969cf6877b055a3fff04e6f62dbc0863f7bbe75617c6a5a620e",
       "bytes": 9272
     },
+    "Monado_Linux/tests/native/test_quickstep_native.c": {
+      "sha256": "76f9f57299df9a0c20c7d33579ccf738f3c08361f384e3c1591ca52b14842bec",
+      "bytes": 21203
+    },
+    "Monado_Linux/tests/native/test_quickstep_picker.c": {
+      "sha256": "91030a249b2c5d7819c6343b1efd4c78e501c1397ef8894dd86d1687f374de78",
+      "bytes": 32197
+    },
+    "Monado_Linux/tests/native/test_quickstep_save.c": {
+      "sha256": "6ca2ada6610f4483b126c03b87344e3494c60d2ba8ada310a9e4da8d982f582f",
+      "bytes": 19298
+    },
+    "Monado_Linux/tests/native/test_quickstep_slot.c": {
+      "sha256": "6b7872da9c3a171d06518dc610ab8e53fdde9dad3793061772c62a78c77ca51c",
+      "bytes": 20450
+    },
+    "Monado_Linux/tests/native/test_quickstep_stats.c": {
+      "sha256": "2df962d4099473860e09240bbc3a0a394a9a25aeaa1da632b782fb1826727fc6",
+      "bytes": 12061
+    },
+    "Monado_Linux/tests/native/test_quickstep_stats_integration.c": {
+      "sha256": "f4caeadbefb4c067d4037102f99b4318e5b7054ef90c5a25a7423d6a4aadbd9e",
+      "bytes": 5589
+    },
+    "Monado_Linux/tests/native/test_quickstep_stats_ui.c": {
+      "sha256": "30a0ad0f82fda5d94088805e0150068ccbad5504b9de8e658cab64e92aa60e43",
+      "bytes": 18495
+    },
+    "Monado_Linux/tests/native/test_quickstep_ui_memory.c": {
+      "sha256": "e82dc84aeb29b12ce95d7eb1783c66afbd4247737a1c7b219bd2f38306d65bb8",
+      "bytes": 6194
+    },
     "Monado_Linux/tests/native/test_runtime_activity_linux.c": {
       "sha256": "cd968e9b9ecf19235fcf59ccbb0e8fc81d210b5952eeb90f3a1a4b8d4d1211e9",
       "bytes": 5289
     },
     "Monado_Linux/tests/native/test_save_commit_linux.c": {
-      "sha256": "5059aae08e2d97f38bd4fd021c632a396849143d9c4d7d80cc9184c5f1027919",
-      "bytes": 11460
+      "sha256": "c07ee77d27a7294e649a2daa803c716a577b16fb7443ed8015142eaf58ef6e98",
+      "bytes": 12308
     },
     "Monado_Linux/tests/native/test_save_mount_linux.c": {
       "sha256": "9387b5d9764eba00e76bddcec752f1e8ff4e8bef023ef096cf51d2a382bd4b30",
@@ -1308,8 +1416,8 @@
       "bytes": 5607
     },
     "Monado_Linux/tests/unit/test_linux_dlss_build.py": {
-      "sha256": "1276edf0999462d0ff1b755416d4a27ee517bc4bdf57fe84d744638abf503b83",
-      "bytes": 5741
+      "sha256": "c9d27a745da19d4e3504efc30c0f43e9fd3a31416b6a6cfa75c6c071e4ac077d",
+      "bytes": 5904
     },
     "Monado_Linux/tests/unit/test_linux_dlss_entry.py": {
       "sha256": "e08da4c1e02068784228a9ade7e82c7b1c793a758601b330c7401cb04297a9cf",
@@ -1332,12 +1440,12 @@
       "bytes": 4307
     },
     "Monado_Linux/tests/unit/test_linux_launcher_build.py": {
-      "sha256": "766b82eddebd1d176fb32486222fa9a5cc49c3c65be7f13af5d72160620de1fc",
-      "bytes": 9177
+      "sha256": "77f6d1442f02100f658e76cebb22a7e1f82cf59a0397fc62547b88ca8e2729fd",
+      "bytes": 9797
     },
     "Monado_Linux/tests/unit/test_linux_launcher_entry.py": {
-      "sha256": "662370270ed0d52b7cb849a7cfad28c3cb0c4b0ee078a336e8a56dd7168c8130",
-      "bytes": 19344
+      "sha256": "0edb26ec5ce69fe83e9289856f294e1edab49dddef7d5848c01830d2a045e1ec",
+      "bytes": 20242
     },
     "Monado_Linux/tests/unit/test_linux_launcher_ui.py": {
       "sha256": "597f1b29ee57cf97830a011df64e3663f196a28ec226b522019d38e58c06604b",
@@ -1852,12 +1960,12 @@
       "bytes": 876
     },
     "Monado_Linux/tools/launcher/launcher.cpp": {
-      "sha256": "d3e3885ceb2fc8a833d49b832d99d37a2d0a1f012ce2a5f4676cfad738a15985",
-      "bytes": 100176
+      "sha256": "3e47cd79670cae4bb551bb21a3c0885fd463aed1615c4a5d458af8b736e36e82",
+      "bytes": 101514
     },
     "Monado_Linux/tools/launcher/linux_config_test.cpp": {
-      "sha256": "8eb5c978b1b12ed28d3078fa9ab722dd2223ab37d07d7666f188cb804d54b71f",
-      "bytes": 6978
+      "sha256": "8d0ee66b22bba34b47ba7b3175752f5c8421ad7bd7c8675887f4085477d14fc1",
+      "bytes": 8360
     },
     "Monado_Linux/tools/launcher/linux_host.h": {
       "sha256": "668b87f7f8c2ab9b8a4634ce2402c83c278f4934d3fd3222c4cd75bc09463474",
@@ -1896,8 +2004,8 @@
       "bytes": 3335
     },
     "Monado_Linux/tools/lifter/gen.py": {
-      "sha256": "9405788d746c04132dd190d9b4ba2f5afd9b97e4d3aaabac6effb6290195738c",
-      "bytes": 27493
+      "sha256": "d24b91549b393c687a6d27b7e2b65f23b89a924502f7316e841f5c8f545a37be",
+      "bytes": 28044
     },
     "Monado_Linux/tools/lifter/lifter.py": {
       "sha256": "698cc14400b3c9f83530fa2a3c1c9fdc5c9a6819cca7c76d7708f970039dba79",
@@ -1908,8 +2016,8 @@
       "bytes": 4251
     },
     "Monado_Linux/tools/lifter/patchfmt.py": {
-      "sha256": "a00d19a240c2bd1f1c44fd0009d6f09add8f84e23521350d61c06566b6021a55",
-      "bytes": 1591
+      "sha256": "eedb88675eeaf1e255ba86c911e7c186c23a1ccf2c462f2e774de738d5c16c20",
+      "bytes": 4717
     },
     "Monado_Linux/tools/lifter/simd_c.py": {
       "sha256": "1db85aaa51e1bd95281744e53c8199e7f745044f735124aef567ec00da28fbeb",
@@ -3336,48 +3444,52 @@
       "bytes": 2078
     },
     "NOTICE.md": {
-      "sha256": "95d14a6cb8651916919cb4822f71b828114ae860797ae399d84069c3ff3d9340",
-      "bytes": 4469
+      "sha256": "a58f6b9dd92c13ea654c9a1bb34d3ca209fa5799ef2b84d6e134f547b2a14025",
+      "bytes": 5087
     },
     "Play_Monado_II.sh": {
       "sha256": "111d3bdcc8b4dd86e9bc0b59a2431dd5439c4de0ba94c9bee96756ad5399a053",
       "bytes": 673
     },
     "README.md": {
-      "sha256": "37f73c4c1c730d399362243bbe9e2c9aeccf5b08eee3b669a722f92022c4cff4",
-      "bytes": 9104
+      "sha256": "8035d43545d82095eb4055938e181c80c488c46326ce447cbca109cd494092b7",
+      "bytes": 9647
     },
     "Rollback_Monado_II.sh": {
       "sha256": "798b7481683de368092f5165dd63a423202a9d86d4a7670bb12f493de078f9e5",
       "bytes": 8873
     },
     "TODO.md": {
-      "sha256": "653defd07d870298cb78e795d6182237c4956d76d295effce326340a78e3b5fb",
-      "bytes": 4650
+      "sha256": "4f93a5a4818e1486cf457a04b3daf3d08d9c500e87729387676ce71732e295c9",
+      "bytes": 5125
     },
     "appimage-runtime.lock.json": {
       "sha256": "261353a80245d66832c23f07cab79a7717b983e45e6a19c2019d7c1d464b7a4a",
       "bytes": 635
     },
     "docs/BUILD_LINUX.md": {
-      "sha256": "72387c02e8aeacd9ea97e7855ce0d3933614d728433095de6eb4ab1f66261a8a",
-      "bytes": 14190
+      "sha256": "4066c7e92b8565ef6b3fc5a489bdf86ab800cd7823db793af13ad97572afff47",
+      "bytes": 17658
     },
     "docs/BUILD_WINDOWS.md": {
-      "sha256": "859360d10ff78b0fff67aa4204cd50e7c6004866d29e52da56e93a6e280ea725",
-      "bytes": 2900
+      "sha256": "d759dbfc488a655d748e098f0c3717666b484da98fbe7fc94610b6c46ed5c42b",
+      "bytes": 2977
     },
     "docs/PLATFORM_STATUS.md": {
-      "sha256": "49a80053fa539d1ad80c82bd954cbe4e17c9adafedabb60cebd82ba86641af04",
-      "bytes": 5727
+      "sha256": "6629dad2e613bea43d39fe5730aa92877b2eece63951649574a842c196d1e218",
+      "bytes": 7019
+    },
+    "docs/QUICKSTEP.md": {
+      "sha256": "8259df1d8320bf9febf4fde60c3d89eb4680c06af9c01748f089c384e894a8ac",
+      "bytes": 4331
     },
     "docs/QUIVER.md": {
       "sha256": "088e2ef241c4d3159454fba69e4474f14d2ab76cdc1c2f09305170dcd3aa4981",
       "bytes": 4642
     },
     "docs/RELEASING.md": {
-      "sha256": "809bda2d155c83a29994faecc09e79da14912ddf06344566d673127d1933f2c5",
-      "bytes": 7979
+      "sha256": "cde7cb48115eda89b4c638fa4ed4159ad1a7e504e6eef48d69d6c271bfa9213e",
+      "bytes": 8499
     },
     "publication-policy.json": {
       "sha256": "8f08c5c695dd1a771a6359d59697019813e29754a2af567ad52e0b79414df6ff",
@@ -3390,6 +3502,10 @@
     "tests/test_expanded_saves.py": {
       "sha256": "510f2a910dae29978e7b70c9c8ccc3e0b2673c48ef2b7fd3af02f08edfe39ba9",
       "bytes": 2581
+    },
+    "tests/test_function_entries.py": {
+      "sha256": "8f2aad36b939c16db94b928a220da9d8a2594d68046f6dffb23478b29011fb45",
+      "bytes": 12024
     },
     "tests/test_graphics_downloads.py": {
       "sha256": "1ecdb18ab710263d71b4144ae0fd2756fc6f166c3df276c285d8f5bdb5e48ebc",
@@ -3412,20 +3528,40 @@
       "bytes": 15209
     },
     "tests/test_linux_build_app.py": {
-      "sha256": "4411d9b5c460f24963fed235f16998bfbfa25986d189b1a98ab5054ca786cc64",
-      "bytes": 35860
+      "sha256": "70e1a7f8e822b9c12b92ae19666c81b27cbbce6ee348d7ebb1c8a589ccb906d1",
+      "bytes": 36759
     },
     "tests/test_linux_graphics_paths.py": {
       "sha256": "8626814e7a09aa49a58f71a3014860eabc56bb95f58f08df14edfa0b0b4e5934",
       "bytes": 9026
     },
+    "tests/test_linux_media_runtime.py": {
+      "sha256": "52f9a4514f26395ce0cb549c59df2c9895c63e35eca49837b70a0a218829452d",
+      "bytes": 3912
+    },
     "tests/test_linux_public_setup.py": {
       "sha256": "347c2e715228bc3ad5e4300c21c784f48524de7156fd4eb9fc0888325109359c",
       "bytes": 20543
     },
+    "tests/test_linux_reuse_sources.py": {
+      "sha256": "951a4114ed2e0b42401ee701d14390dc419e5d7f8dc7be044b234fa1e19a7627",
+      "bytes": 5310
+    },
+    "tests/test_linux_runtime_check.py": {
+      "sha256": "7ae30b14e8233917af5a528d3fabc51bd9e3c50279e20cfdabc435a2fb885fff",
+      "bytes": 15201
+    },
+    "tests/test_linux_runtime_graph.py": {
+      "sha256": "b28750dece24c90d8ad9ee53dd398d16cfe17b9c6a4e91bc8f0400dce3a77ced",
+      "bytes": 11516
+    },
+    "tests/test_linux_runtime_update.py": {
+      "sha256": "6497b8936bdfaef18a1c6c3d2cd3830386308ae6c33d64f2e395d59959ac36f1",
+      "bytes": 8482
+    },
     "tests/test_managed_linux_build.py": {
-      "sha256": "dc989443e6321a8393a9c61b6311cecc386ca0b10b393ccb5b97b7db5358b1ac",
-      "bytes": 14916
+      "sha256": "2fe2c5da4a20212c0cde118086def3f96fa7e3510ef67667207de098cdafe580",
+      "bytes": 15212
     },
     "tests/test_packaged_launcher.py": {
       "sha256": "098eca4140e9b64fd30956c8fc721b904df666f7bce1b2fb0e3ce38c5205a7e4",
@@ -3438,6 +3574,54 @@
     "tests/test_publication_guard.py": {
       "sha256": "da2f8bfeda71c5786c89ee94c39b55c7bed465c992f5a6547e5a8907081ebf0a",
       "bytes": 28024
+    },
+    "tests/test_quickstep_background_hook.py": {
+      "sha256": "28cb4be20af0b608a8286e42345620af3c7755896e22849134f1226fc24328b6",
+      "bytes": 4210
+    },
+    "tests/test_quickstep_eligibility_hooks.py": {
+      "sha256": "42b9c40d7c1d05ec39eaaa6c67860cc7368c5eb6570911269d8b8a5c862f90ea",
+      "bytes": 6547
+    },
+    "tests/test_quickstep_native.py": {
+      "sha256": "b71251d447bf7fcecd8b39f70460e8e4afbba5e61b4746bb12b3bcfaa19d38d6",
+      "bytes": 2752
+    },
+    "tests/test_quickstep_native_hooks.py": {
+      "sha256": "a5951069727c0802dedc40a8dff2ff8ca3e276a4b93e1f71682fce3b9d43fd2f",
+      "bytes": 12723
+    },
+    "tests/test_quickstep_picker.py": {
+      "sha256": "2c2878e648947af66f3dcd52e69b3c0d0136bad770ed972fa2124810805484e6",
+      "bytes": 1874
+    },
+    "tests/test_quickstep_save.py": {
+      "sha256": "12a9793b4e3ee9d4719021bdcf08ba0cce88cf3207e1c10b72ae23ec75bc196d",
+      "bytes": 1773
+    },
+    "tests/test_quickstep_slot.py": {
+      "sha256": "3141843b31ba107fddeebf577f47c60f7cb012cad3033050fea7f998038126d9",
+      "bytes": 1858
+    },
+    "tests/test_quickstep_stats_hooks.py": {
+      "sha256": "677aea2d6ab26d836eba1b8c42a3ed3aa436939a6f15d0091b6d375cac18a017",
+      "bytes": 6537
+    },
+    "tests/test_quickstep_stats_integration.py": {
+      "sha256": "e606834132e71734eaebed39e9d6a8972edd2a7a3285c4bf479c65eeaa414a21",
+      "bytes": 1797
+    },
+    "tests/test_quickstep_stats_native.py": {
+      "sha256": "aebeae169f8e69e5af27e56102f2d77b4d5955de8e0b22fce80336f0e2326e60",
+      "bytes": 1683
+    },
+    "tests/test_quickstep_stats_ui.py": {
+      "sha256": "73589390eb4a635e6863ac9466d0fd8d6bfa6b4e8697256f03fa67d8a6b31c76",
+      "bytes": 1706
+    },
+    "tests/test_quickstep_ui_memory.py": {
+      "sha256": "d35c88d9637eb2d6410980b1df4fc063d7f5ee4ecf7c67e37228e96c63ff3173",
+      "bytes": 1720
     },
     "tests/test_quiver_bootstrap.py": {
       "sha256": "1d0d461f14402a3cd78846742218dcd6b295e3f7c5bb19eb9c5bfc2cb14970f1",
@@ -3464,8 +3648,8 @@
       "bytes": 5430
     },
     "tests/test_update_linux.py": {
-      "sha256": "082f04168f0590dee8209072d30649aa291fde278de5dd9467c72f1fee83808c",
-      "bytes": 25909
+      "sha256": "ac78128f8dd3202910727270def130c26c611ae920d1e9b363c20652ded2d94b",
+      "bytes": 27520
     },
     "tests/test_update_release.py": {
       "sha256": "86846a3f5d31e952b5dd2f6bc6f8c57279641fb810883b1f7074c723cadb83dc",
@@ -3528,8 +3712,8 @@
       "bytes": 16439
     },
     "tools/build_linux_app.py": {
-      "sha256": "98211dcd73f8aff2a5a3fa41aaa1e3fd5752cfa427ea63723652a95f28f37bed",
-      "bytes": 32670
+      "sha256": "f7006f7397440fdaa2f4e53007f5df55907922e60765ed2c05634a06ec116eb0",
+      "bytes": 33321
     },
     "tools/installation_version.py": {
       "sha256": "1b3d87079b9776856ecb5d7d1be56fd67f4f8dc9bfed3118af03d9d291b0525a",
@@ -3548,16 +3732,16 @@
       "bytes": 15410
     },
     "tools/update_linux.py": {
-      "sha256": "badcbdfcfbbe6e42dfc35f1bf152c431066a5dfac6ccf8d03ad8c8ea940b04a1",
-      "bytes": 37982
+      "sha256": "781f8f236d409c2e0ddfbcf80558d5981e35f07b8e5a1fa10622a37459ecf72d",
+      "bytes": 39905
     },
     "tools/update_release.py": {
       "sha256": "390e9513aeee7b1bf90558f61cc4d596b01cc4be5ddacd30b494e7baab987add",
       "bytes": 18754
     },
     "update-version.json": {
-      "sha256": "91f0ce4577157f3579f2d026f7bf27d6fb757567e7347491f8f9a61f42feccdb",
-      "bytes": 57
+      "sha256": "6f68b8fa29981e8144db7665d4b9cfda073de7cac0b4fd1e930c5fc9b7b7046e",
+      "bytes": 58
     }
   }
 }

@@ -31,11 +31,11 @@ IMAGE = 'Monado-II-x86_64.AppImage'
 REQUIRED_TOOLS = ('bash', 'pkg-config', 'dpkg-deb', 'readelf', 'mksquashfs', 'unsquashfs')
 DLSS_REQUIRED_TOOLS = ('nm',)
 BWRAP = Path('/usr/bin/bwrap')
-GNU_CXX_RUNTIME = Path('/usr/lib/x86_64-linux-gnu/libstdc++.so.6')
 _run_spec = importlib.util.spec_from_file_location('monado_builder_run_linux', ROOT / 'Monado_Linux/scripts/run_linux.py')
 run_linux = importlib.util.module_from_spec(_run_spec)
 _run_spec.loader.exec_module(run_linux)
 install_layout = run_linux.install_layout
+runtime_check = run_linux.runtime_check
 
 
 class BuildError(RuntimeError):
@@ -144,7 +144,8 @@ def validate_reused_game(port, binary, state, *, dlss, framegen=None):
         raise BuildError('reused game has no stable native source snapshot')
     # The release classifier separately checks generator/profile/launch protocol
     # changes. This builder also refuses changed or newly added native inputs.
-    required = {'scripts/build_linux.py', 'graphics-deps-linux.lock.json', 'requirements-linux.lock',
+    required = {'scripts/build_linux.py', 'scripts/linux_runtime_check.py',
+                'scripts/linux_runtime_graph.py', 'graphics-deps-linux.lock.json', 'requirements-linux.lock',
                 'tools/gen_smaa_inc.py', 'dlss-linux.lock.json', 'scripts/setup_linux_dlss.py',
                 'fsr-linux.lock.json', 'scripts/setup_linux_fsr.py'}
     native = {p.relative_to(port).as_posix() for name in ('runtime', 'third_party')
@@ -172,6 +173,8 @@ def validate_reused_game(port, binary, state, *, dlss, framegen=None):
 def layout(root, jobs, *, require_input=True, identity=None, dlss=True, reuse_game=None, framegen=None):
     framegen = validate_features(dlss=dlss, framegen=framegen)
     root = ordinary(root, directory=True)
+    if ':' in str(root) or any(ord(char) < 32 for char in str(root)):
+        raise BuildError('Linux library search paths cannot contain colons or control characters; use another source folder')
     port = ordinary(root / 'Monado_Linux', directory=True)
     install_layout.binding(port)
     for name in ('build', 'generated', 'runs', '.deps'):
@@ -234,6 +237,8 @@ def layout(root, jobs, *, require_input=True, identity=None, dlss=True, reuse_ga
         else:
             paths['framegen_sdk'] = ordinary(Path(sdk['library_path']).parent, directory=True)
             commands.append(('native-framegen-dependency', [python, '-B', recipe]))
+    commands.append(('check-runtime-dependencies', [python, '-B', port / 'scripts/linux_runtime_check.py',
+                     '--probe', '--port', port, '--output', paths['run'] / 'runtime-probe']))
     if reuse_game is None:
         commands += [
             ('generate-game', [python, '-B', port / 'tools/gen_all.py', '--exefs', source / 'exefs', '--out', paths['generated'], '--simd', 'c']),
@@ -260,9 +265,12 @@ def preflight(*, dlss=True):
         raise BuildError('DLSS/DLAA builds require /usr/bin/bwrap from bubblewrap for the existing private '
                          'runtime namespace. Install bubblewrap, or explicitly use --without-dlss. '
                          'No system packages are installed by this script.')
-    if dlss and (not GNU_CXX_RUNTIME.is_file() or not os.access(GNU_CXX_RUNTIME, os.R_OK)):
-        raise BuildError('DLSS/DLAA builds require the GNU C++ runtime at ' + str(GNU_CXX_RUNTIME) +
-                         '. Install the compatible runtime, or explicitly use --without-dlss.')
+    if dlss:
+        try:
+            runtime_check.discover_gnu_cxx()
+        except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
+            raise BuildError('DLSS/DLAA requires a compatible native GNU C++ runtime: ' + str(error) +
+                             '. Install your distribution runtime, or explicitly use --without-dlss.') from error
 
 
 def prepare_input_layout(root):
@@ -615,6 +623,7 @@ def main(argv=None):
                                   dlss_enabled=not args.without_dlss,
                                   framegen_enabled=framegen,
                                   reuses_game=args.reuse_game is not None,
+                                  runtime_dependencies=runtime_check.dependency_plan(ROOT / 'Monado_Linux'),
                                   launches_game=False, launches_gui=False, network='none in plan; explicit build fetches locked dependencies'), indent=2))
         else:
             build(jobs=args.jobs, dlss=not args.without_dlss, reuse_game=args.reuse_game, framegen=framegen)

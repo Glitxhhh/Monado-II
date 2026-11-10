@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.1.10 — November 9, 2026
+
+- Add an optional, character-owned **Quick Step gem slot** beside boots in
+  Change Equipment. Use native artwork and the normal gem menu filtered to
+  eligible owned Quick Step I–VI, including newly crafted gems. Support bare
+  feet, socketless or unique armour, and Fiora's drones without taking an
+  ordinary gem slot. Enable it in the launcher's Mods tab; it is **off by default**.
+- **Quick Step remains experimental:** the dedicated slot can be hit-or-miss or
+  show UI quirks. Expect quirkiness; further fixes and polish are planned for
+  future builds. Normal gem ownership, potency and caps remain in effect.
+  Assignments are paired with each save using optional metadata; native save
+  files retain their format. See the [Quick Step guide](docs/QUICKSTEP.md).
+- Fix NPC trading's missing native dispatch cases. The maintainer reports that
+  trading no longer crashes in the tested development build.
+- Supply the complete pinned private media/runtime dependency graph, including
+  FFmpeg's required `libbluray.so.3`, independently of the system's `.so.4`.
+  Check library integrity, ABI versions and loading before long builds, after
+  linking, and before Play, shader preparation or update activation.
+- Discover native GNU C++ libraries without an Ubuntu-specific path and document
+  Arch/CachyOS prerequisites. Both build modes pass isolated Arch userspace
+  loading checks; this does not establish CachyOS/AMD/Wayland gameplay.
+- Preserve verified game reuse for future launcher-only updates when the new
+  dependency-check sources are unchanged.
+- Updating requires a **full local game rebuild**. The Linux updater retains
+  the original input, saves and settings; no save conversion is required.
+  These changes are Linux-only; the Windows source implementation is unchanged.
+  Frame generation remains experimental, off by default, and performance varies.
+- Quick Step and trading received positive maintainer feedback. Full-game,
+  Future Connected, every character/equipment/save/recovery case and additional
+  hardware remain incompletely qualified. Source/setup kits contain no game files.
+
 ## 0.1.9 — November 9, 2026
 
 - Expand each story to **99 manual slots plus its separate autosave** on Linux, preserving the

@@ -542,9 +542,20 @@ def main():
 
     t0 = time.time()
     import patchfmt  # [XCDE]
-    PATCHES.update(patchfmt.load_patches(args.patches))
+    patches, entry_sets = patchfmt.load_patch_set(args.patches)
+    PATCHES.update(patches)
     m = Module(args.name, args.nso, args.base, args.simd)
     starts = m.boundaries()
+    # [XCDE] LINUX-041: validate authored indirect destinations before the
+    # partition fixpoint. No instruction replacement or runtime fallback.
+    checked_entries = set()
+    for entry_set in entry_sets:
+        incoming = entry_set.apply(m)
+        if incoming & checked_entries:
+            raise ValueError('duplicate checked function entries for this module')
+        checked_entries |= incoming
+    if checked_entries:
+        m.stats['checked_function_entries'] = len(checked_entries)
     hle = {}
     if args.hle and os.path.exists(args.hle):
         want = {l.strip() for l in open(args.hle) if l.strip() and not l.startswith('#')}
@@ -554,7 +565,7 @@ def main():
 
     # Partition text into functions; any branch/call target outside its function becomes a new
     # boundary (splitting the containing function) until a fixpoint is reached.
-    start_set = set(starts)
+    start_set = set(starts) | checked_entries
     for i, w in enumerate(m.words):
         if (w & 0xFC000000) == 0x94000000:
             t = m.lo + i * 4 + sext26(w) * 4

@@ -3,7 +3,36 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools", "lifter"))
-from patchfmt import Patch  # noqa: E402,F401
+from patchfmt import FunctionEntries, Patch  # noqa: E402,F401
+
+
+# [XCDE] LINUX-041: the native bounded item-kind switch crosses generator
+# partitions. Preserve all five legitimate native entries in dispatch; do not
+# replace their code, change the BR, or redirect one kind through another case.
+# The complete selected main build ID and dispatch/entry words fail closed.
+FUNCTION_ENTRIES = (
+    FunctionEntries(
+        'main', '7e1df8e08d60544bbdca1e333c153c97',
+        entries={
+            0x7000183f4c: 0xb0005028,
+            0x7000183f70: 0xb0005028,
+            0x7000183f94: 0xb0005028,
+            0x7000183fb8: 0xb0005028,
+            0x7000183fdc: 0xb0005028,
+        },
+        guards={
+            0x7000183f28: 0x7100101f,
+            0x7000183f2c: 0x54000ec8,
+            0x7000183f30: 0x2a0003e8,
+            0x7000183f34: 0xd0004289,
+            0x7000183f38: 0x910c9129,
+            0x7000183f3c: 0x1000008a,
+            0x7000183f40: 0x3868692b,
+            0x7000183f44: 0x8b0b094a,
+            0x7000183f48: 0xd61f0140,
+        },
+        req='LINUX-041', note='Native trade item-kind cases before partition discovery'),
+)
 
 
 def _hook_then_original(fn):
@@ -480,3 +509,206 @@ def _save_metadata_pump(gen, addr):
 
 PATCHES[0x7000283200] = Patch(0x97fffc68, _save_metadata_pump, 'LINUX-036',
                             'native UI metadata update; original call then bounded owned cold-read work')
+
+
+# [XCDE] LINUX-040: independently owned native Quick Step control and filtered
+# native picker. The original six/eight/six indices and ordinary sockets stay intact.
+def _quickstep_prefix(helper, parameter='Cpu *c', argument='c'):
+    def emit(gen, addr):
+        ins = gen.lift(addr)
+        prefix = f'{{ extern void {helper}({parameter}); {helper}({argument}); }} '
+        if ins.kind == 'op':
+            return prefix + ins.code
+        if ins.kind == 'bcond' and isinstance(ins.target, int):
+            # Retain the original conditional branch and its already-discovered
+            # native label; no return value or native success path is replaced.
+            return prefix + f'if ({ins.cond}) goto L_{ins.target:x};'
+        raise ValueError(f'{addr:#x}: Quick Step hook requires a plain/conditional instruction')
+    return emit
+
+
+def _quickstep_construct(gen, addr):
+    original = _title_plain(gen, addr)
+    return (original + ' { extern void quickstep_native_construct(Cpu *c); '
+            'quickstep_native_construct(c); }')
+
+
+def _quickstep_row_style(gen, addr):
+    # Keep the genuine row's disabled-style call and link register. Only an
+    # exactly owned eligible bonus row may replace its disabled W1 argument.
+    original = _system_call(gen, addr, 0x700020b070)
+    return ('{ extern void quickstep_native_picker_row_style(Cpu *c); '
+            'quickstep_native_picker_row_style(c); ' + original + '}')
+
+
+def _quickstep_background(gen, addr):
+    original = _title_plain(gen, addr)
+    # Only the private cloned row's baked wide background is omitted. Keep the
+    # common native mask-release/frame cleanup; its caller draws child nodes.
+    return ('{ extern _Bool quickstep_native_filter_background(Cpu *c); '
+            'if (quickstep_native_filter_background(c)) goto L_700075e99c; } '
+            + original)
+
+
+def _quickstep_chain(*helpers):
+    def emit(gen, addr):
+        original = _title_plain(gen, addr)
+        calls = ' '.join(f'{{ extern void {helper}(Cpu *c); {helper}(c); }}'
+                         for helper in helpers)
+        return calls + ' ' + original
+    return emit
+
+
+def _quickstep_input(gen, addr):
+    original = _title_plain(gen, addr)
+    # This is inside a live native stack frame, after child consumers declined.
+    # Follow the native handled epilogue; a C return would strand its guest frame.
+    return ('{ extern _Bool quickstep_native_input_event(Cpu *c); '
+            'if (quickstep_native_input_event(c)) goto L_70002f9430; } ' + original)
+
+
+def _quickstep_handled(helper):
+    def emit(gen, addr):
+        # These hooks are exclusively function entries, before frame allocation.
+        original = _title_plain(gen, addr)
+        return (f'{{ extern _Bool {helper}(Cpu *c); '
+                f'if ({helper}(c)) return; }} ' + original)
+    return emit
+
+
+def _quickstep_picker_cancel(gen, addr):
+    original = _title_plain(gen, addr)
+    # Bounds belong to the runtime adapter: generated C intentionally includes
+    # only the CPU contract, not host/HLE address-space policy definitions.
+    return ('{ extern void quickstep_native_picker_cancel_callback(Cpu *c); '
+            'quickstep_native_picker_cancel_callback(c); } ' + original)
+
+
+def _quickstep_picker_closed(gen, addr):
+    ins = gen.lift(addr)
+    if ins.kind != 'b' or ins.target != 0x70002fea30:
+        raise ValueError(f'{addr:#x}: Quick Step close requires its native tail call')
+    # The native frame is already restored. Keep LR from its caller unchanged.
+    return ('{ extern void quickstep_native_picker_closed(Cpu *c); '
+            'quickstep_native_picker_closed(c); } '
+            'extern void f_70002fea30(Cpu *c); f_70002fea30(c); return;')
+
+
+QUICKSTEP_PATCHES = {
+    0x70002f67f4: (0xf90e2674, _quickstep_construct, 'publish checked native equipment UI owner'),
+    0x7000208d30: (0xf81e0ff3, _quickstep_chain('quickstep_native_tick', 'quickstep_stats_ui_tick'), 'native equipment update then owned effect-row layout/lifetime'),
+    0x7000208530: (0xf81e0ff3, _quickstep_chain('quickstep_stats_ui_release_ui', 'quickstep_native_release'), 'release extra effect row before equipment owner destruction'),
+    0x7000208590: (0xf81e0ff3, _quickstep_chain('quickstep_stats_ui_release_ui', 'quickstep_native_release'), 'idempotent extra-row cleanup before deleting equipment owner'),
+    0x70002f6130: (0xf81b0ff9, _quickstep_chain('quickstep_stats_ui_release_sequence', 'quickstep_native_release_sequence'), 'restore native row vector before sequence resources/owner destruction'),
+    0x70002f87ac: (0xb9400288, _quickstep_input, 'bonus control input after native child consumers; native handled epilogue'),
+    0x7000183a60: (0xb94fb808, _quickstep_prefix('quickstep_native_picker_filter'), 'owned bonus list filter before native sorts and category rebuilds'),
+    0x7000241b40: (0xb9002001, _quickstep_prefix('quickstep_native_picker_count'), 'native bonus row count and genuine No data state'),
+    0x7000316604: (0x97fbd29b, _quickstep_row_style, 'owned bonus gem row styling independent of ordinary boot socket eligibility'),
+    0x70002fa178: (0xf941f7e8, _quickstep_prefix('quickstep_native_picker_menu_item'), 'bonus Remove eligibility after native ordinary-socket checks; retain original load'),
+    0x70002f8cd8: (0x37003ac0, _quickstep_prefix('quickstep_native_picker_menu_gate'), 'active bonus context menu ignores ordinary parent socket restriction; retain native branch'),
+    0x70002f9970: (0x910b63e9, _quickstep_prefix('quickstep_native_picker_menu_item'), 'active-list bonus Remove item flag; retain native item pointer calculation'),
+    0x70002f9a3c: (0x910a43e0, _quickstep_prefix('quickstep_native_picker_menu_opened'), 'bind exact completed native bonus context popup before restoring caller stack'),
+    0x700075e868: (0xf941d268, _quickstep_background, 'private bonus row baked background only; native cleanup and child drawing retained'),
+    0x7000302640: (0xd10643ff, _quickstep_handled('quickstep_native_picker_confirm'), 'bonus selection before native detach or staged socket writes'),
+    0x70003020d0: (0xf81d0ff5, _quickstep_handled('quickstep_native_picker_remove'), 'remove exact owned bonus association only'),
+    0x70003004e0: (0xf81d0ff5, _quickstep_handled('quickstep_native_picker_uid'), 'bonus UID for native selected-item actions'),
+    0x70002ff870: (0xf81c0ffc, _quickstep_handled('quickstep_native_picker_details'), 'native gem details and comparison for actual bonus item'),
+    0x70002fae60: (0xd10103ff, _quickstep_handled('quickstep_native_picker_preview'), 'bonus picker does not preview ordinary boots socket replacement'),
+    0x70002fe000: (0xa9bb67fc, _quickstep_handled('quickstep_native_picker_commit'), 'suppress ordinary equipment commit while bonus picker owns selection'),
+    0x70002ff5fc: (0x17fffd0d, _quickstep_picker_closed, 'restore original native pane before close tail call'),
+    0x70002ffd90: (0x52914288, _quickstep_handled('quickstep_native_picker_eligible'), 'bonus-only native Remove eligibility; other queries unchanged'),
+    0x70003035d0: (0xd10603ff, _quickstep_handled('quickstep_native_picker_submenu'), 'bonus Remove and safe handling of ordinary bulk/swap actions'),
+    0x7000303270: (0xa9bd57f6, _quickstep_picker_cancel, 'cancel bonus picker before native character change and ordinary commit'),
+    0x70003022b0: (0xa9bd57f6, _quickstep_picker_cancel, 'cancel bonus picker before native pane change'),
+    0x700008c2bc: (0x710002bf, _quickstep_prefix('quickstep_slot_effects'), 'append owned Quick Step before native effect merge/caps'),
+    0x700008c2e8: (0x3600031c, _quickstep_prefix('quickstep_slot_effects_end'), 'release effect scratch after native apply; retain original branch'),
+    0x700008d57c: (0x910903ff, _quickstep_prefix('quickstep_slot_effects_finish'), 'final stats epilogue; repair playing effects after a temporary calculation'),
+    # [XCDE] LINUX-040: BDEE0 changes favourite, not equipped ownership.
+    # Intercept the actual accepted socket write, after all native reject paths.
+    0x700017b81c: (0xb8296913, _quickstep_prefix('quickstep_slot_native_equip'), 'actual ordinary gem socket write clears matching bonus; retain native store'),
+    0x70000bdf40: (0xd100c3ff, _quickstep_prefix('quickstep_slot_native_consume'), 'ordinary quantity use retains native behavior and clears matching bonus'),
+    0x700009bbd0: (0xb40001e1, _quickstep_prefix('quickstep_slot_native_destroy'), 'actual item destruction clears matching bonus; retain null branch'),
+}
+for _site, (_word, _emit, _note) in QUICKSTEP_PATCHES.items():
+    PATCHES[_site] = Patch(_word, _emit, 'LINUX-040', _note)
+
+
+# [XCDE] LINUX-039: native payloads remain unchanged; optional character-slot
+# metadata binds to exact serialized bytes and confirmed load intent.
+def _quickstep_read_intent(gen, addr):
+    original = _system_call(gen, addr, 0x7000087040)
+    return ('{ extern void quickstep_save_read_intent(Cpu *c); '
+            'quickstep_save_read_intent(c); ' + original + '}')
+
+
+_QUICKSTEP_CONTINUE_BASE = PATCHES[0x700039a048].emit
+
+
+def _quickstep_continue_intent(gen, addr):
+    return (_QUICKSTEP_CONTINUE_BASE(gen, addr)
+            + ' { extern void quickstep_save_continue_intent(Cpu *c); '
+            'quickstep_save_continue_intent(c); }')
+
+
+QUICKSTEP_SAVE_PATCHES = {
+    0x70000af760: (0xd10203ff, _quickstep_prefix('quickstep_save_serializing'), 'reconcile active character references before actual save serialization'),
+    0x70000afa80: (0xfd400be8, _quickstep_prefix('quickstep_save_serialized'), 'bind optional metadata to completed native serialized payload'),
+    0x70000afe10: (0xd102c3ff, _quickstep_prefix('quickstep_save_loading', 'void', ''), 'suspend old character references before actual playing-data load'),
+    0x70000afe60: (0x910043e0, _quickstep_prefix('quickstep_save_adopt'), 'adopt only confirmed native playing-data decode'),
+    0x700054df24: (0xa9497bfd, _quickstep_prefix('quickstep_save_loaded'), 'reconcile only after native story finalization'),
+    0x7000398760: (0x97f3ba38, _quickstep_read_intent, 'confirmed load selection; retain native async read'),
+    0x700039a048: (0xb82a6928, _quickstep_continue_intent, 'confirmed Continue; compose after extended-slot logical correction'),
+    0x70000adcc0: (0xd10243ff, _quickstep_prefix('quickstep_save_newgame_begin'), 'actual New Game reset; suspend old references and load intent'),
+    0x70000ae860: (0xa9487bfd, _quickstep_prefix('quickstep_save_newgame_end'), 'actual New Game completion; adopt empty slot state after story setup'),
+}
+for _site, (_word, _emit, _note) in QUICKSTEP_SAVE_PATCHES.items():
+    PATCHES[_site] = Patch(_word, _emit, 'LINUX-039', _note)
+
+
+# [XCDE] LINUX-040 r3: the native summaries have eight fixed records, while
+# their renderer supports eleven lines. Supply an independently owned extra
+# row at its local-copy boundary, never beyond the original summary allocation.
+def _quickstep_stats_count(gen, addr):
+    original = _title_plain(gen, addr)
+    return (original + ' { extern void quickstep_stats_count(Cpu *c); '
+            'quickstep_stats_count(c); }')
+
+
+def _quickstep_stats_row(gen, addr):
+    original = _title_plain(gen, addr)
+    return ('{ extern int quickstep_stats_row(Cpu *c); '
+            'int row_ = quickstep_stats_row(c); '
+            'if (row_ > 0) goto L_70002393cc; '
+            'if (row_ < 0) goto L_7000239508; } ' + original)
+
+
+def _quickstep_stats_resume(gen, addr):
+    # This address is not an original branch target, so its C label must be
+    # explicit. The stale-frame path uses the original native cleanup label.
+    return 'L_70002393cc:; ' + _title_plain(gen, addr)
+
+
+QUICKSTEP_STATS_PATCHES = {
+    0x70002391f0: (0xfc190fe8, _quickstep_prefix('quickstep_stats_begin'),
+                   'capture exact owned equipment summary before native frame allocation'),
+    0x70002393a4: (0xf940baa8, _quickstep_stats_count,
+                   'original bounded count then owned virtual ninth-row count'),
+    0x70002393b0: (0x52800508, _quickstep_stats_row,
+                   'owned local summary copy or original copy; stale lease uses native cleanup'),
+    0x70002393cc: (0xf940bac9, _quickstep_stats_resume,
+                   'explicit local-row resume label, retaining original baseline count load'),
+    0x7000239420: (0x3945c3e8, _quickstep_prefix('quickstep_stats_compare'),
+                   'bonus-aware native comparison flags, retaining native type load'),
+    0x70002395d8: (0x910903ff, _quickstep_prefix('quickstep_stats_end'),
+                   'release owned summary lease before native frame restoration'),
+}
+for _site, (_word, _emit, _note) in QUICKSTEP_STATS_PATCHES.items():
+    PATCHES[_site] = Patch(_word, _emit, 'LINUX-040', _note)
+
+
+QUICKSTEP_STATS_UI_PATCHES = {
+    0x700023e700: (0xa9be4ff4, _quickstep_prefix('quickstep_stats_ui_release_panel'),
+                   'destroy owned extra tail row and restore counts before native panel destructor'),
+}
+for _site, (_word, _emit, _note) in QUICKSTEP_STATS_UI_PATCHES.items():
+    PATCHES[_site] = Patch(_word, _emit, 'LINUX-040', _note)

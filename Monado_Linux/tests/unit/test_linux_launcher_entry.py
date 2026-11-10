@@ -142,9 +142,22 @@ class LauncherEntryTests(unittest.TestCase):
             self.assertEqual(argv[argv.index('--game-executable') + 1], str(self.game))
             return 0
         with mock.patch.object(launcher, 'check_input', return_value='synthetic checker passed'), \
+             mock.patch.object(launcher.run_linux, 'validate_runtime', return_value={'status': 'passed'}) as runtime, \
              mock.patch.object(launcher, 'wait_session', side_effect=inspect_selection) as wait:
             self.assertEqual(launcher.main(self.argv()), 0)
         wait.assert_called_once()
+        self.assertEqual(runtime.call_count, 2)
+
+    def test_runtime_failure_prevents_state_lock_logs_and_gui(self):
+        with mock.patch.object(launcher, 'check_input', return_value='synthetic checker passed'), \
+             mock.patch.object(launcher.run_linux, 'validate_runtime', side_effect=ValueError('authored missing runtime ABI')), \
+             mock.patch.object(launcher, 'acquire_lock') as lock, \
+             mock.patch.object(launcher, 'wait_session') as wait, \
+             contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as stopped:
+            launcher.main(self.argv())
+        self.assertEqual(stopped.exception.code, 1)
+        lock.assert_not_called(); wait.assert_not_called()
+        self.assertFalse(self.state.exists())
 
     def test_wrong_artifact_and_incomplete_game_are_rejected(self):
         for target, changes in ((self.gui, {'artifact_kind': 'wrong'}), (self.game, {'generated': {}})):

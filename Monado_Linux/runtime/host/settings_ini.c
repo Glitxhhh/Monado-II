@@ -52,6 +52,7 @@ void settings_load(void) {
     // [XCDE] LINUX-014: absent/invalid new preference defaults to Normal on each
     // load, including a reload after a previously selected Fast preference.
     g_settings.menu_navigation_speed = MENU_NAV_NORMAL;
+    g_settings.quickstep_slot = false; // [XCDE] LINUX-039: absent/invalid always OFF
     // test runs (hidden window, deterministic, scripted input) ignore the player's settings unless XCDE_INI names a file
     if (!getenv("XCDE_INI") && (getenv("LARECOMP_HIDDEN") || getenv("XCDE_DETERMINISTIC") || getenv("XCDE_INPUT_REPLAY"))) return;
     FILE *f = fopen(ini_path(), "r");
@@ -96,6 +97,7 @@ void settings_load(void) {
         else if (!strcmp(k, "fps")) g_settings.fps = !strcmp(v, "unlimited") ? 0 : atoi(v);
         else if (!strcmp(k, "menu_navigation_speed"))
             g_settings.menu_navigation_speed = !strcmp(v, "fast") ? MENU_NAV_FAST : MENU_NAV_NORMAL;
+        else if (!strcmp(k, "quickstep_slot")) g_settings.quickstep_slot = !strcmp(v, "1");
         else if (!strcmp(k, "language")) g_settings.language = lang_index(v);
         else if (!strncmp(k, "mod_", 4)) mod_set(k + 4, atoi(v) != 0);
         else if (!strcmp(k, "button_icons")) snprintf(g_button_icons, sizeof g_button_icons, "%s", v);
@@ -152,6 +154,7 @@ void settings_save(void) {
     fprintf(f, "launcher_lang = %s\n", g_settings.ui_lang ? "en" : "es");  // (the launcher's key: kept when the game saves)
     fprintf(f, "cutscenes = %s\n", g_settings.cutscene_mode == 1 ? "30" : g_settings.cutscene_mode == 2 ? "30fg" : "same");
     fprintf(f, "party_switch = %d\n", g_party_switch);
+    fprintf(f, "quickstep_slot = %d\n", g_settings.quickstep_slot); // [XCDE] LINUX-039
     fprintf(f, "volume = %d\nmovie_audio = %d\nshow_fps = %d\n", (int)(g_settings.volume * 100 + 0.5f), g_settings.movie_audio,
             g_settings.show_fps);
     if (g_settings.fps) fprintf(f, "fps = %d\n", g_settings.fps); else fprintf(f, "fps = unlimited\n");

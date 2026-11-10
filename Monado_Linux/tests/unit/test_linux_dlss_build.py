@@ -102,7 +102,9 @@ class DlssBuildTests(unittest.TestCase):
     def test_snapshot_binds_dlss_lock_setup_and_optional_icon(self):
         for name in ('scripts/build_linux.py', 'graphics-deps-linux.lock.json',
                      'requirements-linux.lock', 'tools/gen_smaa_inc.py',
-                     'dlss-linux.lock.json', 'scripts/setup_linux_dlss.py'):
+                     'dlss-linux.lock.json', 'scripts/setup_linux_dlss.py',
+                     'fsr-linux.lock.json', 'scripts/setup_linux_fsr.py',
+                     'scripts/linux_runtime_check.py', 'scripts/linux_runtime_graph.py'):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text('synthetic authored build input')

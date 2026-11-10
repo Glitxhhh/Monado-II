@@ -53,6 +53,10 @@ class Transactions(unittest.TestCase):
         manifest(self.owner,self.files);self.candidate=self.base/'candidate';self.candidate.mkdir()
         self.new=dict(self.files);self.new['update-version.json']=b'{"schema":1,"protocol":1,"version":"0.1.4"}';self.new['Monado_Linux/tools/launcher/launcher.cpp']=b'// new GUI\n';manifest(self.candidate,self.new)
         self.before=self.protected();self.commands=[];self.events=[]
+        # Build/image payloads above are deliberately non-executable; runtime
+        # loading is independently exercised by authored ELF fixtures.
+        runtime_patch=mock.patch.object(u,'verify_runtime_selection',return_value={'status':'passed','scope':'authored fixture'})
+        self.runtime_check=runtime_patch.start();self.addCleanup(runtime_patch.stop)
     def protected(self):
         return {str(p.relative_to(self.owner)):(p.read_bytes(),p.stat().st_mtime_ns) for d in [self.state,self.owner/'game_files'] for p in d.rglob('*') if p.is_file()}
     def fetch(self,offer,destination,**kwargs):destination.mkdir();return Path(shutil.copytree(self.candidate,destination/'source'))
@@ -105,6 +109,25 @@ class Transactions(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'diagnostic game build requires a manual rebuild'):
             self.prepare(self.session())
         self.assertFalse(self.commands);self.assertFalse((self.port/'updates/active.json').exists());self.assertProtected()
+    def test_missing_runtime_prevents_preparation_and_keeps_previous_selection(self):
+        self.runtime_check.side_effect=ValueError('authored missing libbluray.so.3')
+        session=self.session()
+        with self.assertRaisesRegex(ValueError,'missing libbluray'):
+            self.prepare(session)
+        self.assertFalse((self.port/'updates/active.json').exists())
+        self.assertEqual((self.owner/'update-version.json').read_bytes(),self.files['update-version.json'])
+        self.assertProtected()
+    def test_runtime_changed_after_build_cannot_activate_or_touch_version(self):
+        session=self.session();prepared=self.prepare(session)
+        self.runtime_check.side_effect=ValueError('authored runtime provider changed')
+        before=self.protected();marker=(self.owner/'update-version.json').read_bytes()
+        with self.assertRaisesRegex(ValueError,'runtime provider changed'):
+            session.activate(prepared)
+        self.assertFalse((self.port/'updates/active.json').exists())
+        self.assertFalse((self.port/'updates/previous.json').exists())
+        self.assertEqual((self.owner/'update-version.json').read_bytes(),marker)
+        self.assertEqual(self.protected(),before)
+        self.assertProtected()
     def test_failed_build_preserves_sources_pointer_saves_and_input(self):
         def failure(*_):raise ValueError('authored compiler failure')
         s=self.session(runner=failure)

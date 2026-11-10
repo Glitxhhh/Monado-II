@@ -69,6 +69,18 @@ void flags_ext_save_written(const char *p, uint64_t a, int64_t o, int64_t n) {
     CHECK(expanded_case && !strncmp(p, "save/bfs", 8) && a && o == 0 && n > 0);
     ++expanded_writes;
 }
+// The optional pair is covered by test_quickstep_save.c. These existing eleven
+// cases retain their original payload-only contract and real journal handlers.
+void quickstep_save_observe(const char *r, const char *p, const void *a, int64_t o, int64_t n) {
+    (void)r; (void)p; (void)a; (void)o; (void)n;
+}
+int quickstep_save_prepare(const char *r, const char *p, const void *a, int64_t o, int64_t n, QuickstepSaveWrite *w) {
+    (void)r; (void)p; (void)a; (void)o; (void)n; memset(w, 0, sizeof *w); return 0;
+}
+int quickstep_save_stage(const char *r, const QuickstepSaveWrite *w) { (void)r; (void)w; return 0; }
+int quickstep_save_changed(const char *r, const char *p, const char *d) { (void)r; (void)p; (void)d; return 0; }
+int quickstep_save_flush(const char *r) { (void)r; return 0; }
+void quickstep_save_committed(const char *r) { (void)r; }
 
 static void put(const char *path, const char *text) {
     int fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);

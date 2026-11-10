@@ -1,0 +1,16 @@
+# Authored source-test tooling only; no game or runtime provider packages.
+# CPython 3.14, Linux x86-64 / Windows AMD64 GitHub-hosted runners.
+# Same versions as Monado_Linux/requirements-linux.lock; Windows wheel hashes added.
+# Official provenance: https://pypi.org/pypi/<package>/<version>/json
+# Hashes admit only the selected manylinux and Windows wheels; install with
+# --only-binary=:all: --no-deps --require-hashes. No optional package extras.
+# Unicorn is a differential-test oracle, not a game CPU fallback.
+capstone==5.0.7 \
+    --hash=sha256:b809a9654844ce0d35099121a851ddd2ab2689df1ff6687037babcedcaae6391 \
+    --hash=sha256:4ab8bcb7da8f221ff45926ca168ca33e76f7237d06fbf3c10780002faa2670e1
+unicorn==2.1.4 \
+    --hash=sha256:9d6e6dea140560de4ebd8446661f7ef84a357d428c14a3ef09dacd306ec8c239 \
+    --hash=sha256:d7107500c64ce5c168fbff6bef9485b5db1350050036f4cea568650cf8bdbdf5
+lz4==4.4.5 \
+    --hash=sha256:0bba042ec5a61fa77c7e380351a61cb768277801240249841defd2ff0a10742f \
+    --hash=sha256:92159782a4502858a21e0079d77cdcaade23e8a5d252ddf46b0652604300d7be

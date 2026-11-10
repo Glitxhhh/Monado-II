@@ -31,6 +31,9 @@ class LauncherBuildSafety(unittest.TestCase):
         b.failed = threading.Event()
         b.cxx = Path('/unused/compiler')
         b.libdir = self.out / 'lib'
+        b.library_path = str(b.libdir)
+        b.sysroot = self.out
+        b.runtime_policy = None
         b.libs = ['-lSDL3']
         b.receipt = {'sources_before': {'launcher.h': 'before'}, 'objects': {}, 'errors': []}
         return b
@@ -102,6 +105,14 @@ class LauncherBuildSafety(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'resolution is incomplete'):
             b.link()
 
+    def test_native_runtime_guard_rejects_postlink_dependency_change(self):
+        b = self.builder()
+        b.checked_run = self.link_command()
+        with mock.patch.object(build.runtime_check, 'check_artifacts', side_effect=ValueError('authored missing runtime ABI')):
+            with self.assertRaisesRegex(ValueError, 'missing runtime ABI'):
+                b.link()
+        self.assertNotIn('executable', b.receipt)
+
     def test_pkg_config_cannot_select_another_sysroot(self):
         b = self.builder()
         b.cc = b.cxx
@@ -134,7 +145,8 @@ class LauncherBuildSafety(unittest.TestCase):
     def test_new_launcher_header_changes_source_identity(self):
         with mock.patch.object(build, 'ROOT', self.out):
             for name in [*build.CPP, *build.C, 'scripts/build_launcher_linux.py',
-                         'scripts/build_linux.py', 'graphics-deps-linux.lock.json', 'requirements-linux.lock',
+                         'scripts/build_linux.py', 'scripts/linux_runtime_check.py', 'scripts/linux_runtime_graph.py',
+                         'graphics-deps-linux.lock.json', 'requirements-linux.lock',
                          'tools/launcher/theme_resource.py']:
                 p = self.out / name
                 p.parent.mkdir(parents=True, exist_ok=True)

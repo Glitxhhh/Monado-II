@@ -72,6 +72,7 @@ typedef struct {
     int stick_deadzone;  // [XCDE] % of the stick's travel read as centred (xcde.ini stick_deadzone = 0-30, default 0: raw)
     int cutscene_mode;   // [XCDE] T224: 0 cutscenes at the FPS setting, 1 at 30, 2 at 30 + FSR 3 frame generation (xcde.ini cutscenes = same|30|30fg)
     int menu_navigation_speed; // [XCDE] LINUX-014: MENU_NAV_*, normal=30-style, fast=60-style repeat
+    bool quickstep_slot; // [XCDE] LINUX-039: character-owned Quick Step slot, opt-in
 } Settings;
 
 enum { N_TUNIC_COLOURS = 13, N_HEART_COLOURS = 9 };

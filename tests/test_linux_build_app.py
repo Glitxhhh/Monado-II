@@ -91,6 +91,17 @@ class LinuxBuildApp(unittest.TestCase):
         self.assertEqual(before, inventory(self.root))
         self.assertEqual(sorted(p.name for p in self.port.iterdir()), [])
 
+    def test_runtime_dependency_failure_stops_before_generation_and_preserves_old_image(self):
+        make_image(self.root / build.IMAGE, b'accepted prior launcher')
+        before = inventory(self.input)
+        image_before = (self.root / build.IMAGE).read_bytes()
+        self.fail_stage = 'linux_runtime_check.py'
+        with self.assertRaisesRegex(build.BuildError, 'check-runtime-dependencies failed'):
+            self.run_build()
+        self.assertEqual((self.root / build.IMAGE).read_bytes(), image_before)
+        self.assertEqual(inventory(self.input), before)
+        self.assertFalse(any('gen_all.py' in str(command) for command, _, _ in self.commands))
+
     def test_missing_input_stops_before_writes_or_downloads(self):
         (self.input / 'romfs').rmdir()
         before = inventory(self.root)
@@ -193,7 +204,7 @@ class LinuxBuildApp(unittest.TestCase):
                 mock.patch.object(other.sys, 'version_info', (3, 14, 4)), \
                 mock.patch.object(other.shutil, 'which', side_effect=lambda name: '/authored/' + name), \
                 mock.patch.object(other, 'BWRAP', self.base / 'missing-bwrap'), \
-                mock.patch.object(other, 'GNU_CXX_RUNTIME', self.base / 'missing-libstdc++.so.6'):
+                mock.patch.object(other.runtime_check, 'discover_gnu_cxx', side_effect=ValueError('authored missing GNU runtime')):
             with self.assertRaisesRegex(other.BuildError, 'bubblewrap.*without-dlss'):
                 other.preflight()
             other.preflight(dlss=False)
@@ -209,7 +220,7 @@ class LinuxBuildApp(unittest.TestCase):
                 mock.patch.object(other.shutil, 'which', side_effect=lambda name: '/authored/' + name), \
                 mock.patch.object(other.os, 'access', return_value=True), \
                 mock.patch.object(other, 'BWRAP', helper), \
-                mock.patch.object(other, 'GNU_CXX_RUNTIME', self.base / 'missing-libstdc++.so.6'):
+                mock.patch.object(other.runtime_check, 'discover_gnu_cxx', side_effect=ValueError('authored missing GNU runtime')):
             with self.assertRaisesRegex(other.BuildError, 'GNU C\\+\\+ runtime'):
                 other.preflight()
 
@@ -236,7 +247,7 @@ class LinuxBuildApp(unittest.TestCase):
                 mock.patch.object(other.shutil, 'which', side_effect=lambda name: '/authored/' + name), \
                 mock.patch.object(other.os, 'access', side_effect=lambda path, mode: path == helper and mode == os.X_OK), \
                 mock.patch.object(other, 'BWRAP', helper), \
-                mock.patch.object(other, 'GNU_CXX_RUNTIME', runtime):
+                mock.patch.object(other.runtime_check, 'discover_gnu_cxx', side_effect=ValueError('authored unreadable GNU runtime')):
             with self.assertRaisesRegex(other.BuildError, 'GNU C\\+\\+ runtime'):
                 other.preflight()
 
@@ -257,6 +268,7 @@ class LinuxBuildApp(unittest.TestCase):
         names = [entry['name'] for entry in receipt['commands']]
         self.assertLess(names.index('check-input'), names.index('native-dlss-dependency'))
         self.assertLess(names.index('native-dlss-dependency'), names.index('generate-game'))
+        self.assertLess(names.index('check-runtime-dependencies'), names.index('generate-game'))
         self.assertLess(names.index('native-dlss-dependency'), names.index('build-game'))
         self.assertIn('--dry-run', stages['check-launcher'])
         self.assertEqual(self.commands[-1][0], [str(self.root / build.IMAGE), '--appimage-extract-and-run', '--dry-run'])

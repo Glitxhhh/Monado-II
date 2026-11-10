@@ -95,6 +95,7 @@ struct Cfg {
     bool vsync = true;      // FIFO presentation at 30 / 60 fps
     int cutscenes = 0;      // T224: 0 at the FPS setting, 1 at 30 (xcde.ini cutscenes = same | 30)
     bool cut_fg = false;    // T224: cutscenes at 30 + frame generation, gameplay without it (xcde.ini cutscenes = 30fg)
+    bool quickstep_slot = false; // [XCDE] LINUX-039: optional per-character gem slot
     bool party_switch = false;  // party mod: switch the controlled character (F2 / L2 + L1 / R1), runtime/hle/party.c
     bool show_fps = false;
     int fps = 0;  // index into k_fps_ini
@@ -240,6 +241,9 @@ static const char *const k_en[][2] = {
      "Off: a sharp image (combine it with SMAA for the edges)."},
     {"Mostrar FPS en la barra de título", "Show FPS in the title bar"}, {"Velocidad", "Speed"},
     {"30 (como en Switch)", "30 (like Switch)"}, {"Sin límite", "Unlimited"},
+    {"Ranura exclusiva de Paso rápido", "Dedicated Quick Step gem slot"},
+    {"Equipa una gema de Paso rápido en una ranura propia del personaje, incluso sin botas.", "Equip a Quick Step gem in a character-owned slot, including without boots."},
+    {"Experimental: puede comportarse de forma irregular o mostrar fallos de interfaz. Se prevén más mejoras.", "Experimental: may behave inconsistently or show UI quirks. Further fixes and polish are planned."},
     {"Velocidad de navegación en menús", "Menu navigation speed"},
     {"Normal (estilo de 30 FPS)", "Normal (30 FPS style)"},
     {"Rápida (estilo de 60 FPS)", "Fast (60 FPS style)"},
@@ -397,6 +401,7 @@ static int find(const char *const *list, int n, const char *v) {
 
 static void load() {
     g.menu_navigation_speed = 0;
+    g.quickstep_slot = false; // [XCDE] LINUX-039: missing/invalid key resets OFF
     for (int i = 0; i < NPAD; i++) g.pad[i] = k_def_pad[i];
     for (int i = 0; i < NACT; i++) g.key[i] = k_def_key[i], g.key2[i] = k_def_key2[i];
     FILE *f = fopen(path("xcde.ini").c_str(), "r");
@@ -429,6 +434,7 @@ static void load() {
         else if (!strcmp(k, "show_fps")) g.show_fps = atoi(v) != 0;
         else if (!strcmp(k, "fps")) { g.fps = 0; for (int j = 0; j < 6; j++) if (!strcmp(v, k_fps_ini[j])) g.fps = j; }
         else if (!strcmp(k, "menu_navigation_speed")) g.menu_navigation_speed = !strcmp(v, "fast") ? 1 : 0;
+        else if (!strcmp(k, "quickstep_slot")) g.quickstep_slot = !strcmp(v, "1");
         else if (!strcmp(k, "volume")) g.volume = atoi(v);
         else if (!strcmp(k, "movie_audio")) g.movie_audio = atoi(v) != 0;
         else if (!strcmp(k, "language") && (i = find(k_lang_ini, 7, v)) >= 0) g.lang = i;
@@ -471,7 +477,7 @@ static void load() {
             if (find(extra, 5, v) >= 0) g_custom[k] = v;
         }
         const char *known[] = {"fullscreen","window","resolution","upscaler","upscale_quality","frame_gen","antialias","depth_of_field",
-            "game_blur","vsync","cutscenes","party_switch","show_fps","fps","menu_navigation_speed","volume","movie_audio","language","bind_layout",
+            "game_blur","vsync","cutscenes","party_switch","show_fps","fps","menu_navigation_speed","quickstep_slot","volume","movie_audio","language","bind_layout",
             "mouse_look","mouse_sens","stick_deadzone","launcher_lang","mouse_invert","button_icons"};
         if (find(known, sizeof known / sizeof *known, k) < 0 && strncmp(k, "mod_", 4) && strncmp(k, "bind_", 5)) g_extra[k] = v;
 #endif
@@ -499,6 +505,7 @@ static bool save() {
     fprintf(f, "party_switch = %d\n", g.party_switch);
     fprintf(f, "volume = %d\nmovie_audio = %d\nlanguage = %s\nfps = %s\n", g.volume, g.movie_audio, cfg_value("language", k_lang_ini[g.lang]), cfg_value("fps", k_fps_ini[g.fps]));
     fprintf(f, "menu_navigation_speed = %s\n", g.menu_navigation_speed == 1 ? "fast" : "normal");
+    fprintf(f, "quickstep_slot = %d\n", g.quickstep_slot); // [XCDE] LINUX-039
     for (const Mod &m : g_mods) if (!is_icon_mod(m.name)) fprintf(f, "mod_%s = %d", m.name.c_str(), m.on), fputc(10, f);
     int ic = icons_effective(g.icons);
     fprintf(f, "button_icons = %s\nmod_%s = %d\nmod_%s = %d\nmod_icons_keyboard = %d\n", k_icon_ini[g.icons], k_icon_mod[0], ic == 2,
@@ -1127,6 +1134,14 @@ static void make_report() {
 }
 
 static void tab_mods() {
+#ifdef __linux__
+    // [XCDE] LINUX-039: authored built-in option; does not require a romfs mod.
+    launcher_theme::section(T("Monado II"));
+    launcher_theme::checkbox(T("Ranura exclusiva de Paso rápido"), &g.quickstep_slot);
+    ImGui::TextWrapped("%s", T("Equipa una gema de Paso rápido en una ranura propia del personaje, incluso sin botas."));
+    ImGui::TextWrapped("%s", T("Experimental: puede comportarse de forma irregular o mostrar fallos de interfaz. Se prevén más mejoras."));
+    ImGui::Separator();
+#endif
     static bool scanned;
     if (!scanned) { scanned = true; scan_mods(); }
 #ifdef __linux__

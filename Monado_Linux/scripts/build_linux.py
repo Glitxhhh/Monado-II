@@ -26,10 +26,14 @@ import threading
 import time
 
 ROOT = Path(__file__).resolve().parent.parent
+_runtime_spec = importlib.util.spec_from_file_location('monado_build_runtime_check', Path(__file__).with_name('linux_runtime_check.py'))
+runtime_check = importlib.util.module_from_spec(_runtime_spec)
+_runtime_spec.loader.exec_module(runtime_check)
 RUNTIME = '''loader dispatch kernel ipc fnprof platform/linux platform/linux_state_guard services/fs services/romfs_virtual
 services/am services/acc services/time services/hid_set services/kbicons services/misc services/audio services/hwopus
 hle/heaps hle/pl hle/vi hle/nvn_boot hle/fibers hle/fiber_context_linux hle/input hle/party hle/bindings hle/movie
-hle/framepace hle/title_exit hle/desktop_exit_caption hle/system_exit hle/expanded_saves hle/expanded_save_scan host/stubs host/settings_ini host/stubs_gfx host/gamelib_static host/main_boot
+hle/framepace hle/title_exit hle/desktop_exit_caption hle/system_exit hle/expanded_saves hle/expanded_save_scan
+hle/quickstep_slot hle/quickstep_save hle/quickstep_native hle/quickstep_picker hle/quickstep_stats hle/quickstep_stats_ui hle/quickstep_ui_memory host/stubs host/settings_ini host/stubs_gfx host/gamelib_static host/main_boot
 diag/diag diag/sampler diag/watchdog diag/crashdump paths'''.split()
 NVN = '''astc cmdbuf formats maxwell/translate objects output_scale smaa_data tegra texpatch
 vulkan/device vulkan/exec vulkan/host_import vulkan/precompile vulkan/shaders vulkan/textures vulkan/temporal'''.split()
@@ -96,7 +100,8 @@ def fresh_output(requested):
 def source_snapshot():
     # Bind compiler inputs broadly, including conditional local headers. System
     # dependency identities are separate; this is not a full transitive SDK lock.
-    names = [ROOT / 'scripts/build_linux.py', ROOT / 'graphics-deps-linux.lock.json',
+    names = [ROOT / 'scripts/build_linux.py', ROOT / 'scripts/linux_runtime_check.py',
+             ROOT / 'scripts/linux_runtime_graph.py', ROOT / 'graphics-deps-linux.lock.json',
              ROOT / 'requirements-linux.lock', ROOT / 'tools/gen_smaa_inc.py',
              ROOT / 'dlss-linux.lock.json', ROOT / 'scripts/setup_linux_dlss.py',
              ROOT / 'fsr-linux.lock.json', ROOT / 'scripts/setup_linux_fsr.py']
@@ -123,6 +128,8 @@ class Builder:
         self.cxx = ROOT / '.deps/bin/clang-cxx'
         self.sysroot = Path((ROOT / '.deps/graphics/active-sysroot.txt').read_text().strip()).resolve()
         self.libdir = self.sysroot / 'usr/lib/x86_64-linux-gnu'
+        self.runtime_policy, _ = runtime_check.load_policy(ROOT, self.sysroot)
+        self.library_path = runtime_check.library_path(self.sysroot, self.runtime_policy)
         self.receipt = {'schema': 1, 'scope': ('native graphics executable build; never launched' if args.generated else
                                   'native authored graphics runtime objects; no game launch'),
                         'started_utc': datetime.now(timezone.utc).isoformat(), 'status': 'running',
@@ -190,10 +197,16 @@ class Builder:
         if record['exit']:
             raise RuntimeError('graphics development libraries unavailable')
         self.libs = shlex.split(flags)
-        self.libs += ['-lz', '-lm', '-ldl', '-pthread', '-Wl,-rpath,' + str(self.libdir), '-rdynamic']
+        self.libs += ['-lz', '-lm', '-ldl', '-pthread', '-Xlinker', '-rpath', '-Xlinker', self.library_path, '-rdynamic']
         sdl = (self.libdir / 'libSDL3.so').resolve(strict=True)
         self.receipt['dependencies']['linked_libraries'] = {
             'sdl3': {'path': str(sdl), 'sha256': digest(sdl)}}
+        record, checked = self.run('runtime-dependency-preflight', [sys.executable, '-B',
+            ROOT / 'scripts/linux_runtime_check.py', '--probe', '--port', ROOT,
+            '--output', self.output / 'runtime-probe'], timeout=180)
+        if record['exit']:
+            raise RuntimeError('Linux runtime dependencies are not loadable; see runtime-dependency-preflight stderr')
+        self.receipt['runtime_preflight'] = json.loads(checked)
         self.flags = ['-O1', '-UNDEBUG', '-march=x86_64_v2', '-ffp-contract=off', '-fno-strict-aliasing',
                       '-fvisibility=hidden', '-pthread', '-Iruntime', '-Iruntime/nvn', '-Ithird_party',
                       '-Iruntime/nvn/vulkan', '-Ithird_party/imgui', '-Ithird_party/imgui/backends',
@@ -250,7 +263,7 @@ class Builder:
         locked_hashes = {entry['path']: entry['sha256'] for entry in sdk_lock['files']}
         archive = sdk / 'lib/Linux_x86_64/libnvsdk_ngx.a'
         runtime = sdk / 'lib/Linux_x86_64/rel/libnvidia-ngx-dlss.so.310.9.1'
-        gnu_runtime = Path('/usr/lib/x86_64-linux-gnu/libstdc++.so.6').resolve(strict=True)
+        gnu_runtime = runtime_check.discover_gnu_cxx()
         self.receipt['dependencies']['dlss'] = {
             'lock_sha256': hashlib.sha256(lock_bytes).hexdigest(),
             'sdk': str(sdk), 'sdk_receipt_sha256': digest(sdk / '.monado-dlss.json'),
@@ -268,7 +281,7 @@ class Builder:
         record, _ = self.run('dlss-loader-module', [self.cc, *self.flags, '-x', 'c++',
             '-std=c++17', '-shared', '-fPIC', '-nostdlib++',
             ROOT / 'runtime/nvn/vulkan/dlss_ngx_loader.cpp', '-x', 'none', archive,
-            gnu_runtime, '-ldl', '-Wl,--version-script,' + str(export_map),
+            gnu_runtime, '-ldl', '-Xlinker', '--version-script', '-Xlinker', str(export_map),
             '-Wl,--no-undefined', '-o', partial])
         if record['exit']:
             raise RuntimeError('isolated NVIDIA loader module build failed')
@@ -340,6 +353,11 @@ class Builder:
             header = stream.read(64)
         if len(header) < 64 or header[:6] != b'\x7fELF\x02\x01' or int.from_bytes(header[18:20], 'little') != 62:
             raise RuntimeError('linked output is not a native little-endian x86-64 ELF')
+        companions = [Path(meta['path']) for name, meta in self.receipt.get('runtime_resources', {}).items()
+                      if '.so' in name]
+        self.receipt['runtime_validation'] = runtime_check.check_artifacts(
+            [temporary, *companions], self.sysroot, self.runtime_policy)
+        self.save()
         return temporary
 
 

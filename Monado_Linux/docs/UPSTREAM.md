@@ -356,3 +356,193 @@ adapters and the filesystem are unchanged. Authored fixture coverage includes
 call/time limits, callback busy-clear/handle-live windows, pending writes,
 thumbnail pause/resume, owner generations/reset/reentry and CPU preservation.
 Actual menu-opening latency and real asynchronous save/load remain manual tests.
+
+## November9,2026 — LINUX-039 dedicated Quick Step development candidate
+
+`runtime/settings.h`, `host/settings_ini.c` and `tools/launcher/launcher.cpp`
+add a strict default-off preference and a built-in Mods checkbox. The original
+launcher translations, ordinary mods and settings remain. Authored native and
+actual-launcher configuration fixtures check default/reset, invalid/duplicate
+keys, canonical save/reload and existing settings preservation.
+
+New authored `runtime/hle/quickstep_slot`, `quickstep_ui` and `quickstep_save`
+adapters are connected through checked DE2.0.0 hooks in `games/xcde/patches.py`.
+The equipment presentation uses the existing Dear ImGui/Vulkan renderer, with
+owned snapshots and guest-thread commands; native equipment socket counts stay
+unchanged. Narrow `runtime/hle/input.c` and `host/stubs_gfx.c` changes quarantine
+consumed controls until release. The bonus slot uses an actual native gem and
+native effect decoding/aggregation, with bounded independent scratch storage.
+
+`runtime/services/fs.c` pairs optional authored reference metadata with the native
+save transaction. Native save payloads are unchanged. Focused tests use authored
+synthetic inventory, UI objects and filesystem data; private native ABI probes
+remain outside distributable source. No game code, data, fonts or asset bytes are
+copied into the adapters or fixtures. This is a local development candidate with
+manual gameplay and save/reload validation pending, not a released feature.
+
+All19 new hook sites require their exact original instruction words. Temporary
+stat calculations receive no bonus injection; a deferred, generation-checked
+repair at the native function's final epilogue restores active character effects
+after previews complete. Native actor recalculation uses the active record path.
+Save metadata is staged in memory before native writes, verified against the
+actual file at Commit, then flushed within the existing rollback journal. Failed
+snapshot copies refuse mutation; partial writes or metadata failures retain the
+journal. Existing journal cleanup and power-loss durability limits remain.
+Per-boot reset now drops the host journal registry while preserving disk rollback,
+so a same-root remount recovers payload and metadata together. Failed recovery
+poisons save I/O until remount succeeds; it cannot silently discard the rollback.
+An authored failing reset/remount reproducer and recovery-error controls cover
+this correction. These tests do not qualify arbitrary power-loss recovery.
+
+## November 9, 2026 — LINUX-040 native Quick Step UI
+
+Replace the rejected LINUX-039 ImGui tile and popup with authored native control
+and picker adapters (`runtime/hle/quickstep_native` and `quickstep_picker`). The
+control obtains a separate instance from the game's already-loaded layout factory,
+keeps only the genuine gem subtree and uses native icon binding/focus/animations.
+The original twenty equipment/gem/fashion indices and ordinary socket data stay
+unchanged. The filtered native list uses actual owned Quick Step instances with
+original icons, descriptions, sorting, favourites and No data. No game resource
+bytes or generated native bodies are distributed. The r3 revision below adds
+empty-slot tinting through the existing native colour multiplier.
+
+`games/xcde/patches.py` uses instruction-word-checked native input, list callback,
+count, character/pane lifecycle and destructor hooks. Mid-frame consumed input
+uses the existing native handled epilogue; picker close preserves the tail-call
+LR. Bonus callbacks bypass ordinary detach/staged socket writes. Native slot
+resources are released before their sequence's loader. `scripts/build_linux.py`
+links the new modules. `input.c`, `host/stubs_gfx.c` and `ui/menu_vk.cpp` return to
+the stable 0.1.9 behavior; no special overlay input capture remains.
+
+Correct the backend ownership contract: item byte +11 and BDEE0 represent
+favourites, not equipment attachment. Inspect actual native gear references,
+including unworn gear, and hook the accepted ordinary socket store at17B81C after
+capacity/intrinsic checks. Assignment and removal validate both instance identity
+and adoption epoch; native helpers never execute under the ownership mutex.
+Authored C fixtures plus private selected-input ARM probes cover these contracts;
+component passes do not establish integrated visual, gameplay or save acceptance.
+
+### LINUX-040 r2 — specialized native loader guard
+
+The first native development candidate failed manual testing: its extra icon never
+appeared because an exact class guard accepted only the base layout loader. The
+game uses the specialized equipment loader. `runtime/hle/quickstep_native.c` now
+accepts only the independently verified base or specialized class paired with its
+expected virtual factory method. The specialized native factory and layout
+selector remain in use; alias, ancestry, refcount and ordinary-socket guards stay
+intact. Bounded stage/reason diagnostics replace the opaque creation failure.
+
+The authored fixture exercises the specialized class, selector and full-size
+273-node/361-component synthetic layout, plus wrong-class/method, alias, focus
+and lifetime controls. An ignored source copy restoring only the prior base-only
+guard reproduces the pre-allocation failure. Actual selected-input ARM probes
+remain private, including in-memory metadata checks of the compressed native
+layout. This fixes the proven initialization rejection; rendered placement and
+complete native interaction still require manual acceptance. No game asset bytes,
+generated code or saves are included in source.
+
+### LINUX-040 r3 — assignment, crafted gems and native presentation
+
+Fix the bonus picker's Confirm path before ordinary equipment socket checks;
+retain the original router epilogue, cancellation, sorting and favourites. Remove
+the invalid requirement for a nonzero static gem definition while retaining real
+instance, serial, rank, effect, value, attachment and save-identity validation.
+Assignment/clearing refreshes the native character summary through its baseline
+path. The pure reference/epoch query lets yielding presenters revalidate without
+calling native code under the backend ownership mutex.
+
+The slot adapter keeps a genuine native cream backing, full-size icon and socket
+badge, compensating the native parent transform and anchoring them at the actual
+right table edge. A time-based 120 ms reveal uses native transforms. Empty icons
+receive the native green colour multiplier, which also affects their dark fill;
+filled icons retain native colours. Source layouts and original controls remain
+unchanged; no texture, font or generated game code is distributed.
+
+New `runtime/hle/quickstep_stats` and `quickstep_stats_ui` adapters present the
+bonus through native localized skill names and formatting. They merge an existing
+Quick Step effect at its original cap or render a separate record. A full set of
+eight ordinary effects receives a separately instanced native ninth control;
+the original fixed eight-record buffers stay untouched. Original transforms and
+inline row counts are restored before native destruction. Checked renderer and
+lifecycle hooks, authored ownership/alias/reentry fixtures and private native ABI
+probes cover these boundaries. Actual visuals, movement, save/reload and both
+stories remain subject to manual testing of this revision.
+
+### LINUX-040 r4 — native allocation, availability and mini-table revision
+
+The r3 manual test found a native null allocation while the summary adapter
+created another complete equipment scene. `quickstep_stats_ui` now constructs a
+base loader for the exact already-linked stats resource, advances its real
+dependency/font readiness once per UI tick, validates cache/raw identity, and
+attaches only that container through the native component API. Native parent
+transforms, clipping and lifetime are inherited. Existing eight-record summaries
+and nineteen original row controls stay intact; the extra row and loader have
+checked teardown, pending-work and ordinary-preview isolation.
+If a parent retires during a yielding constructor and ownership can no longer be
+proved, its ambiguous resource capsule is retained until guest reset. Its loader
+and scratch buffer are never recycled into a replacement owner; normal cleanup
+still runs once after active helpers return.
+
+New authored `quickstep_ui_memory` samples the active native variable-size arena
+under its native recursive mutex, releases that mutex before layout/texture
+construction, and revalidates ownership. It checks policy headroom and largest
+free block, preserves CPU/FP state, and bounds diagnostics. This is not an atomic
+reservation or a proved bound on arbitrary font/GPU/concurrent allocation costs;
+no native arena is resized. Resource refusals retain the original UI and are
+reported, rather than supplying fake successful objects.
+
+The picker adds exact owned-row styling and both native Plus-menu item paths,
+without overriding the global ordinary-socket validator. A typed completed-popup
+lease preserves bonus ownership through Cancel/Remove, stale callbacks and
+teardown; ordinary menus keep their own behaviour. Authored fixtures cover both
+idle and active picker panes across playable main/extra-story characters and
+absent, socketless, unique, empty-socket and occupied-socket equipment.
+
+The native slot revision retains original icon/badge proportions and a separate
+socket underlay. A small original nine-part window supplies the mini-table and
+focus frame, with native corner-preserving scaling; only the empty socket
+underlay receives the green multiplier. Its runtime asset is read-only and held
+in memory until guest reset. An exact privately owned-row batch filter omits
+its baked wide background through the existing native cleanup path; original
+rows and separately drawn children are unchanged. No game asset bytes are added
+to source or release packages. Visual alignment, real allocation headroom and
+integrated gameplay/save behaviour still require manual acceptance.
+
+### LINUX-040 r5 — equip completion and bounded native focus
+
+The bonus picker now follows the original native equip feedback and presentation
+close sequence after a verified bonus assignment. It keeps its ownership guard
+through the close callback and restores the original pane and row selection.
+Ordinary equipment commit and socket mutation remain outside this path; rejected
+or stale selections stay silent and do not report success. The private small
+card uses its own bounded native focus frame rather than a normal-width gem-row
+selection animation. Authored fixtures and native probes cover these transitions;
+actual sound, visual polish and gameplay acceptance are manual checks.
+
+A clean native common window supplies symmetric card corners and a persistent
+dark rim, with the same two small nodes and no redistributed texture bytes.
+Private background ownership remains valid across a transient character change,
+while native input and effects still require the current character lease.
+The effects-row loader validates its own exact native cache-handle type rather
+than borrowing the unrelated ownership-reference type from a nested wrapper;
+exact original resource identity and source topology checks remain required.
+
+
+### LINUX-041/042 — trade entries and Linux runtime closure
+
+The Linux generator accepts optional requirement-tagged FunctionEntries metadata
+in the existing patch file. The selected main build and all dispatch/entry words
+are verified before partitioning; five native trade cases now have original
+bodies and dispatch entries. No instruction replacement or CPU fallback is used.
+Authored partition/Unicorn/native tests and selected-input audits cover this fix.
+
+The local graphics dependency lock now describes the complete non-platform
+DT_NEEDED/version graph, immutable private library hashes and explicit native
+host interfaces. Setup extracts only verified archives without maintainer scripts
+or host installation. The builder and runners check declared ELF dependencies,
+ABI versions and trusted loader resolution without executing game constructors.
+GNU C++ discovery supports native distribution paths. Update validation occurs
+before activation and preserves the prior selection/profile on failure. Source
+and launcher packages still exclude all local runtime libraries, game/generated
+code, caches, keys and saves. Arch userspace load/media tests are distinct from
+actual GPU/gameplay qualification; the Linux build guide records the boundary.

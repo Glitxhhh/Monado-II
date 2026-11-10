@@ -26,8 +26,9 @@ it is not a Windows development roadmap or a commitment to backport them.
 - [ ] Preserve custom/unknown launcher settings, atomically save configuration,
   and review post-game reload/process behavior.
 - [ ] Design and validate a Windows updater; the 0.1.3 updater is Linux-only.
-- [ ] Revisit Linux-only Exit to desktop, expanded save slots and bounded initial
-  save scanning if Windows parity is explicitly scheduled later.
+- [ ] Revisit Linux-only Exit to desktop, expanded save slots, bounded initial
+  save scanning, the dedicated Quick Step slot and native trading/runtime fixes
+  if Windows parity is explicitly scheduled later.
 - [ ] Regenerate/build on Windows and run focused regression tests in isolated
   state, then manual gameplay. Keep original Windows fiber/vendor implementations.
 
@@ -37,6 +38,12 @@ Linux FG presentation. Publishing a Windows source kit does not schedule backpor
 
 ## Linux correctness and coverage
 
+- [ ] Improve the experimental dedicated Quick Step slot's remaining UI quirks
+  and inconsistent behavior; keep it off by default and expand character,
+  equipment, save/reload and Future Connected coverage.
+- [ ] Confirm actual CachyOS/AMD/Wayland gameplay and additional distribution
+  builds. Isolated Arch userspace loading/media passes do not cover native GPU,
+  audio/session or optional plugin behavior.
 - [ ] Improve experimental frame-generation pacing/performance and visual quality
   after the current publication work; keep its warning and off-by-default setting.
 - [ ] Validate more gameplay, demanding scenes, long sessions and Future Connected.

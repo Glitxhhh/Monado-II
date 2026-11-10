@@ -17,7 +17,7 @@ import subprocess
 import sys
 import threading
 
-from build_linux import Builder, check_correctness_macros, digest, fresh_output
+from build_linux import Builder, check_correctness_macros, digest, fresh_output, runtime_check
 
 ROOT = Path(__file__).resolve().parent.parent
 CPP = ['third_party/imgui/' + name + '.cpp' for name in
@@ -31,7 +31,8 @@ C = ['runtime/paths.c', 'runtime/platform/linux.c',
 
 def source_snapshot():
     names = {ROOT / p for p in [*CPP, *C, 'scripts/build_launcher_linux.py',
-                              'scripts/build_linux.py', 'graphics-deps-linux.lock.json',
+                              'scripts/build_linux.py', 'scripts/linux_runtime_check.py',
+                              'scripts/linux_runtime_graph.py', 'graphics-deps-linux.lock.json',
                               'requirements-linux.lock', 'tools/launcher/theme_resource.py']}
     # Include conditional local headers, including new launcher platform helpers.
     # SDK/system header identity is supplied by the separately locked sysroot.
@@ -68,6 +69,8 @@ class LauncherBuilder(Builder):
         self.libdir = self.sysroot / 'usr/lib/x86_64-linux-gnu'
         if not self.sysroot.is_relative_to(ROOT / '.deps/graphics/sysroots'):
             raise ValueError('graphics sysroot must be project-local')
+        self.runtime_policy, _ = runtime_check.load_policy(ROOT, self.sysroot)
+        self.library_path = runtime_check.library_path(self.sysroot, self.runtime_policy)
         marker = self.sysroot / '.monado-deps.json'
         if json.loads(marker.read_text()).get('lock_sha256') != digest(ROOT / 'graphics-deps-linux.lock.json'):
             raise ValueError('graphics sysroot does not match the dependency lock')
@@ -144,7 +147,7 @@ class LauncherBuilder(Builder):
         if resources.get('features', {}).get('artwork', False):
             self.flags.append('-DMONADO_LAUNCHER_ARTWORK=1')
         self.libs = [*libs, '-lm', '-ldl', '-pthread', '-Wl,--gc-sections',
-                     '-Wl,-rpath,' + str(self.libdir)]
+                     '-Xlinker', '-rpath', '-Xlinker', self.library_path]
         self.receipt['compile_flags'] = self.flags
         self.receipt['link_flags'] = self.libs
         for name, compiler, language in (('cc-predefines', self.cc, 'c'),
@@ -171,14 +174,16 @@ class LauncherBuilder(Builder):
             raise RuntimeError('launcher must have a nonexecutable stack')
         # This trusted system loader only lists dependencies; no ELF constructors
         # or application entry point runs. Ignore inherited loader overrides.
-        loader = self.checked_run('elf-loader-list', ['/lib64/ld-linux-x86-64.so.2',
-                                 '--library-path', self.libdir, '--list', target])
+        loader = self.checked_run('elf-loader-list', [runtime_check.trusted_loader(),
+                                 '--library-path', self.library_path, '--list', target])
         if 'not found' in loader:
             raise RuntimeError('launcher dependency resolution is incomplete')
         self.receipt['elf_inspection'] = {'nonexecutable_stack': True,
             'needed': re.findall(r'\(NEEDED\).*\[(.*?)\]', dynamic),
             'resolved_libraries': len(re.findall(r'=> /', loader)),
             'scope': 'readelf and trusted loader --list only; no launcher execution'}
+        self.receipt['runtime_validation'] = runtime_check.check_artifacts(
+            [target], self.sysroot, self.runtime_policy)
         self.save()
         return target
 

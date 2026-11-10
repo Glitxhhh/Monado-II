@@ -67,3 +67,13 @@ distribution or a substitute for the dependency notices of the external build.
 Xenoblade Chronicles is a Nintendo trademark. Game content belongs to its rights
 holders. Monado II is independent and unaffiliated; its source license grants no
 rights to game content or other third-party intellectual property.
+
+
+The Linux local runtime lock also pins ordinary transitive user-space dependency
+packages. They are downloaded from their recorded official distribution origins,
+verified and extracted only under the player's private build directory; their
+copyright and license files remain there. Native glibc/GNU, graphics-driver,
+audio and session interface boundaries are checked separately. No such runtime
+package, driver, proprietary SDK or game executable is added to source releases
+or launcher-only AppImages by this change. A future public binary bundle still
+requires its own complete license and redistribution review.

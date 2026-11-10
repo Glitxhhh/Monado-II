@@ -20,6 +20,9 @@ ROOT = Path(__file__).resolve().parent.parent
 _layout_spec = importlib.util.spec_from_file_location('monado_install_layout', ROOT / 'scripts/install_layout.py')
 install_layout = importlib.util.module_from_spec(_layout_spec)
 _layout_spec.loader.exec_module(install_layout)
+_runtime_spec = importlib.util.spec_from_file_location('monado_runtime_check', Path(__file__).with_name('linux_runtime_check.py'))
+runtime_check = importlib.util.module_from_spec(_runtime_spec)
+_runtime_spec.loader.exec_module(runtime_check)
 BWRAP = Path('/usr/bin/bwrap')
 NGX_UPDATER = Path('/usr/bin/nvidia-ngx-updater')
 X11_SOCKETS = Path('/tmp/.X11-unix')
@@ -214,6 +217,10 @@ def plan(executable, state, precompile=False, *, port=None):
     library_path = sysroot / 'usr/lib/x86_64-linux-gnu'
     if not expected_lock or marker.get('lock_sha256') != expected_lock or not library_path.is_dir():
         raise ValueError('graphics sysroot identity differs from the build receipt')
+    runtime_check.require_receipt_validation(receipt, marker)
+    policy, _ = runtime_check.load_policy(owning_port, sysroot, expected_lock=expected_lock,
+        expected_policy=receipt.get('runtime_validation', {}).get('runtime_policy_sha256'))
+    selected_library_path = runtime_check.library_path(sysroot, policy)
     source = install_layout.shared_input(root)
     if source == state or state.is_relative_to(source) or source.is_relative_to(state):
         raise ValueError('shared input and runtime state must be disjoint')
@@ -222,7 +229,7 @@ def plan(executable, state, precompile=False, *, port=None):
         argv.append('--precompile')
     argv.append(str(source))
     launch = {'argv': argv, 'cwd': str(root), 'input': str(source), 'state': str(state),
-              'binary_sha256': identity, 'library_path': str(library_path), 'build_port': str(owning_port)}
+              'binary_sha256': identity, 'library_path': selected_library_path, 'build_port': str(owning_port)}
     dlss = receipt.get('dlss_enabled', False)
     if not isinstance(dlss, bool):
         raise ValueError('invalid DLSS build receipt flag')
@@ -240,6 +247,10 @@ def plan(executable, state, precompile=False, *, port=None):
         else:
             launch['execution_argv'], launch['namespace'] = dlss_namespace(argv, state)
     return launch
+
+
+def validate_runtime(launch):
+    return runtime_check.check_receipted(Path(launch['argv'][0]), Path(launch['build_port']))
 
 
 def main():
@@ -267,7 +278,7 @@ def main():
         # device environment remains available; runtime sets its own cache roots.
         environment = {k: v for k, v in os.environ.items()
                        if not k.startswith(('XCDE_', 'LARECOMP_', 'LASRECOMP_', 'MONADO_'))
-                       and k not in ('LD_PRELOAD', 'LD_LIBRARY_PATH')}
+                       and not k.startswith('LD_') and k != 'GLIBC_TUNABLES'}
         controls = {}
         for entry in args.env:
             key, separator, value = entry.partition('=')
@@ -292,6 +303,7 @@ def main():
         if args.dry_run:
             print(json.dumps(launch, indent=2))
             return 0
+        launch['runtime_validation'] = validate_runtime(launch)
         os.umask(0o077)
         if 'namespace' in launch:
             prepare_namespace_state(launch)

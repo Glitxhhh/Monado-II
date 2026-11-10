@@ -1,15 +1,57 @@
 # Build and play on Linux
 
-Download and extract **`monado-ii-0.1.9-linux-setup.tar.gz`** from
+Download and extract **`monado-ii-0.1.10-linux-setup.tar.gz`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases). Open a terminal in
-the extracted folder. The supported baseline is **Linux x86-64 with CPython 3.14**,
-bash, pkg-config, dpkg-deb, binutils (`readelf` and `nm`) and squashfs-tools
-(`mksquashfs` and `unsquashfs`). The standard DLSS build also requires executable
-`/usr/bin/bwrap` (bubblewrap) and a readable GNU C++ runtime at
-`/usr/lib/x86_64-linux-gnu/libstdc++.so.6`. A compatible Vulkan driver and host
-libraries are also required.
-The builder reports missing prerequisites; it never runs sudo or changes system
-packages/drivers. This is not yet a distribution-independent build.
+the extracted folder. The current pinned baseline is **Linux x86-64 (x86-64-v2),
+CPython 3.14, glibc 2.43 or newer**, and a native GNU C++ runtime exporting
+`GLIBCXX_3.4.32` and the required C++ ABI versions. Required tools are bash,
+pkg-config, dpkg-deb, binutils (`readelf` and `nm`) and squashfs-tools
+(`mksquashfs` and `unsquashfs`). The standard DLSS build also needs executable
+`/usr/bin/bwrap` (bubblewrap). GNU C++ is discovered in the host's native library
+directories; an Ubuntu multiarch path is not required. Compatible host graphics,
+audio and session libraries are also required as described below.
+
+The builder fetches hash-locked media, codec and other ordinary user-space
+libraries into `Monado_Linux/.deps`. This includes libbluray 1.4.1 (package
+`libbluray3` version `1:1.4.1-1`), supplying the `libbluray.so.3` ABI required by
+the pinned FFmpeg build. The host may independently provide `.so.4`; keep your
+normal system package. No downgrade, major-version symlink or individual-library
+version override is needed or supported.
+Host glibc, GNU runtimes, driver clients and native audio/session interfaces are
+checked rather than replaced. The builder never runs sudo or changes system
+packages or drivers. This remains an explicitly tested baseline rather than a
+universal Linux binary compatibility promise.
+
+### Native prerequisites on Arch / CachyOS
+
+Check `python3.14 --version` and `getconf GNU_LIBC_VERSION` before building.
+Rolling distributions can change their default Python major version; this build
+still requires CPython 3.14. Typical package providers are:
+
+| Requirement | Arch-family package providers |
+|---|---|
+| Python, shell and native GNU runtimes | `python`, `bash`, `glibc`, `libgcc`, `libstdc++` (or the distro's equivalent GNU runtime packages) |
+| Dependency and ELF tools | `pkgconf`, `dpkg`, `binutils` |
+| Launcher packaging and DLSS isolation | `squashfs-tools`, `bubblewrap` |
+| Native audio and window decoration | `alsa-lib`, `libpulse`, `libdecor` |
+| Native graphics clients | `libdrm`, `mesa` (GBM client), `libglvnd`, `ocl-icd`, `libva`, `libvdpau`, `libvpl` |
+
+Use your distribution's supported driver packages for your GPU. The host client
+libraries remain necessary even if the movie path uses software decoding,
+because the pinned media build links their client interfaces. The dependency
+check reports missing SONAMEs, requester chains and incompatible ABI versions.
+It does not install a GPU driver, replace libc or fabricate a library-major alias.
+An older host needs a supported runtime baseline; changing a symlink cannot
+supply a missing ABI. On Ubuntu the corresponding native runtime packages use
+Ubuntu package names; the same SONAME/version checks apply.
+
+`--plan` lists private runtime libraries and explicit host interface requirements.
+Setup checks the complete declared private graph. A small authored load-only
+probe runs before long game generation; the final game, launcher and native
+companions are checked before a build succeeds. Play and shader preparation
+repeat loadability checks, and an update that fails them keeps the previous
+version selected. These checks do not start the game or establish GPU/gameplay
+compatibility. Saves and existing shader caches are preserved on failure.
 
 For Quiver or another desktop app manager, choose **`App_Monado_II.sh`** after
 extraction. It uses an installed terminal for the initial build, then opens the
@@ -140,6 +182,19 @@ still take time, especially with many populated slots. The maintainer accepted
 the development build manually; full-capacity and recovery coverage remain
 incomplete. See [platform status](PLATFORM_STATUS.md).
 
+### Experimental dedicated Quick Step slot
+
+Linux 0.1.10 adds **Dedicated Quick Step gem slot** under Mods in the launcher.
+It is **off by default**. The character-owned slot uses eligible owned Quick Step
+I–VI without consuming an ordinary armour slot, including when no boots or
+socketless/unique boots or drones are equipped. It retains normal ownership,
+potency and caps; optional assignment metadata is paired with each native save.
+Back up the complete save folder, including hidden files, to retain assignments.
+
+**This feature is experimental and can be hit-or-miss or show UI quirks. Expect
+quirkiness; further fixes and polish are planned.** See the [Quick Step guide](QUICKSTEP.md)
+for controls, removal and coverage limits.
+
 ## Experimental frame generation
 
 Normal Linux builds include native frame-generation support without an extra flag:
@@ -220,8 +275,8 @@ experimental. Edited release-owned source files also stop automatic installation
 so local changes can be merged manually. Normal settings changes do not modify
 the release-owned source.
 
-**The 0.1.9 save-slot changes require a full local game rebuild.** The normal
-updater performs this rebuild before activation. It preserves the original
+**The 0.1.10 Quick Step, trading and runtime changes require a full local game
+rebuild.** The normal updater performs this rebuild before activation. It preserves the original
 `Monado_Linux/play/launcher` save/settings profile and shared input in place;
 it does not convert, replace or delete saves. Keep the original installation
 folder and its retained update directories. A fresh kit elsewhere is a separate

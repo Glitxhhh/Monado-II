@@ -135,7 +135,7 @@ def prepare(executable, state, entries=(), *, cancellation=None):
     # runtime controls or loader injection. Do not mutate process-global getenv.
     environment = {key: value for key, value in os.environ.items()
                    if not key.startswith(('XCDE_', 'LARECOMP_', 'LASRECOMP_', 'MONADO_'))
-                   and key not in ('LD_PRELOAD', 'LD_LIBRARY_PATH')}
+                   and not key.startswith('LD_') and key != 'GLIBC_TUNABLES'}
     environment.update(launch['controls'])
     environment.update(LD_LIBRARY_PATH=launch['library_path'], SDL_APP_ID='monado-linux-port',
                        XCDE_STRICT='1', XCDE_NO_ERROR_DIALOG='1',
@@ -617,6 +617,8 @@ def main(argv=None):
             visible = {key: value for key, value in launch.items() if key != 'environment'}
             print(json.dumps(visible, indent=2))
             return 0
+        if not cancellation:
+            launch['runtime_validation'] = run_linux.validate_runtime(launch)
         os.umask(0o077)
         return supervise(launch, session=args.session, timeout=args.timeout, cancellation=cancellation)['exit']
     except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as error:

@@ -13,6 +13,10 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location('monado_managed_build_test', ROOT / 'tools/build_linux_app.py')
 build = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(build)
+native_spec = importlib.util.spec_from_file_location('monado_managed_native_producer',
+    ROOT / 'Monado_Linux/scripts/build_linux.py')
+native_builder = importlib.util.module_from_spec(native_spec)
+native_spec.loader.exec_module(native_builder)
 
 
 def sha(path):
@@ -58,9 +62,11 @@ class ManagedBuild(unittest.TestCase):
         (self.state / 'xcde.ini').write_text('[fixture]\nvalue=preserve\n')
         self.game = self.original / 'build/accepted-game/xcde-linux'
         write_elf(self.game)
-        names = ['scripts/build_linux.py', 'graphics-deps-linux.lock.json', 'requirements-linux.lock',
-                 'tools/gen_smaa_inc.py', 'dlss-linux.lock.json', 'scripts/setup_linux_dlss.py',
-                 'fsr-linux.lock.json', 'scripts/setup_linux_fsr.py', 'runtime/authored.c']
+        # Derive script/lock names from the real native receipt producer. Keep
+        # native inputs authored and tiny; do not mirror the reuse consumer list.
+        names = [name for name in native_builder.source_snapshot()
+                 if not name.startswith(('runtime/', 'third_party/'))]
+        names.append('runtime/authored.c')
         snapshot = {}
         for name in names:
             for port in (self.original, self.port):
