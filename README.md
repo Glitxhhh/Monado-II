@@ -1,155 +1,215 @@
 # Monado II
 
-**Monado II** is a community fork of **Monado**, the Xenoblade Chronicles:
-Definitive Edition static recompilation project by **TheMonadoGuy / Monado
-contributors**, built on **Peiikai's LASRecomp**. The name acknowledges both the
-original project and the game. This fork adds native Linux work and continues
-maintenance (no plans to add my improvements like 99 save slots, high fps stability, etc to Windows at this point); it is independent of Nintendo and Monolith Soft. This was developed entirely using AI,
-do with that information what you will.
+**Xenoblade Chronicles: Definitive Edition, recompiled for PC.**
 
-Overhauled Launcher!
-<img width="1259" height="795" alt="image" src="https://github.com/user-attachments/assets/69fabc08-665d-41bc-8900-f707138d630f" />
+A community fork of **Monado** by **TheMonadoGuy / Monado contributors**, built
+on **Peiikai’s LASRecomp**. Monado II adds a native Linux port and optional
+quality-of-life features, while preserving the original Windows implementation.
 
-Dedicated Quickstep Gem Slot! (Optional)
-<img width="870" height="489" alt="quickstep" src="https://github.com/user-attachments/assets/ec5a4ae7-495b-4208-8cbe-e851116582ee" />
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/69fabc08-665d-41bc-8900-f707138d630f" alt="Monado II’s native Linux launcher, with artwork, graphics settings and build tools" width="1000" />
+</p>
 
-99 Save Slots!
-<img width="870" height="489" alt="99-save-slots" src="https://github.com/user-attachments/assets/8899b35a-1867-4712-9c4a-0372738c01c0" />
+[![Source CI](https://github.com/brendonbusker/Monado-II/actions/workflows/source-ci.yml/badge.svg?branch=main)](https://github.com/brendonbusker/Monado-II/actions/workflows/source-ci.yml)
+[![Release](https://img.shields.io/github/v/release/brendonbusker/Monado-II)](https://github.com/brendonbusker/Monado-II/releases/latest)
+[![License](https://img.shields.io/github/license/brendonbusker/Monado-II)](LICENSE)
 
-Linux 0.1.11 stabilizes the optional dedicated Quick Step gem slot, including
-save/Continue restoration, equipped indicators and native menu feedback, and
-corrects the reported Bionis Interior crash. **Quick Step remains off by default**
-for players who prefer the original equipment setup. See the
-[changelog](CHANGELOG.md), [Quick Step guide](docs/QUICKSTEP.md) and
-[Linux requirements](docs/BUILD_LINUX.md).
+[Get started](#getting-started) · [Latest release](https://github.com/brendonbusker/Monado-II/releases/latest) · [Linux guide](docs/BUILD_LINUX.md) · [Windows guide](docs/BUILD_WINDOWS.md) · [Changelog](CHANGELOG.md)
 
-## You must supply your own legally dumped game
+> [!IMPORTANT]
+> **Bring your own legally dumped game.** Downloads contain source and setup
+> tools, not a playable game. You must own the game and supply your own extracted
+> **Definitive Edition 2.0.0** files from your own legally obtained Nintendo Switch.
+> No game files, keys or firmware are provided.
 
-**No game files are included in this repository or its releases.** To play, you
-must own a legally obtained copy of Xenoblade Chronicles: Definitive Edition and
-supply your own legally dumped game files from your own legally obtained Nintendo
-Switch console, including the supported version 2.0.0 update.
+## Linux highlights
+
+| Feature | What it adds |
+|---|---|
+| Native launcher | A themed settings screen, controller configuration and a locally generated launcher AppImage. |
+| High-refresh improvements | Timing, animation, menu-navigation and footstep corrections, plus a choice of 30 FPS-style or faster 60 FPS-style menu navigation. |
+| DLSS Super Resolution / DLAA | Native support on compatible NVIDIA hardware, included in normal Linux builds. |
+| Shader preparation | Prepare shaders before playing with the launcher’s **Precompile shaders** button. |
+| Exit to desktop | Native title-screen and in-game System menu entries, with confirmation and Cancel/No selected by default. Exiting does not save progress. |
+| Built-in updates | Stable-release notifications, local rebuilds when required, progress, cancellation and rollback. |
+
+The Linux-specific launcher, timing, menu, save and Quick Step improvements have
+not been backported. Windows retains its upstream launcher and vendor/shader
+integrations; backporting the Linux improvements is not currently planned.
+
+### A dedicated Quick Step gem slot
+
+Equip an owned Quick Step gem in an extra character slot without using an ordinary
+equipment gem slot. The option uses the game’s native equipment menus and is
+**off by default**, so you can keep the original equipment setup.
+
+<img src="https://github.com/user-attachments/assets/ec5a4ae7-495b-4208-8cbe-e851116582ee" alt="Equipping a Quick Step gem in the optional dedicated slot through the native equipment menu" width="870" />
+
+Linux **0.1.11** stabilizes saved assignments, Load Game/Continue restoration,
+equipped indicators and native menu feedback. See the [Quick Step guide](docs/QUICKSTEP.md).
+
+### More room for your playthroughs
+
+**99 manual saves plus a separate autosave for each story.** Main-game and Future
+Connected saves stay separate. Scroll through four native save cards at a time;
+unused slots show **No data** and create no files until used. Existing saves keep
+their native format and filenames.
+
+<img src="https://github.com/user-attachments/assets/8899b35a-1867-4712-9c4a-0372738c01c0" alt="Scrolling through the expanded save list while keeping four native save cards visible" width="870" />
+
+Initial Save/Load scanning batches ready native read steps within a small budget
+and yields for pending I/O and callbacks. Menus and Continue scanning can still
+take time; 99 populated slots and every save/recovery case have not been qualified.
+
+## Getting started
+
+Download a setup/build kit from the [latest release](https://github.com/brendonbusker/Monado-II/releases/latest)
+and verify it against the release’s **SHA256SUMS** file. Both kits contain reviewed
+source and setup tools. **You build locally from your own game dump.**
+
+| Platform | Current setup kit | Full instructions |
+|---|---|---|
+| Linux x86-64 | [Linux `.tar.gz`](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.11/monado-ii-0.1.11-linux-setup.tar.gz) | [Linux build guide](docs/BUILD_LINUX.md) |
+| Windows x86-64 | [Windows `.zip`](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.11/monado-ii-0.1.11-windows-setup.zip) | [Windows build guide](docs/BUILD_WINDOWS.md) |
+
+### Linux quick start
+
+1. Extract the Linux kit into a folder you want to keep.
+2. Check the [prerequisites](docs/BUILD_LINUX.md), then place your own extracted
+   input in `game_files/exefs/` and `game_files/romfs/` inside that folder.
+   The guide also explains how to link an existing input folder without moving it.
+3. Open a terminal in the extracted folder and run:
+
+   ```sh
+   ./Build_Monado_II.sh
+   ./Play_Monado_II.sh
+   ```
+
+The build generates **`Monado-II-x86_64.AppImage`** for the launcher.
+`Play_Monado_II.sh` also works without FUSE. **Keep the build folder alongside the
+AppImage**: the game executable, libraries and state live outside its launcher
+payload. The image is a workspace launcher, not a standalone game download.
+
+For Quiver and other Linux app launchers, select **`App_Monado_II.sh`**. It shows
+first-build progress in an installed terminal, then opens the launcher. See
+[Quiver setup and limitations](docs/QUIVER.md).
+
+Normal Linux builds include **DLSS Super Resolution / DLAA** and frame-generation
+capability. The build fetches the pinned official NVIDIA SDK locally; its binaries
+and models are not included in source kits or launcher images. To omit both
+providers, use:
+
+```sh
+./Build_Monado_II.sh --without-dlss
+```
+
+**Frame generation is experimental and disabled by default.** To try it, select
+DLSS/DLAA and enable the launcher checkbox; no extra build flag is needed.
+Performance varies: it may run worse, stutter or show visual glitches. Leaving it
+off is recommended. See [experimental frame generation](docs/BUILD_LINUX.md#experimental-frame-generation).
+
+### Your game files
+
+**No game files are included in this repository or its releases.** You must own a
+legally obtained copy of Xenoblade Chronicles: Definitive Edition and supply your
+own legally dumped files from your own legally obtained Nintendo Switch console,
+including the supported **2.0.0 update**.
 
 **I will not provide game files, keys, firmware, download links, or tell anyone
 where to get them. I will not provide instructions for obtaining or dumping them.**
-Requests for those files, links or instructions will not be answered. Do not post
-game files, keys, saves, generated game code, shaders or caches in issues or pull
-requests. See [the contribution rules](CONTRIBUTING.md).
+Requests for those files, links or instructions will not be answered.
 
-Only already-extracted `exefs/` and `romfs/` folders are accepted. Package/key
+Only already-extracted **`exefs/` and `romfs/`** folders are accepted. Package/key
 extraction is not supported. Game-derived C, executables, shaders and caches are
-generated locally on each player's machine and must stay out of Git and releases.
-
-## Current status
-
-| Platform | Source status | Validation |
-|---|---|---|
-| Linux x86-64 | Native SDL/Vulkan port, high-refresh timing fixes, menu-speed preference, native DLSS/DLAA, optional shader preparation, expanded saves and an optional stable Quick Step slot | Opening cutscenes/battles through first character control tested by the maintainer; expanded saves, scan responsiveness, Quick Step, trading and the Bionis Interior crash fix received positive manual feedback; full game, Future Connected and save/recovery coverage remain incomplete |
-| Windows x86-64 | Original Monado implementation retained | Original author reported full-game playability on NVIDIA RTX; this fork has not independently built or validated Windows, and Linux backports are not currently planned |
-
-**Linux frame generation is experimental. Performance varies: it may run worse,
-stutter or show visual glitches; leaving it off is recommended.** FSR 3.1 Super Resolution remains
-unavailable on Linux. Windows retains its own vendor integrations. Other GPUs,
-drivers and long sessions need more validation; component tests are not full-game
-qualification. See [platform status](docs/PLATFORM_STATUS.md).
-
-Linux includes **Exit to desktop** on the title screen and in the in-game System
-menu, with native confirmation and Cancel/No selected by default. Existing menu
-actions remain available. Save your progress first: exiting does not save it.
-
-Linux provides **99 manual save slots plus a separate autosave for each
-story**, keeping main-game and Future Connected saves separate. Four native cards
-remain visible as you scroll; unused slots show **No data** and create no files.
-Existing saves keep their native format and filenames. Initial Save/Load scanning
-groups ready native read steps within a small budget, yielding for pending I/O
-and callbacks. Opening these menus and scanning Continue can still take time;
-99 populated slots and every save/recovery case have not been qualified.
-
-The strict public source snapshot uses plain TTF/OTF/TTC font input. It does not
-ship Nintendo fonts or include proprietary-font deobfuscation. The public launcher
-uses the Monado II wordmark/theme and the original generated landscape artwork
-on the left. Its exact asset and origin are documented in the
-[artwork provenance](Monado_Linux/tools/launcher/assets/ARTWORK_PROVENANCE.md).
-The separate local sword icon remains excluded. Broader gameplay/UI validation
-remains incomplete.
-
-## Setup downloads and local builds
-
-Download the [Linux setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.11/monado-ii-0.1.11-linux-setup.tar.gz)
-or [Windows setup/build kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.11/monado-ii-0.1.11-windows-setup.zip)
-from the release, and verify its checksum. These contain source and setup tools;
-you provide your own input and build locally. For Linux app launchers such as
-Quiver, select **`App_Monado_II.sh`**: it shows first-build progress in an installed
-terminal, then opens the launcher. See [Quiver setup and limitations](docs/QUIVER.md).
-
-On Linux, put your own extracted input in `game_files/exefs` and `game_files/romfs`
-beside the downloaded kit, then run **`./Build_Monado_II.sh`**. It builds locally and
-generates **`Monado-II-x86_64.AppImage`** for the launcher. Open it with
-**`./Play_Monado_II.sh`**, which also works without FUSE. Keep the workspace beside
-the image; game code, libraries and state remain outside its launcher payload.
-See the [Linux instructions](docs/BUILD_LINUX.md) for prerequisites and an input
-symlink option that leaves existing game files in place.
-
-The normal Linux build includes native **DLSS Super Resolution / DLAA** support
-for compatible NVIDIA hardware. It fetches the pinned official NVIDIA SDK locally;
-SDK binaries/models are not included in source kits or the launcher image.
-Use `./Build_Monado_II.sh --without-dlss` to explicitly omit that provider.
-Starting with 0.1.6, normal Linux builds also include **frame-generation support**.
-It remains **experimental and disabled in settings by default**: select DLSS/DLAA
-and enable the checkbox if you want to try it. No extra build flag is needed.
-Explicit `--without-dlss` excludes both providers because FG currently depends on
-DLSS/DLAA. See the [build guide](docs/BUILD_LINUX.md#experimental-frame-generation).
-
-Starting with **0.1.3**, the Linux launcher quietly checks for newer stable
-releases on startup. A newer release offers **Update** or **Later**. Update
-downloads the source kit, builds it locally with progress and cancellation, then
-restarts the launcher; it never presses Play. Compatible launcher-only updates
-retain the verified game build. Other updates rebuild the game locally. Saves,
-settings and the shared input stay in the original installation; failed or
-cancelled preparation keeps the previous version selected.
-
-**Updating to 0.1.11 requires a full local game rebuild** for the Quick Step and
-queued-rendering fixes. The updater performs that rebuild and keeps the original
-save/settings profile in place; it does not convert, replace or delete your saves.
-Keep optional Quick Step metadata with the complete save folder, including hidden
-files; native `.sav` formats and filenames remain unchanged.
-
-From 0.1.6, the original folder's `update-version.json` shows the active version.
-Use `./Rollback_Monado_II.sh` for a version-aware rollback; see the Linux guide.
-
-**0.1.2 has no updater:** first apply the verified 0.1.3 or newer Linux source kit to the
-same original installation folder and rebuild once, preserving its input and
-profile directories. Follow the safe manual-upgrade steps below. A fresh kit in
-a new folder is a separate installation and does not import an older profile.
-See [Linux updating and rollback](docs/BUILD_LINUX.md#4-update-and-roll-back).
-Windows has no updater in this release, and backport work is not currently planned.
-
-Releases provide separate **Linux setup `.tar.gz`** and **Windows setup `.zip`**
-kits containing reviewed source. They are **not precompiled playable game downloads**.
-You build the game locally from your own verified dump. No compiled game binary,
-private vendor SDK binary, game-derived cache or user data is distributed.
-Version 0.1.11 uses the regular stable release channel. Quick Step is stable and
-optional; frame generation remains experimental and off by default. A legacy
-Linux `-source` download remains solely for compatibility with installed updaters. New downloads use the `-setup` kit.
-
-- [Linux build instructions](docs/BUILD_LINUX.md)
-- [Windows build instructions](docs/BUILD_WINDOWS.md)
-- [Release contents and verification](docs/RELEASING.md)
-- [Quiver entrypoint and re-review details](docs/QUIVER.md)
-- [Changelog and differences from upstream](CHANGELOG.md)
+generated locally and must stay out of Git and releases. Do not post game files,
+keys, saves, generated game code, shaders or caches in issues or pull requests;
+read the [contribution rules](CONTRIBUTING.md).
 
 The source tree keeps `Monado_Linux/` and `Monado_Windows/` separate. Use one
 read-only game-input location, with independent per-port generated files, builds,
 configuration, caches, logs and saves. Never direct runtime output into game input.
 
-This project uses extensive AI-assisted development. The original Monado author
-also documented substantial AI assistance. Human review, tests and reproducible
-results matter; existing known limitations are tracked rather than hidden.
+## Updating and keeping your saves
+
+The Linux launcher checks quietly for newer stable releases on startup. When an
+update is available, choose **Update** or **Later**. Updating downloads the source
+kit, prepares it locally with progress and cancellation, then restarts the
+launcher. It never presses Play.
+
+- Compatible launcher-only updates retain the verified game build; other updates
+  rebuild the game locally.
+- Saves, settings and shared game input stay in the original installation.
+  Failed or cancelled preparation keeps the previous version selected.
+- **Updating to 0.1.11 requires a full local game rebuild** for the Quick Step and
+  queued-rendering fixes, including the reported Bionis Interior crash correction.
+  The updater handles this without converting, replacing or deleting your saves.
+- Keep the **complete save folder, including hidden files**, when backing up or
+  moving saves. Quick Step metadata accompanies the unchanged native `.sav` files.
+- From **0.1.6**, the original folder’s `update-version.json` reflects the active
+  version. Use `./Rollback_Monado_II.sh` for a version-aware rollback.
+
+The updater is available from **0.1.3**. **0.1.2 has no updater**: apply a verified
+0.1.3-or-newer Linux source kit to the same original installation and rebuild once,
+preserving input and profile directories. A fresh kit in a new folder is a separate
+installation and does not import an older profile. Follow
+[Linux updating and rollback](docs/BUILD_LINUX.md#4-update-and-roll-back).
+
+New downloads use the **`-setup` kit**. A legacy Linux **`-source`** archive remains
+in releases solely for installed-updater compatibility. Both contain source, not
+precompiled playable games. No compiled game binary, private vendor SDK binary,
+game-derived cache or user data is distributed. **0.1.11 is a regular stable
+release**; the optional Quick Step feature is stable, while frame generation
+remains experimental. Windows has no updater in this release.
+
+## Platform status and limitations
+
+| Platform | Current state |
+|---|---|
+| **Linux x86-64** | Native SDL/Vulkan port. Opening cutscenes and battles through first character control were tested by the maintainer. Expanded saves, scan responsiveness, Quick Step, trading and the Bionis Interior crash correction received positive manual feedback. |
+| **Windows x86-64** | Original Monado implementation retained. The original author reported full-game playability on NVIDIA RTX; this fork has not independently built or validated Windows. Linux backports are not currently planned. |
+
+Full-game, **Future Connected**, long-session, other-GPU/driver and save/recovery
+coverage remain incomplete. Passing source CI and component tests do not establish
+full-game compatibility. **FSR 3.1 Super Resolution is unavailable on Linux**;
+Windows retains its own vendor integrations. See [platform status](docs/PLATFORM_STATUS.md)
+and [remaining work](TODO.md).
+
+The public source accepts plain **TTF/OTF/TTC** font input. It does not ship Nintendo
+fonts or proprietary-font deobfuscation. The Linux launcher uses the Monado II
+wordmark/theme and the reviewed generated landscape illustration; its exact asset
+and origin are documented in [artwork provenance](Monado_Linux/tools/launcher/assets/ARTWORK_PROVENANCE.md).
+The separate local sword icon is excluded. Broader gameplay/UI validation remains
+incomplete.
+
+## Guides and reference
+
+| Guide | What you’ll find |
+|---|---|
+| [Linux build instructions](docs/BUILD_LINUX.md) | Requirements, game-input layout, building, updating and rollback. |
+| [Windows build instructions](docs/BUILD_WINDOWS.md) | Building the preserved Windows implementation. |
+| [Quick Step guide](docs/QUICKSTEP.md) | Enabling the optional slot, equipping gems and keeping save metadata. |
+| [Quiver setup](docs/QUIVER.md) | Launcher entrypoint and integration limitations. |
+| [Release verification](docs/RELEASING.md) | Setup-kit contents, checksums and publication boundaries. |
+| [Changelog](CHANGELOG.md) | Releases and differences from upstream Monado. |
+| [Platform status](docs/PLATFORM_STATUS.md) | Validation, supported paths and known limitations. |
+| [Contributing](CONTRIBUTING.md) | Source, attribution and content rules. |
 
 ## Credits and license
 
-Full attribution is in [CREDITS](CREDITS.md), with preserved copyright notices in
-[LICENSE](LICENSE) and third-party terms in [NOTICE](NOTICE.md). Monado II's authored
-code is MIT-licensed; dependencies retain their respective licenses. The source
-license grants no rights to Nintendo/Monolith Soft game content, trademarks, fonts,
-artwork or other third-party assets.
+**Monado II is a fork, not a claim to the original recompiler/runtime.** Credit
+belongs to **TheMonadoGuy / Monado contributors** for Monado and **Peiikai** for
+LASRecomp. The name acknowledges the original project and the game. Full
+attribution is in [CREDITS](CREDITS.md).
+
+This fork was developed using AI coding tools throughout, under maintainer
+direction and with manual testing. The original Monado author also documented
+substantial AI assistance. Human review, tests and reproducible results matter;
+known limitations are tracked openly.
+
+Monado II’s authored code is **MIT-licensed**; see [LICENSE](LICENSE). Dependencies
+retain their respective terms in [NOTICE](NOTICE.md). The source license grants
+no rights to Nintendo/Monolith Soft game content, trademarks, fonts, artwork or
+other third-party assets.
+
+Monado II is an independent community project and is not affiliated with or
+endorsed by Nintendo or Monolith Soft.
