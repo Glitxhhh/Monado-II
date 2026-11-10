@@ -37,6 +37,23 @@ def make_image(path, contents=b'authored never-executed image fixture'):
     Path(str(path) + '.receipt.json').write_text(json.dumps(receipt))
 
 
+class LinuxLibraryRootGrammar(unittest.TestCase):
+    def test_spaces_and_commas_are_representable(self):
+        for root in ('/tmp/source with spaces', '/tmp/source,with,commas'):
+            with self.subTest(root=root):
+                self.assertIsNone(build.validate_linux_library_root(root))
+
+    def test_linux_separator_and_windows_drive_colons_are_rejected(self):
+        for root in ('/tmp/source:other', r'D:\authored\source'):
+            with self.subTest(root=root), self.assertRaisesRegex(build.BuildError, 'colons or control'):
+                build.validate_linux_library_root(root)
+
+    def test_control_characters_are_rejected_before_any_filesystem_work(self):
+        for character in map(chr, range(32)):
+            with self.subTest(character=ord(character)), self.assertRaisesRegex(build.BuildError, 'colons or control'):
+                build.validate_linux_library_root('/authored/' + character + '/source')
+
+
 class LinuxBuildApp(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix='monado-build-app-')
@@ -53,6 +70,13 @@ class LinuxBuildApp(unittest.TestCase):
         self.fail_stage = None
         patch = mock.patch.object(build, 'preflight')
         patch.start(); self.addCleanup(patch.stop)
+        if sys.platform == 'win32':
+            # These authored planner fixtures do not launch Linux tools. The
+            # Windows temporary drive is not a Linux search-path root; isolate
+            # that platform boundary while retaining the filesystem assertions.
+            # The real grammar check is exercised separately on every host above.
+            patch = mock.patch.object(build, 'validate_linux_library_root')
+            patch.start(); self.addCleanup(patch.stop)
 
     def runner(self, command, cwd, log):
         self.commands.append((command, cwd, log))

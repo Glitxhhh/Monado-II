@@ -1,5 +1,5 @@
 """LINUX-042: authored ELF ABI fixtures; no game input or host package changes."""
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import importlib.util
 import json
 import os
@@ -37,7 +37,7 @@ class RuntimeLockPolicy(unittest.TestCase):
         packages = {item['package'] for item in lock['packages']}
         for item in policy['owned_sonames'].values():
             self.assertIn(item['package'], packages)
-            self.assertIn(str(Path(item['path']).parent), policy['library_dirs'])
+            self.assertIn(str(PurePosixPath(item['path']).parent), policy['library_dirs'])
         self.assertFalse(packages & {'libc6', 'libstdc++6', 'libgcc-s1', 'libdrm2', 'libgbm1',
                                      'libasound2t64', 'libpulse0', 'libdecor-0-0'})
         self.assertFalse(set(policy['host_sonames']) & set(policy['owned_sonames']))

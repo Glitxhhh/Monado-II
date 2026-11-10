@@ -23,6 +23,14 @@ build = module('monado_reuse_build_app', ROOT / 'tools/build_linux_app.py')
 producer = module('monado_reuse_native_builder', PORT / 'scripts/build_linux.py')
 
 
+def linux_source_snapshot():
+    # This fixture models a Linux producer receipt, whose source keys use '/'.
+    # The producer is Linux-only; normalize its host-native key spelling when
+    # these metadata/source-contract tests run on a Windows CI host.
+    return {name.replace('\\', '/'): value
+            for name, value in producer.source_snapshot().items()}
+
+
 class ReusedNativeSources(unittest.TestCase):
     def setUp(self):
         temporary = tempfile.TemporaryDirectory(prefix='monado reuse source, with spaces ')
@@ -32,7 +40,7 @@ class ReusedNativeSources(unittest.TestCase):
         self.port.mkdir()
         # Let the real native producer define the script/lock inputs. Do not
         # repeat the consumer's required-source list in a receipt fixture.
-        for name in producer.source_snapshot():
+        for name in linux_source_snapshot():
             if name.startswith(('runtime/', 'third_party/')):
                 continue
             destination = self.port / name
@@ -43,7 +51,7 @@ class ReusedNativeSources(unittest.TestCase):
             path.parent.mkdir(exist_ok=True)
             path.write_text('/* Authored receipt fixture; never compiled. */\n')
         with mock.patch.object(producer, 'ROOT', self.port):
-            snapshot = producer.source_snapshot()
+            snapshot = linux_source_snapshot()
         self.input = self.owner / 'game_files'
         (self.input / 'exefs').mkdir(parents=True)
         (self.input / 'romfs').mkdir()

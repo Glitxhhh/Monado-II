@@ -236,11 +236,26 @@ class RuntimeChecks(unittest.TestCase):
         active.write_text(str(self.sysroot))
         compiler = self.port / '.deps/bin/clang-cc'
         compiler.parent.mkdir(parents=True)
-        # Authored local wrapper, no external script/package or shell interpolation.
+        # Model the pinned Zig wrapper's CPU spelling even when CI supplies an
+        # ordinary Clang executable. Keep the same x86-64-v2 baseline, not a
+        # dropped CPU option, and leave the production probe unchanged.
         import shlex
-        compiler.write_text('#!/bin/sh\nexec ' + shlex.quote(self.cc) + ' "$@"\n')
+        version = subprocess.run([self.cc, '--version'], capture_output=True, text=True,
+                                 timeout=60, env=check.clean_environment())
+        self.assertEqual(version.returncode, 0, version.stdout + version.stderr)
+        cpu = '-march=x86_64_v2' if 'ziglang' in version.stdout else '-march=x86-64-v2'
+        adapter = self.base / 'probe-compiler.py'
+        adapter.write_text('import os,sys\n'
+            'args=[' + repr(cpu) + ' if arg=="-march=x86_64_v2" else arg for arg in sys.argv[1:]]\n'
+            'os.execv(' + repr(self.cc) + ',[' + repr(self.cc) + ',*args])\n')
+        compiler.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' ' +
+                            shlex.quote(str(adapter)) + ' "$@"\n')
         compiler.chmod(0o755)
-        result = check.probe(self.port)
+        output = self.port / 'authored-probe'
+        result = check.probe(self.port, output=output)
+        self.assertIn('-march=x86_64_v2', result['compile_argv'])
+        needed = check.graph_module().inspect_elf(output / 'runtime-probe')['needed']
+        self.assertTrue(set(self.policy['root_sonames']).issubset(needed))
         self.assertIn(self.child.name, check.graph_module().inspect_elf(self.child)['soname'])
         self.assertEqual(result['status'], 'passed')
         self.assertFalse(self.constructed.exists())

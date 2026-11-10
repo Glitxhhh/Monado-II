@@ -5,6 +5,7 @@ import importlib.util
 import io
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -64,8 +65,9 @@ class ManagedBuild(unittest.TestCase):
         write_elf(self.game)
         # Derive script/lock names from the real native receipt producer. Keep
         # native inputs authored and tiny; do not mirror the reuse consumer list.
-        names = [name for name in native_builder.source_snapshot()
-                 if not name.startswith(('runtime/', 'third_party/'))]
+        # Model the Linux producer's POSIX receipt keys on either CI host.
+        names = [name.replace('\\', '/') for name in native_builder.source_snapshot()]
+        names = [name for name in names if not name.startswith(('runtime/', 'third_party/'))]
         names.append('runtime/authored.c')
         snapshot = {}
         for name in names:
@@ -88,6 +90,15 @@ class ManagedBuild(unittest.TestCase):
         patch = mock.patch.object(build, 'preflight')
         patch.start()
         self.addCleanup(patch.stop)
+        if sys.platform == 'win32':
+            # Metadata/source/state tests use authored, never-run Linux ELFs.
+            # Only replace the unavailable Linux path-list boundary on Windows;
+            # real receipt ownership, hashes, source closure and paths still run.
+            patch = mock.patch.object(build, 'validate_linux_library_root')
+            patch.start(); self.addCleanup(patch.stop)
+            patch = mock.patch.object(build.run_linux.runtime_check, 'library_path',
+                side_effect=lambda sysroot, policy=None: str(Path(sysroot) / 'usr/lib/x86_64-linux-gnu'))
+            patch.start(); self.addCleanup(patch.stop)
 
     def marker(self, sysroot, lock):
         (sysroot / 'usr/lib/x86_64-linux-gnu').mkdir(parents=True)

@@ -3528,8 +3528,8 @@
       "bytes": 15209
     },
     "tests/test_linux_build_app.py": {
-      "sha256": "70e1a7f8e822b9c12b92ae19666c81b27cbbce6ee348d7ebb1c8a589ccb906d1",
-      "bytes": 36759
+      "sha256": "25aec3c0ae86cb979683c7ed962b5f8e6f5aebf7324c74c1232eb87d1add9089",
+      "bytes": 38181
     },
     "tests/test_linux_graphics_paths.py": {
       "sha256": "8626814e7a09aa49a58f71a3014860eabc56bb95f58f08df14edfa0b0b4e5934",
@@ -3544,24 +3544,24 @@
       "bytes": 20543
     },
     "tests/test_linux_reuse_sources.py": {
-      "sha256": "951a4114ed2e0b42401ee701d14390dc419e5d7f8dc7be044b234fa1e19a7627",
-      "bytes": 5310
+      "sha256": "5cd215bee9c4c42638b26d930eefe5ea41fec9b331017487c8af9223af0ad755",
+      "bytes": 5671
     },
     "tests/test_linux_runtime_check.py": {
-      "sha256": "7ae30b14e8233917af5a528d3fabc51bd9e3c50279e20cfdabc435a2fb885fff",
-      "bytes": 15201
+      "sha256": "f8f1b4cd7b4dab89baaa9f620079dbe5a9c598bd7aee60ae51c7d0f1f1d7f03d",
+      "bytes": 16310
     },
     "tests/test_linux_runtime_graph.py": {
-      "sha256": "b28750dece24c90d8ad9ee53dd398d16cfe17b9c6a4e91bc8f0400dce3a77ced",
-      "bytes": 11516
+      "sha256": "6a213973a8cf936aee525fa7ee6d16a187b9a9611e1bd9d819283fabd6d80b0c",
+      "bytes": 11540
     },
     "tests/test_linux_runtime_update.py": {
       "sha256": "6497b8936bdfaef18a1c6c3d2cd3830386308ae6c33d64f2e395d59959ac36f1",
       "bytes": 8482
     },
     "tests/test_managed_linux_build.py": {
-      "sha256": "2fe2c5da4a20212c0cde118086def3f96fa7e3510ef67667207de098cdafe580",
-      "bytes": 15212
+      "sha256": "70842617e72ffd3b24e70c6ba99a92aa396f5d4de60ebe4d13e33ad092dbc08a",
+      "bytes": 15994
     },
     "tests/test_packaged_launcher.py": {
       "sha256": "098eca4140e9b64fd30956c8fc721b904df666f7bce1b2fb0e3ce38c5205a7e4",
@@ -3712,8 +3712,8 @@
       "bytes": 16439
     },
     "tools/build_linux_app.py": {
-      "sha256": "f7006f7397440fdaa2f4e53007f5df55907922e60765ed2c05634a06ec116eb0",
-      "bytes": 33321
+      "sha256": "fd4b44bc3a447abe1d11953e501cda291580f5cbe6fbefd5531319186afb33e7",
+      "bytes": 33483
     },
     "tools/installation_version.py": {
       "sha256": "1b3d87079b9776856ecb5d7d1be56fd67f4f8dc9bfed3118af03d9d291b0525a",

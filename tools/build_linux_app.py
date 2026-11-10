@@ -170,11 +170,16 @@ def validate_reused_game(port, binary, state, *, dlss, framegen=None):
             'receipt_sha256': digest(binary.parent / 'receipt.json'), 'build_port': launch['build_port']}
 
 
+def validate_linux_library_root(root):
+    """Reject source roots that cannot fit Linux's library search-path grammar."""
+    if ':' in str(root) or any(ord(char) < 32 for char in str(root)):
+        raise BuildError('Linux library search paths cannot contain colons or control characters; use another source folder')
+
+
 def layout(root, jobs, *, require_input=True, identity=None, dlss=True, reuse_game=None, framegen=None):
     framegen = validate_features(dlss=dlss, framegen=framegen)
     root = ordinary(root, directory=True)
-    if ':' in str(root) or any(ord(char) < 32 for char in str(root)):
-        raise BuildError('Linux library search paths cannot contain colons or control characters; use another source folder')
+    validate_linux_library_root(root)
     port = ordinary(root / 'Monado_Linux', directory=True)
     install_layout.binding(port)
     for name in ('build', 'generated', 'runs', '.deps'):
