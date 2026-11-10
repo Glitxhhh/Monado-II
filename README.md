@@ -12,7 +12,7 @@ quality-of-life features, while preserving the original Windows implementation.
 
 [![Source CI](https://github.com/brendonbusker/Monado-II/actions/workflows/source-ci.yml/badge.svg?branch=main)](https://github.com/brendonbusker/Monado-II/actions/workflows/source-ci.yml)
 [![Release](https://img.shields.io/github/v/release/brendonbusker/Monado-II)](https://github.com/brendonbusker/Monado-II/releases/latest)
-[![License](https://img.shields.io/github/license/brendonbusker/Monado-II)](LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 [Get started](#getting-started) · [Latest release](https://github.com/brendonbusker/Monado-II/releases/latest) · [Linux guide](docs/BUILD_LINUX.md) · [Windows guide](docs/BUILD_WINDOWS.md) · [Changelog](CHANGELOG.md)
 
