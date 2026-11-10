@@ -31,7 +31,7 @@ quality-of-life features, while preserving the original Windows implementation.
 | DLSS Super Resolution / DLAA | Native support on compatible NVIDIA hardware, included in normal Linux builds. |
 | Shader preparation | Prepare shaders before playing with the launcher’s **Precompile shaders** button. |
 | Exit to desktop | Native title-screen and in-game System menu entries, with confirmation and Cancel/No selected by default. Exiting does not save progress. |
-| Built-in updates | Stable-release notifications, local rebuilds when required, progress, cancellation and rollback. |
+| Built-in updates | Stable-release notifications, local rebuilds when required, progress, cancellation and automatic cleanup of superseded builds. |
 
 The Linux-specific launcher, timing, menu, save and Quick Step improvements have
 not been backported. Windows retains its upstream launcher and vendor/shader
@@ -146,13 +146,14 @@ launcher. It never presses Play.
 - Keep the **complete save folder, including hidden files**, when backing up or
   moving saves. Quick Step metadata accompanies the unchanged native `.sav` files.
 - From **0.1.6**, the original folder’s `update-version.json` reflects the active
-  version. Use `./Rollback_Monado_II.sh` for a version-aware rollback.
+  version. After successful activation, only the current launcher and its game
+  payload are retained. Older releases can be downloaded and built manually.
 
 The updater is available from **0.1.3**. **0.1.2 has no updater**: apply a verified
 0.1.3-or-newer Linux source kit to the same original installation and rebuild once,
 preserving input and profile directories. A fresh kit in a new folder is a separate
 installation and does not import an older profile. Follow
-[Linux updating and rollback](docs/BUILD_LINUX.md#4-update-and-roll-back).
+[Linux updates and storage](docs/BUILD_LINUX.md#4-update-and-roll-back).
 
 New downloads use the **`-setup` kit**. A legacy Linux **`-source`** archive remains
 in releases solely for installed-updater compatibility. Both contain source, not
@@ -185,7 +186,7 @@ incomplete.
 
 | Guide | What you’ll find |
 |---|---|
-| [Linux build instructions](docs/BUILD_LINUX.md) | Requirements, game-input layout, building, updating and rollback. |
+| [Linux build instructions](docs/BUILD_LINUX.md) | Requirements, game-input layout, building, updates and storage. |
 | [Windows build instructions](docs/BUILD_WINDOWS.md) | Building the preserved Windows implementation. |
 | [Quick Step guide](docs/QUICKSTEP.md) | Enabling the optional slot, equipping gems and keeping save metadata. |
 | [Quiver setup](docs/QUIVER.md) | Launcher entrypoint and integration limitations. |

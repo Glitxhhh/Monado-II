@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.1.12 — November 10, 2026
+
+- Keep only the active Linux launcher and its required game payload after a
+  successful update. The first updated launch also cleans accumulated older
+  updater-owned builds and abandoned downloads. Interrupted or blocked cleanup
+  retries safely; saves, settings, hidden Quick Step metadata, mods, useful caches
+  and game input stay in place. Native save formats are unchanged.
+- Reuse one independently owned game payload for compatible launcher-only updates.
+  Keep the working build until its replacement is built, checked and activated.
+  Local rollback history is discontinued; older versions remain available as
+  manual downloads/builds from GitHub releases.
+- Updating to 0.1.12 requires a **full local game rebuild** and temporary space for
+  the old and new builds. An older updater may place this first rebuilt game in
+  its version workspace; the following update can require one additional full
+  rebuild to put it in the new reusable payload location.
+- First-start cleanup can delay the launcher opening. An isolated upgrade rehearsal
+  with a long update history took about **75 seconds** for maintenance and checks.
+  Duration depends on update history, files and storage. Cleanup status is recorded
+  in `Monado_Linux/updates/retention-status.json`.
+- Restore native held-L2 camera controls and control-help prompts immediately
+  with XC3-style party switching enabled. Keep L2 + L1/R1 party shortcuts,
+  selected-controller checks, safe release handling and ordinary native taps.
+- Port the party-switch object-discovery worker to Linux. Use bounded reads of
+  the owned guest heap, preserve native party ordering/leader/HUD calls, and stop
+  the worker and clear synthetic controls during a guest reset. The maintainer
+  manually accepted the revised camera, control-help and party-switching behaviour.
+  Broader field/battle, Future Connected and hardware coverage remains incomplete.
+- Keep optional D-pad walking from competing with held-ZL camera controls.
+- Default a newly selected Linux DLSS mode to **DLAA / Native (100%)**. Keep
+  explicit saved quality choices, including Quality (67%), when reopening settings.
+  **Reported shaking at 67% remains unresolved.** Select Native (100%) as the
+  current workaround; the default change does not fix scaled DLSS rendering.
+- Frame generation remains experimental and off by default. This release adds no
+  new Bazzite compatibility fix or Windows backport; reported rendering artifacts
+  and broader distribution/gameplay coverage remain open.
+
 ## 0.1.11 — November 10, 2026
 
 - Make the optional dedicated **Quick Step gem slot** stable following the

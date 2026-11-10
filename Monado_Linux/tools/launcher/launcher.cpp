@@ -407,6 +407,9 @@ static void load() {
     FILE *f = fopen(path("xcde.ini").c_str(), "r");
     if (!f) return;
     int layout = 1;  // (bind_layout: an older file's keyboard lines are the old layout - the new defaults replace them)
+#ifdef __linux__
+    bool quality_present = false; // [XCDE] LINUX-056: explicit choices survive reload, regardless of key order.
+#endif
     char line[512];
     while (fgets(line, sizeof line, f)) {
         char *eq = strchr(line, '=');
@@ -423,7 +426,12 @@ static void load() {
         else if (!strcmp(k, "window") && (i = find(k_wins, 5, v)) >= 0) g.win = i;
         else if (!strcmp(k, "resolution") && (i = find(k_res_ini, 7, v)) >= 0) g.res = i;
         else if (!strcmp(k, "upscaler")) g.upscaler = !strcmp(v, "fsr") ? 1 : !strcmp(v, "fsr3") ? 2 : !strcmp(v, "dlss") ? 3 : 0;
-        else if (!strcmp(k, "upscale_quality") && (i = find(k_uq_ini, 5, v)) >= 0) g.uquality = i;
+        else if (!strcmp(k, "upscale_quality") && (i = find(k_uq_ini, 5, v)) >= 0) {
+            g.uquality = i;
+#ifdef __linux__
+            quality_present = true;
+#endif
+        }
         else if (!strcmp(k, "frame_gen")) g.frame_gen = atoi(v) != 0;
         else if (!strcmp(k, "antialias")) g.smaa = !strcmp(v, "smaa");
         else if (!strcmp(k, "depth_of_field")) g.dof = atoi(v) != 0;
@@ -483,6 +491,9 @@ static void load() {
 #endif
     }
     fclose(f);
+#ifdef __linux__
+    if (g.upscaler == 3 && !quality_present) g.uquality = 0;
+#endif
     if (layout < 2) for (int i = 0; i < NACT; i++) g.key[i] = k_def_key[i], g.key2[i] = k_def_key2[i];
 }
 
@@ -818,11 +829,14 @@ static void tab_graphics() {
     const int linux_values[] = {0, 1, 3};
     int selected = g.upscaler == 3 ? 2 : g.upscaler;
     if (launcher_theme::combo(T("Escalado / antialiasing"), &selected, TL(linux_ups, have_dlss ? 3 : 2).p, have_dlss ? 3 : 2)) {
+        // [XCDE] LINUX-056: entering DLSS starts at native 100% (DLAA).
+        // An existing DLSS quality remains editable and persists on reopening.
+        if (linux_values[selected] == 3 && g.upscaler != 3) g.uquality = 0;
         g.upscaler = linux_values[selected];
         linux_graphics_normalize();
     }
     if (g.upscaler == 3) {
-        const char *quality[] = {"DLAA (native resolution)", "Quality (67%)", "Balanced (59%)", "Performance (50%)", "Ultra Performance (33%)"};
+        const char *quality[] = {"DLAA / Native (100%)", "Quality (67%)", "Balanced (59%)", "Performance (50%)", "Ultra Performance (33%)"};
         launcher_theme::combo(T("Calidad del escalado"), &g.uquality, quality, 5);
         ImGui::PushTextWrapPos();
         ImGui::TextDisabled("Requires a compatible NVIDIA RTX GPU. Unavailable DLSS falls back to spatial scaling.");

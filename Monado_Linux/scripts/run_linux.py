@@ -23,6 +23,9 @@ _layout_spec.loader.exec_module(install_layout)
 _runtime_spec = importlib.util.spec_from_file_location('monado_runtime_check', Path(__file__).with_name('linux_runtime_check.py'))
 runtime_check = importlib.util.module_from_spec(_runtime_spec)
 _runtime_spec.loader.exec_module(runtime_check)
+_lease_spec = importlib.util.spec_from_file_location('monado_install_lease', Path(__file__).with_name('install_lease.py'))
+install_lease = importlib.util.module_from_spec(_lease_spec)
+_lease_spec.loader.exec_module(install_lease)
 BWRAP = Path('/usr/bin/bwrap')
 NGX_UPDATER = Path('/usr/bin/nvidia-ngx-updater')
 X11_SOCKETS = Path('/tmp/.X11-unix')
@@ -308,11 +311,14 @@ def main():
         if 'namespace' in launch:
             prepare_namespace_state(launch)
         os.chdir(ROOT)
+        # A read-only inherited installation lease pins this game even if its
+        # launcher/supervisor dies. No writable regular descriptor is admitted.
+        runtime_fd = install_lease.acquire_runtime(ROOT)
         # No inherited writable regular descriptors may bypass the runtime guard.
         # Stdio remains for terminals/pipes; the guard validates file redirections.
         for entry in os.listdir('/proc/self/fd'):
             fd = int(entry)
-            if fd > 2:
+            if fd > 2 and fd != runtime_fd:
                 try:
                     os.close(fd)
                 except OSError:
