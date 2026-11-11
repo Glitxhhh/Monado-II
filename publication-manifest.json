@@ -3593,8 +3593,8 @@
       "sha256": "91025cb245e54b1631641b47691e89b01d24ba1da0b70027a5070c9b3f7c7297"
     },
     "tests/test_linux_build_app.py": {
-      "bytes": 42001,
-      "sha256": "b89ad81246daa7c2c3da6ed83ad384b52655368a293d3f38d9db22fae6042752"
+      "bytes": 42053,
+      "sha256": "b64039c120e736a04dd6fa4981adb6d2c6b85d6c29c0ba313344480bd7240bd5"
     },
     "tests/test_linux_graphics_paths.py": {
       "bytes": 9026,

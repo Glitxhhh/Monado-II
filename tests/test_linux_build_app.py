@@ -269,11 +269,14 @@ class LinuxBuildApp(unittest.TestCase):
         self.assertEqual(self.commands, [])
 
     def test_missing_host_tool_is_a_friendly_error_without_system_install(self):
-        with mock.patch.object(build.sys, 'platform', 'linux'), mock.patch.object(build.platform, 'machine', return_value='x86_64'), mock.patch.object(build.sys, 'version_info', (3, 14, 4)), mock.patch.object(build.shutil, 'which', side_effect=lambda name: None if name == 'mksquashfs' else '/authored/' + name):
-            # Call the original through the mock's wrapped module is impossible;
-            # read the function from a fresh isolated module instead.
-            other_spec = importlib.util.spec_from_file_location('monado_build_original_preflight', ROOT / 'tools/build_linux_app.py')
-            other = importlib.util.module_from_spec(other_spec); other_spec.loader.exec_module(other)
+        # Load the original preflight before simulating Linux so conditional
+        # imports still observe the real host, including Windows without fcntl.
+        other_spec = importlib.util.spec_from_file_location('monado_build_original_preflight', ROOT / 'tools/build_linux_app.py')
+        other = importlib.util.module_from_spec(other_spec); other_spec.loader.exec_module(other)
+        with mock.patch.object(other.sys, 'platform', 'linux'), \
+                mock.patch.object(other.platform, 'machine', return_value='x86_64'), \
+                mock.patch.object(other.sys, 'version_info', (3, 14, 4)), \
+                mock.patch.object(other.shutil, 'which', side_effect=lambda name: None if name == 'mksquashfs' else '/authored/' + name):
             with self.assertRaisesRegex(other.BuildError, 'squashfs-tools'):
                 other.preflight()
 
