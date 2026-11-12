@@ -84,10 +84,12 @@ class PrerequisiteData(unittest.TestCase):
         which.assert_called_once_with('dpkg-deb', path='/usr/bin:/bin')
 
     def test_python_probe_verifies_venv_without_requiring_ensurepip(self):
+        # Use the host's absolute path spelling, including a drive on Windows CI.
+        selected = str(Path('/authored/python3.14').absolute())
         with mock.patch.object(doctor.sys, 'version_info', (3, 14, 4)), \
-                mock.patch.object(doctor.sys, 'executable', '/authored/python3.14'), \
+                mock.patch.object(doctor.sys, 'executable', selected), \
                 mock.patch.object(doctor, 'run_readonly', return_value=completed('3.14.4\n')) as operation:
-            self.assertEqual(doctor.find_python314(), '/authored/python3.14')
+            self.assertEqual(doctor.find_python314(), selected)
         self.assertIn('venv', operation.call_args.args[0][-1])
         self.assertNotIn('ensurepip', operation.call_args.args[0][-1])
 

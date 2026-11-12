@@ -3609,8 +3609,8 @@
       "sha256": "52f9a4514f26395ce0cb549c59df2c9895c63e35eca49837b70a0a218829452d"
     },
     "tests/test_linux_prerequisites.py": {
-      "bytes": 21983,
-      "sha256": "d617e27db9ecd39ce4689872e174dad20d44de9ad8cf3333d15424973c6d1e6b"
+      "bytes": 22101,
+      "sha256": "ca6352be0ad25e5883a97f9b0b4ce0c90c760e84ac6779988cbc89b370e8e755"
     },
     "tests/test_linux_prerequisites_shell.py": {
       "bytes": 11458,
