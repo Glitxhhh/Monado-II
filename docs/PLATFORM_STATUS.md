@@ -1,6 +1,13 @@
 # Platform status
 
-Linux 0.1.13 adds early dependency diagnosis and explicit guided package repair
+Linux 0.1.14 adds capability-gated driver-owned guest heap backing for Mesa RADV,
+with safe fallback to the existing import. **AMD gameplay performance, including
+the reported RX 6700 XT, still needs testing.** Controlled integrated-RADV memory
+tests passed; the maintainer accepted NVIDIA gameplay qualitatively. These are
+not AMD game-FPS results or measured NVIDIA performance parity. See
+[AMD / RADV notes](AMD_RADV.md). Save formats and Windows implementation are unchanged.
+
+Version 0.1.13 added early dependency diagnosis and explicit guided package repair
 inside supported Fedora 45 Distrobox environments. Native hosts receive manual
 instructions; ordinary builds and background updates never install packages.
 The baseline remains CPython 3.14, glibc 2.43+ and the required native interfaces.

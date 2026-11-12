@@ -6,19 +6,24 @@ not playable game binaries. Each player generates game code locally from their
 own legally dumped input. No game content, generated code, translated shaders,
 caches, seeds, keys, firmware, saves, mods or private SDK binaries are distributed.
 
-Version 0.1.13 is a regular release, with GitHub's prerelease option disabled.
+Version 0.1.14 is a regular release, with GitHub's prerelease option disabled.
 A regular release does not establish Windows game-build or full-game coverage.
 The exact reviewed generated launcher illustration is included with its
 [provenance](../Monado_Linux/tools/launcher/assets/ARTWORK_PROVENANCE.md) and root
 notice; other unreviewed imagery remains excluded.
 
-Version 0.1.13 adds early Linux prerequisite checks, distro-specific package
-instructions, explicit supported Fedora 45 Distrobox repair and actual nested
-build/loader diagnostics. Ordinary builds and background updates never install
-system packages or request sudo; native hosts receive manual instructions.
-The glibc/Python baseline is unchanged. Actual Steam Deck/Bazzite desktop gameplay
-and privileged interactive Distrobox installation remain unverified. No cheats
-are included. These build-recipe changes require a full local game rebuild.
+Version 0.1.14 adds capability-gated driver-owned guest heap backing for Mesa
+RADV, aimed at excessive user-pointer submission overhead, with checked fallback.
+NVIDIA retains its existing import and device-feature path. **AMD gameplay
+performance, including the reported RX 6700 XT, still needs testing.** Integrated
+RADV memory-transfer tests passed, including full heap capacity. The maintainer
+accepted NVIDIA gameplay qualitatively; no measured FPS parity or full-game claim
+is made. See [AMD / RADV notes](AMD_RADV.md). A full local game rebuild is required.
+
+The 0.1.13 prerequisite checks and explicit supported Fedora 45 Distrobox repair
+remain included. Ordinary builds and background updates never install system
+packages or request sudo. The glibc/Python baseline is unchanged; actual Steam
+Deck/Bazzite desktop gameplay and privileged Distrobox installation are unverified.
 
 The 0.1.12 current-only updater, held-L2/HUD/party controls and new-selection
 DLAA / Native (100%) default are Linux-only. Explicit saved DLSS qualities are
@@ -95,8 +100,8 @@ From a reviewed clean public checkout:
 MONADO_RELEASE_SOURCE="$(pwd -P)"
 MONADO_RELEASE_PARENT="$(dirname "$MONADO_RELEASE_SOURCE")"
 python -B tools/publication_guard.py "$MONADO_RELEASE_SOURCE"
-python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform linux --version 0.1.13 --output "$MONADO_RELEASE_PARENT/monado-ii-linux-release"
-python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform windows --version 0.1.13 --output "$MONADO_RELEASE_PARENT/monado-ii-windows-release"
+python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform linux --version 0.1.14 --output "$MONADO_RELEASE_PARENT/monado-ii-linux-release"
+python -B tools/package_source_release.py --source "$MONADO_RELEASE_SOURCE" --platform windows --version 0.1.14 --output "$MONADO_RELEASE_PARENT/monado-ii-windows-release"
 ```
 
 Outputs must be fresh. The packager verifies the exact publication manifest and
@@ -122,7 +127,7 @@ setup and compatibility alias must have equal bytes and digests. For example,
 from the parent of the two fresh local packaging output directories:
 
 ```sh
-MONADO_RELEASE_VERSION=0.1.13
+MONADO_RELEASE_VERSION=0.1.14
 (cd monado-ii-linux-release && sha256sum -c SHA256SUMS)
 (cd monado-ii-windows-release && sha256sum -c SHA256SUMS)
 cmp "monado-ii-linux-release/monado-ii-${MONADO_RELEASE_VERSION}-linux-setup.tar.gz" "monado-ii-linux-release/monado-ii-${MONADO_RELEASE_VERSION}-linux-source.tar.gz"

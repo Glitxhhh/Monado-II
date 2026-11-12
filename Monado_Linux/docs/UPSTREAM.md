@@ -616,3 +616,22 @@ in-game instability at 67%. Native (100%) remains the current workaround; the
 released change adjusts selection/configuration defaults, leaving rendering,
 history mathematics and shader inputs unchanged. Broader investigation remains
 open, with temporary development diagnostics excluded from the release.
+
+
+### LINUX-070 / 0.1.14 — RADV guest heap backing
+
+The Linux runtime negotiates driver-owned, fixed-address guest heap backing only
+for Mesa RADV. NVIDIA and other drivers retain the checked host-pointer import.
+The first nonzero SetHeapSize waits for device readiness before publishing any
+heap memory, then allocates full capacity once. Placed mapping is preferred;
+checked dma-buf export is the alternate path. CPU-cached coherent system memory,
+reservation restoration, stable growth and exclusive GPU-idle reset ownership
+are required. A failed safe probe retains the original import; failed reservation
+restoration stops rather than running with invalid memory.
+
+Design references: Peiikai's MIT LASRecomp PRs71/255 and the MIT Savage Wind
+runtime's RADV heap approach. Their AMD hardware results motivated this change;
+Monado's AMD performance remains unverified. Authored failure fixtures and actual
+production lifecycle/device-policy fixtures cover the integration. No GPL runtime
+implementation was copied. See the validation limits in docs/AMD_RADV.md at the
+repository root. No generator, shader mathematics or save formats are changed.

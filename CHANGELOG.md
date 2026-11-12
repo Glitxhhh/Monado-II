@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.14 — November 12, 2026
+
+- Add a capability-gated, driver-owned guest heap path for Mesa RADV, aimed at
+  excessive AMDGPU user-pointer submission overhead. Keep NVIDIA on its existing
+  import path and retain a checked RADV fallback. **AMD gameplay performance,
+  including the reported RX 6700 XT case, still needs testing.** No specific FPS
+  improvement is promised.
+- Add focused allocation/failure, device-policy and heap-lifecycle coverage, and
+  an explicit render-worker thread name for Linux diagnostics. Save formats and
+  input paths remain unchanged. See [RADV compatibility notes](docs/AMD_RADV.md).
+
+- Controlled memory-transfer tests passed on an integrated RADV GPU, including the
+  full 3.25 GiB heap. The maintainer manually accepted NVIDIA gameplay; this is
+  qualitative feedback, not measured FPS parity or full-game qualification.
+- Updating requires a full local game rebuild. The updater retains saves,
+  settings and hidden Quick Step metadata without changing native save formats.
+  Quick Step stays off by default; frame generation stays experimental and off.
+  Windows gameplay implementation and the glibc/Python baseline are unchanged.
+
 ## 0.1.13 — November 12, 2026
 
 - Diagnose Linux prerequisites before compilation, including the current
