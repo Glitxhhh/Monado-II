@@ -1,5 +1,15 @@
 # Platform status
 
+Linux 0.1.15 adds an optional Cheats tab with independent off-by-default battle
+damage and EXP/AP/SP/gold multipliers, plus ordinary no-fall damage. Multipliers
+span 0x–20x in 0.01x steps. The existing Xenoblade 3 party-switch control moves
+from Controls to Mods beneath Quick Step, with its key and behavior retained.
+The maintainer manually accepted the combined Linux build; authored native,
+sanitizer, instruction and launcher tests provide separate component evidence.
+Damage-over-time/status and comprehensive DE/FC coverage remain unqualified.
+Native save formats are unchanged, but rewards earned remain after disabling
+cheats. See [Cheats](CHEATS.md). A full local rebuild is required.
+
 Linux 0.1.14 adds capability-gated driver-owned guest heap backing for Mesa RADV,
 with safe fallback to the existing import. **AMD gameplay performance, including
 the reported RX 6700 XT, still needs testing.** Controlled integrated-RADV memory
@@ -13,7 +23,7 @@ instructions; ordinary builds and background updates never install packages.
 The baseline remains CPython 3.14, glibc 2.43+ and the required native interfaces.
 Fedora/Debian userspace checks, a fresh native build and a real 0.1.12 updater
 rehearsal passed. Actual Steam Deck/Bazzite desktop gameplay and an interactive
-privileged Distrobox transaction remain unverified. No gameplay cheats are added.
+privileged Distrobox transaction remain unverified.
 
 Monado II targets native Linux x86-64 and Windows x86-64 with SDL/Vulkan. It is
 not affiliated with Nintendo/Monolith Soft and includes no game files.

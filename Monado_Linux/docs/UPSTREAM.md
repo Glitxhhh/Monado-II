@@ -635,3 +635,26 @@ Monado's AMD performance remains unverified. Authored failure fixtures and actua
 production lifecycle/device-policy fixtures cover the integration. No GPL runtime
 implementation was copied. See the validation limits in docs/AMD_RADV.md at the
 repository root. No generator, shader mathematics or save formats are changed.
+
+
+### LINUX-072 / 0.1.15 — optional Linux cheats
+
+Authored adapters add independent runtime-configured battle damage dealt/received,
+EXP/AP/SP/gold gained and ordinary fall immunity. Every option defaults off;
+fixed integer percentages0..2000 represent0x..20x in0.01x steps. Exact disabled/1x
+routes retain original instructions/calls. Checked word guards bind both battle
+dispatch paths, eleven new-award calls, positive gold add and the native no-fall
+return path/context. Existing bonus-EXP transfers, gold spending/setters and
+healing dispatch stay native. Native reward eligibility, level-ups, skill bonuses,
+notifications and caps remain; no native save format changes.
+
+The launcher gains a Cheats tab with per-option toggles and bounded sliders;
+Xenoblade3 party switching moves to Mods beneath Quickstep, retaining its key and
+behavior. Settings save/load preserves slider values and enable states. The actual
+Linux build recipe includes both authored helpers. Configuration, arithmetic,
+ABI/scratch ownership, guarded generated-C emission and native ImGui fixtures
+exercise the change; selected-input instruction probes remain private, separate
+from authored distributable fixtures. No copied game function/asset data or
+external cheat implementation is included. The maintainer manually accepted
+the combined Linux build; DoT/status and comprehensive DE/FC coverage are not established.
+See repository-root docs/CHEATS.md. Arts-recharge and Windows parity are deferred.

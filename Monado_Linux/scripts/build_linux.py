@@ -30,11 +30,13 @@ ROOT = Path(__file__).resolve().parent.parent
 _runtime_spec = importlib.util.spec_from_file_location('monado_build_runtime_check', Path(__file__).with_name('linux_runtime_check.py'))
 runtime_check = importlib.util.module_from_spec(_runtime_spec)
 _runtime_spec.loader.exec_module(runtime_check)
+# [XCDE] LINUX-072: compile the opt-in reward and combat/fall adapters into the
+# actual native game recipe; a launcher preference alone is not an implementation.
 RUNTIME = '''loader dispatch kernel ipc fnprof platform/linux platform/linux_state_guard services/fs services/romfs_virtual
 services/am services/acc services/time services/hid_set services/kbicons services/misc services/audio services/hwopus
 hle/heaps hle/pl hle/vi hle/nvn_boot hle/fibers hle/fiber_context_linux hle/input hle/party hle/bindings hle/movie
 hle/framepace hle/title_exit hle/desktop_exit_caption hle/system_exit hle/expanded_saves hle/expanded_save_scan
-hle/quickstep_slot hle/quickstep_save hle/quickstep_native hle/quickstep_picker hle/quickstep_stats hle/quickstep_stats_ui hle/quickstep_ui_memory host/stubs host/settings_ini host/stubs_gfx host/gamelib_static host/main_boot
+hle/quickstep_slot hle/quickstep_save hle/quickstep_native hle/quickstep_picker hle/quickstep_stats hle/quickstep_stats_ui hle/quickstep_ui_memory hle/cheats_rewards hle/cheats_combat host/stubs host/settings_ini host/stubs_gfx host/gamelib_static host/main_boot
 diag/diag diag/sampler diag/watchdog diag/crashdump paths'''.split()
 NVN = '''astc cmdbuf formats maxwell/translate objects output_scale smaa_data tegra texpatch
 vulkan/device vulkan/exec vulkan/host_import vulkan/driver_heap vulkan/precompile vulkan/shaders vulkan/textures vulkan/temporal'''.split()

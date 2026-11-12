@@ -32,9 +32,10 @@ quality-of-life features, while preserving the original Windows implementation.
 | Shader preparation | Prepare shaders before playing with the launcher’s **Precompile shaders** button. |
 | Exit to desktop | Native title-screen and in-game System menu entries, with confirmation and Cancel/No selected by default. Exiting does not save progress. |
 | Built-in updates | Stable-release notifications, local rebuilds when required, progress, cancellation and automatic cleanup of superseded builds. |
+| Optional cheats | A separate Cheats tab with off-by-default damage/reward multipliers (0x–20x in 0.01x steps) and no fall damage. [Controls and limits](docs/CHEATS.md). |
 | Clearer Linux setup | Early dependency checks, distro-specific package instructions and optional guided Fedora 45 Distrobox repair. |
 
-The Linux-specific launcher, timing, menu, save and Quick Step improvements have
+The Linux-specific launcher, timing, menu, save, Quick Step and cheat improvements have
 not been backported. Windows retains its upstream launcher and vendor/shader
 integrations; backporting the Linux improvements is not currently planned.
 
@@ -70,8 +71,8 @@ source and setup tools. **You build locally from your own game dump.**
 
 | Platform | Current setup kit | Full instructions |
 |---|---|---|
-| Linux x86-64 | [Linux `.tar.gz`](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.14/monado-ii-0.1.14-linux-setup.tar.gz) | [Linux build guide](docs/BUILD_LINUX.md) |
-| Windows x86-64 | [Windows `.zip`](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.14/monado-ii-0.1.14-windows-setup.zip) | [Windows build guide](docs/BUILD_WINDOWS.md) |
+| Linux x86-64 | [Linux `.tar.gz`](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.15/monado-ii-0.1.15-linux-setup.tar.gz) | [Linux build guide](docs/BUILD_LINUX.md) |
+| Windows x86-64 | [Windows `.zip`](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.15/monado-ii-0.1.15-windows-setup.zip) | [Windows build guide](docs/BUILD_WINDOWS.md) |
 
 ### Linux quick start
 
@@ -147,7 +148,7 @@ launcher. It never presses Play.
   rebuild the game locally.
 - Saves, settings and shared game input stay in the original installation.
   Failed or cancelled preparation keeps the previous version selected.
-- **Updating to 0.1.14 requires a full local game rebuild** for the updated build
+- **Updating to 0.1.15 requires a full local game rebuild** for the updated build
   runtime and build recipes. The updater handles this without converting, replacing or
   deleting your saves. Missing prerequisites leave the working version selected
   and show instructions for retrying.
@@ -166,7 +167,7 @@ installation and does not import an older profile. Follow
 New downloads use the **`-setup` kit**. A legacy Linux **`-source`** archive remains
 in releases solely for installed-updater compatibility. Both contain source, not
 precompiled playable games. No compiled game binary, private vendor SDK binary,
-game-derived cache or user data is distributed. **0.1.14 is a regular stable
+game-derived cache or user data is distributed. **0.1.15 is a regular stable
 release**; the optional Quick Step feature is stable, while frame generation
 remains experimental. Windows has no updater in this release.
 
@@ -202,6 +203,7 @@ incomplete.
 |---|---|
 | [Linux build instructions](docs/BUILD_LINUX.md) | Requirements, game-input layout, building, updates and storage. |
 | [Windows build instructions](docs/BUILD_WINDOWS.md) | Building the preserved Windows implementation. |
+| [Cheats guide](docs/CHEATS.md) | Optional multipliers, no fall damage, controls and save behavior. |
 | [Quick Step guide](docs/QUICKSTEP.md) | Enabling the optional slot, equipping gems and keeping save metadata. |
 | [Quiver setup](docs/QUIVER.md) | Launcher entrypoint and integration limitations. |
 | [Release verification](docs/RELEASING.md) | Setup-kit contents, checksums and publication boundaries. |

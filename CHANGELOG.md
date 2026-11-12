@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.1.15 — November 12, 2026
+
+- Add a separate Cheats launcher tab with independent, off-by-default controls
+  for party damage dealt/received, EXP/AP/SP/gold gained and no fall damage.
+  Multiplier sliders cover 0x–20x in 0.01x (1%) increments. Settings apply when
+  starting the game; disabled and exact 1x paths retain native behavior.
+- Scale new awards rather than editing balances. Preserve native eligibility,
+  caps, spending, healing and Expert Mode transfers of EXP already earned. Native
+  save formats stay unchanged; rewards already earned remain after disabling.
+- Move the existing Xenoblade 3 party-switching control from Controls to Mods,
+  immediately beneath Quick Step, keeping its setting and behavior.
+- The maintainer manually accepted the combined Linux build. Focused native,
+  sanitizer, instruction and launcher tests passed; comprehensive DE/FC and
+  damage-over-time/status-effect coverage remain unqualified. See
+  [Cheats](docs/CHEATS.md) for controls and scope. No Arts-recharge cheat or Windows
+  feature backport is included.
+- Updating requires a full local game rebuild. Saves, settings and hidden Quick
+  Step metadata remain in place without native save conversion. The AMD/RADV
+  correction from 0.1.14 remains included; AMD gameplay performance still needs
+  testing.
+
 ## 0.1.14 — November 12, 2026
 
 - Add a capability-gated, driver-owned guest heap path for Mesa RADV, aimed at
