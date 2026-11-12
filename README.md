@@ -32,6 +32,7 @@ quality-of-life features, while preserving the original Windows implementation.
 | Shader preparation | Prepare shaders before playing with the launcher’s **Precompile shaders** button. |
 | Exit to desktop | Native title-screen and in-game System menu entries, with confirmation and Cancel/No selected by default. Exiting does not save progress. |
 | Built-in updates | Stable-release notifications, local rebuilds when required, progress, cancellation and automatic cleanup of superseded builds. |
+| Clearer Linux setup | Early dependency checks, distro-specific package instructions and optional guided Fedora 45 Distrobox repair. |
 
 The Linux-specific launcher, timing, menu, save and Quick Step improvements have
 not been backported. Windows retains its upstream launcher and vendor/shader
@@ -69,8 +70,8 @@ source and setup tools. **You build locally from your own game dump.**
 
 | Platform | Current setup kit | Full instructions |
 |---|---|---|
-| Linux x86-64 | [Linux `.tar.gz`](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.11/monado-ii-0.1.11-linux-setup.tar.gz) | [Linux build guide](docs/BUILD_LINUX.md) |
-| Windows x86-64 | [Windows `.zip`](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.11/monado-ii-0.1.11-windows-setup.zip) | [Windows build guide](docs/BUILD_WINDOWS.md) |
+| Linux x86-64 | [Linux `.tar.gz`](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.13/monado-ii-0.1.13-linux-setup.tar.gz) | [Linux build guide](docs/BUILD_LINUX.md) |
+| Windows x86-64 | [Windows `.zip`](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.13/monado-ii-0.1.13-windows-setup.zip) | [Windows build guide](docs/BUILD_WINDOWS.md) |
 
 ### Linux quick start
 
@@ -93,6 +94,12 @@ payload. The image is a workspace launcher, not a standalone game download.
 For Quiver and other Linux app launchers, select **`App_Monado_II.sh`**. It shows
 first-build progress in an installed terminal, then opens the launcher. See
 [Quiver setup and limitations](docs/QUIVER.md).
+
+Version 0.1.13 checks prerequisites before compilation and reports the matching
+distribution packages when something is missing. In a supported Fedora 45
+Distrobox, `./Build_Monado_II.sh --install-deps` requests guided package repair.
+Native hosts receive manual instructions; ordinary builds and background updates
+never install system packages. See [prerequisite checks](docs/BUILD_LINUX.md#prerequisite-checks-and-guided-repair).
 
 Normal Linux builds include **DLSS Super Resolution / DLAA** and frame-generation
 capability. The build fetches the pinned official NVIDIA SDK locally; its binaries
@@ -140,9 +147,10 @@ launcher. It never presses Play.
   rebuild the game locally.
 - Saves, settings and shared game input stay in the original installation.
   Failed or cancelled preparation keeps the previous version selected.
-- **Updating to 0.1.11 requires a full local game rebuild** for the Quick Step and
-  queued-rendering fixes, including the reported Bionis Interior crash correction.
-  The updater handles this without converting, replacing or deleting your saves.
+- **Updating to 0.1.13 requires a full local game rebuild** for the updated build
+  recipes and checks. The updater handles this without converting, replacing or
+  deleting your saves. Missing prerequisites leave the working version selected
+  and show instructions for retrying.
 - Keep the **complete save folder, including hidden files**, when backing up or
   moving saves. Quick Step metadata accompanies the unchanged native `.sav` files.
 - From **0.1.6**, the original folder’s `update-version.json` reflects the active
@@ -158,7 +166,7 @@ installation and does not import an older profile. Follow
 New downloads use the **`-setup` kit**. A legacy Linux **`-source`** archive remains
 in releases solely for installed-updater compatibility. Both contain source, not
 precompiled playable games. No compiled game binary, private vendor SDK binary,
-game-derived cache or user data is distributed. **0.1.11 is a regular stable
+game-derived cache or user data is distributed. **0.1.13 is a regular stable
 release**; the optional Quick Step feature is stable, while frame generation
 remains experimental. Windows has no updater in this release.
 

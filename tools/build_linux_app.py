@@ -34,6 +34,7 @@ IMAGE = 'Monado-II-x86_64.AppImage'
 # managed install; keep this bounded without rejecting supported long paths.
 MAX_BUILD_RECEIPT = 8 * 1024 * 1024
 REQUIRED_TOOLS = ('bash', 'pkg-config', 'dpkg-deb', 'readelf', 'mksquashfs', 'unsquashfs')
+BUILD_PATH = '/usr/bin:/bin'
 DLSS_REQUIRED_TOOLS = ('nm',)
 BWRAP = Path('/usr/bin/bwrap')
 _run_spec = importlib.util.spec_from_file_location('monado_builder_run_linux', ROOT / 'Monado_Linux/scripts/run_linux.py')
@@ -274,15 +275,15 @@ def layout(root, jobs, *, require_input=True, identity=None, dlss=True, reuse_ga
     return paths, [(name, list(map(str, command))) for name, command in commands]
 
 
-def preflight(*, dlss=True, game_only=False):
+def _preflight(*, dlss=True, game_only=False):
     if sys.platform != 'linux' or platform.machine() != 'x86_64' or sys.version_info[:2] != (3, 14):
         raise BuildError('Build_Monado_II.sh requires Linux x86-64 and Python 3.14')
     required = tuple(name for name in REQUIRED_TOOLS if not game_only or name not in ('mksquashfs', 'unsquashfs'))
     required += DLSS_REQUIRED_TOOLS if dlss else ()
-    missing = [name for name in required if shutil.which(name) is None]
+    missing = [name for name in required if shutil.which(name, path=BUILD_PATH) is None]
     if missing:
         raise BuildError('Missing host build tools: ' + ', '.join(missing) + '. Install these with your distribution; '\
-                         'mksquashfs/unsquashfs are supplied by squashfs-tools. This script never uses sudo.')
+                         'mksquashfs/unsquashfs are supplied by squashfs-tools. Background build stages never install packages.')
     if dlss and (not BWRAP.is_file() or not os.access(BWRAP, os.X_OK)):
         raise BuildError('DLSS/DLAA builds require /usr/bin/bwrap from bubblewrap for the existing private '
                          'runtime namespace. Install bubblewrap, or explicitly use --without-dlss. '
@@ -293,6 +294,29 @@ def preflight(*, dlss=True, game_only=False):
         except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
             raise BuildError('DLSS/DLAA requires a compatible native GNU C++ runtime: ' + str(error) +
                              '. Install your distribution runtime, or explicitly use --without-dlss.') from error
+
+
+def prerequisite_diagnostic(*, dlss=True, game_only=False):
+    """[XCDE] LINUX-066: managed builds may inspect prerequisites, never install."""
+    try:
+        path = ROOT / 'tools/linux_prerequisites.py'
+        specification = importlib.util.spec_from_file_location('_monado_prerequisite_report', path)
+        module = importlib.util.module_from_spec(specification)
+        specification.loader.exec_module(module)
+        report = module.inspect_environment(ROOT, without_dlss=not dlss, game_only=game_only)
+        return module.format_report(report)
+    except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, ImportError, AttributeError, TypeError):
+        # The original failure stays authoritative if the optional explanation
+        # cannot be produced. No missing diagnostic may weaken a build check.
+        return ''
+
+
+def preflight(*, dlss=True, game_only=False):
+    try:
+        _preflight(dlss=dlss, game_only=game_only)
+    except BuildError as error:
+        detail = prerequisite_diagnostic(dlss=dlss, game_only=game_only)
+        raise BuildError(str(error) + ('\n' + detail if detail else '')) from error
 
 
 def prepare_input_layout(root):
@@ -459,7 +483,7 @@ def stop_owned(child, *, grace=5, timeout=30):
 def execute(command, cwd, log, *, cancel_grace=5, cleanup_timeout=30):
     if not 0 < cancel_grace <= cleanup_timeout <= 30:
         raise BuildError('build cleanup requires 0 < grace <= timeout <= 30 seconds')
-    environment = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
+    environment = {'PATH': BUILD_PATH, 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
                    'PYTHONDONTWRITEBYTECODE': '1'}
     with owned_children(), log.open('x') as output, selectors.DefaultSelector() as selector:
         pending = []

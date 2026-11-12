@@ -167,7 +167,7 @@ class LinuxBuildApp(unittest.TestCase):
         with mock.patch.object(other.sys, 'platform', 'linux'), \
                 mock.patch.object(other.platform, 'machine', return_value='x86_64'), \
                 mock.patch.object(other.sys, 'version_info', (3, 14, 4)), \
-                mock.patch.object(other.shutil, 'which', side_effect=lambda name: None if name in ('mksquashfs', 'unsquashfs') else '/authored/' + name):
+                mock.patch.object(other.shutil, 'which', side_effect=lambda name, **kwargs: None if name in ('mksquashfs', 'unsquashfs') else '/authored/' + name):
             other.preflight(dlss=False, game_only=True)
             with self.assertRaisesRegex(other.BuildError, 'squashfs-tools'):
                 other.preflight(dlss=False)
@@ -276,7 +276,7 @@ class LinuxBuildApp(unittest.TestCase):
         with mock.patch.object(other.sys, 'platform', 'linux'), \
                 mock.patch.object(other.platform, 'machine', return_value='x86_64'), \
                 mock.patch.object(other.sys, 'version_info', (3, 14, 4)), \
-                mock.patch.object(other.shutil, 'which', side_effect=lambda name: None if name == 'mksquashfs' else '/authored/' + name):
+                mock.patch.object(other.shutil, 'which', side_effect=lambda name, **kwargs: None if name == 'mksquashfs' else '/authored/' + name):
             with self.assertRaisesRegex(other.BuildError, 'squashfs-tools'):
                 other.preflight()
 
@@ -286,7 +286,7 @@ class LinuxBuildApp(unittest.TestCase):
         with mock.patch.object(other.sys, 'platform', 'linux'), \
                 mock.patch.object(other.platform, 'machine', return_value='x86_64'), \
                 mock.patch.object(other.sys, 'version_info', (3, 14, 4)), \
-                mock.patch.object(other.shutil, 'which', side_effect=lambda name: '/authored/' + name), \
+                mock.patch.object(other.shutil, 'which', side_effect=lambda name, **kwargs: '/authored/' + name), \
                 mock.patch.object(other, 'BWRAP', self.base / 'missing-bwrap'), \
                 mock.patch.object(other.runtime_check, 'discover_gnu_cxx', side_effect=ValueError('authored missing GNU runtime')):
             with self.assertRaisesRegex(other.BuildError, 'bubblewrap.*without-dlss'):
@@ -301,7 +301,7 @@ class LinuxBuildApp(unittest.TestCase):
         with mock.patch.object(other.sys, 'platform', 'linux'), \
                 mock.patch.object(other.platform, 'machine', return_value='x86_64'), \
                 mock.patch.object(other.sys, 'version_info', (3, 14, 4)), \
-                mock.patch.object(other.shutil, 'which', side_effect=lambda name: '/authored/' + name), \
+                mock.patch.object(other.shutil, 'which', side_effect=lambda name, **kwargs: '/authored/' + name), \
                 mock.patch.object(other.os, 'access', return_value=True), \
                 mock.patch.object(other, 'BWRAP', helper), \
                 mock.patch.object(other.runtime_check, 'discover_gnu_cxx', side_effect=ValueError('authored missing GNU runtime')):
@@ -314,7 +314,7 @@ class LinuxBuildApp(unittest.TestCase):
         with mock.patch.object(other.sys, 'platform', 'linux'), \
                 mock.patch.object(other.platform, 'machine', return_value='x86_64'), \
                 mock.patch.object(other.sys, 'version_info', (3, 14, 4)), \
-                mock.patch.object(other.shutil, 'which', side_effect=lambda name: None if name == 'nm' else '/authored/' + name):
+                mock.patch.object(other.shutil, 'which', side_effect=lambda name, **kwargs: None if name == 'nm' else '/authored/' + name):
             with self.assertRaisesRegex(other.BuildError, 'Missing host build tools: nm'):
                 other.preflight()
             other.preflight(dlss=False)
@@ -328,7 +328,7 @@ class LinuxBuildApp(unittest.TestCase):
         with mock.patch.object(other.sys, 'platform', 'linux'), \
                 mock.patch.object(other.platform, 'machine', return_value='x86_64'), \
                 mock.patch.object(other.sys, 'version_info', (3, 14, 4)), \
-                mock.patch.object(other.shutil, 'which', side_effect=lambda name: '/authored/' + name), \
+                mock.patch.object(other.shutil, 'which', side_effect=lambda name, **kwargs: '/authored/' + name), \
                 mock.patch.object(other.os, 'access', side_effect=lambda path, mode: path == helper and mode == os.X_OK), \
                 mock.patch.object(other, 'BWRAP', helper), \
                 mock.patch.object(other.runtime_check, 'discover_gnu_cxx', side_effect=ValueError('authored unreadable GNU runtime')):

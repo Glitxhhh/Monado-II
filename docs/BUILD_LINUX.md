@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-Download and extract **`monado-ii-0.1.12-linux-setup.tar.gz`** from
+Download and extract **`monado-ii-0.1.13-linux-setup.tar.gz`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases). Open a terminal in
 the extracted folder. The current pinned baseline is **Linux x86-64 (x86-64-v2),
 CPython 3.14, glibc 2.43 or newer**, and a native GNU C++ runtime exporting
@@ -19,8 +19,59 @@ normal system package. No downgrade, major-version symlink or individual-library
 version override is needed or supported.
 Host glibc, GNU runtimes, driver clients and native audio/session interfaces are
 checked rather than replaced. The builder never runs sudo or changes system
-packages or drivers. This remains an explicitly tested baseline rather than a
-universal Linux binary compatibility promise.
+packages during ordinary/noninteractive builds. Explicit dependency repair can
+request a reviewed package transaction inside a supported Distrobox, as described
+below. Drivers and the operating-system baseline are not installed by the build.
+This remains an explicitly tested baseline rather than a universal Linux binary
+compatibility promise.
+
+### Prerequisite checks and guided repair
+
+Run the same `./Build_Monado_II.sh` command. Before compilation, it reports the
+Monado version, current distribution/container, libc baseline, missing tools and
+required native libraries. Missing prerequisites include the corresponding
+distribution package names and installation instructions. Python 3.14 is still
+the build baseline; an available Python 3.9+ can run the dependency diagnosis.
+`--help` works without Python and `--plan` never installs or downloads anything.
+
+Inside a supported **Fedora 45 Distrobox**, request package installation with:
+
+```sh
+./Build_Monado_II.sh --install-deps
+```
+
+The script displays the container and exact package command. Review the package
+manager's transaction and confirmation; sudo may ask for your container password.
+Only that package command uses sudo. Generation, compilation and AppImage creation
+continue as your ordinary user. Do not run the whole build script with sudo.
+If no suitable Python is available, this mode first installs Fedora's Python 3.14
+to run the fuller checks. An existing complete environment needs no transaction.
+Supported private dependency downloads remain automatic and hash-checked.
+
+Native installations receive manual package instructions. On native Bazzite,
+`dpkg-deb` is supplied by Fedora's `dpkg` package through the supported layering
+route:
+
+```sh
+rpm-ostree install dpkg
+```
+
+Reboot to apply that deployment, then rerun the build. The script does not layer
+host packages, unlock SteamOS, reboot, install drivers or replace libc. A container
+below glibc 2.43 is rejected with compatible-image guidance; installing more
+ordinary packages does not make an old libc satisfy that baseline. Unknown images
+get diagnostic information rather than guessed automatic installations.
+
+Build and launch from the same compatible container. A file visible in the shared
+home directory still needs the container's libraries when it runs. Actual Steam
+Deck GPU, audio, controller and game coverage requires separate manual testing.
+
+Background updater builds never install packages or ask for sudo. If a new
+prerequisite is missing, the working selection stays active and the error explains
+what to install before retrying. Original game input, saves, settings and optional
+Quick Step metadata remain in their existing locations; no save conversion is
+introduced by these setup changes. Build failures include bounded command/loader
+diagnostics and the path to the complete log.
 
 ### Native prerequisites on Arch / CachyOS
 
@@ -294,8 +345,9 @@ experimental. Edited release-owned source files also stop automatic installation
 so local changes can be merged manually. Normal settings changes do not modify
 the release-owned source.
 
-**Updating to 0.1.12 requires a full local game rebuild.** The normal updater
-performs this rebuild before activation. It preserves the original
+**Updating to 0.1.13 requires a full local game rebuild** for the changed build
+recipes and checks. The normal updater performs this rebuild before activation.
+It preserves the original
 `Monado_Linux/play/launcher` save/settings profile and shared input in place;
 it does not convert, replace or delete saves. Preserve optional Quick Step metadata
 with the complete save folder, including hidden files. Keep the original installation

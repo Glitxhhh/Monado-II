@@ -1,5 +1,13 @@
 # Platform status
 
+Linux 0.1.13 adds early dependency diagnosis and explicit guided package repair
+inside supported Fedora 45 Distrobox environments. Native hosts receive manual
+instructions; ordinary builds and background updates never install packages.
+The baseline remains CPython 3.14, glibc 2.43+ and the required native interfaces.
+Fedora/Debian userspace checks, a fresh native build and a real 0.1.12 updater
+rehearsal passed. Actual Steam Deck/Bazzite desktop gameplay and an interactive
+privileged Distrobox transaction remain unverified. No gameplay cheats are added.
+
 Monado II targets native Linux x86-64 and Windows x86-64 with SDL/Vulkan. It is
 not affiliated with Nintendo/Monolith Soft and includes no game files.
 

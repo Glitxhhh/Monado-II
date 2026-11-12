@@ -19,6 +19,7 @@ import re
 import shlex
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import tempfile
@@ -46,6 +47,37 @@ PACKAGES = ['sdl3', 'vulkan', 'shaderc', 'libavcodec', 'libavformat', 'libavutil
 def digest(path):
     with path.open('rb') as stream:
         return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def command_failure(record, limit=6000):
+    """[XCDE] LINUX-066: bounded actual diagnostics, without following log links."""
+    parts = [f"{record['name']} failed (exit {record.get('exit', 'unknown')})."]
+    if record.get('spawn_error'):
+        parts.append(str(record['spawn_error']))
+    for field in ('stderr', 'stdout'):
+        value = record.get(field)
+        if not value:
+            continue
+        path = Path(value)
+        try:
+            descriptor = os.open(path, os.O_RDONLY | getattr(os, 'O_NONBLOCK', 0) | getattr(os, 'O_NOFOLLOW', 0))
+            with os.fdopen(descriptor, 'rb') as stream:
+                info = os.fstat(stream.fileno())
+                if not stat.S_ISREG(info.st_mode):
+                    continue
+                stream.seek(max(0, info.st_size - limit))
+                raw = stream.read(limit)
+            text = raw.decode('utf-8', errors='replace').strip()
+            if text:
+                text = ''.join(character if character in '\n\t' or ord(character) >= 32 and ord(character) != 127 else '?' for character in text)
+                parts.append('Diagnostic log: ' + str(path))
+                if info.st_size > limit:
+                    parts.append('(last ' + str(limit) + ' bytes; full output remains in the log)')
+                parts.append(text)
+                break
+        except (OSError, ValueError):
+            continue
+    return '\n'.join(parts)
 
 
 def check_correctness_macros(macros):
@@ -163,6 +195,7 @@ class Builder:
                 with self.lock:
                     self.failed.set()
                     self.save()
+                print(command_failure(record), flush=True)
                 return record, ''
             record['pid'] = proc.pid
             try:
@@ -181,6 +214,8 @@ class Builder:
                 self.failed.set()
             self.save()
         print(f'{name}: {"PASS" if proc.returncode == 0 else "FAIL"} ({record["seconds"]:.2f}s)', flush=True)
+        if proc.returncode:
+            print(command_failure(record), flush=True)
         return record, out.read_text(errors='replace')
 
     def setup(self):

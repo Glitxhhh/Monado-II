@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.13 — November 12, 2026
+
+- Diagnose Linux prerequisites before compilation, including the current
+  distribution/container, Python 3.14, libc, tools and required native libraries.
+  Missing dependencies include distribution-specific package instructions.
+- Add explicit `./Build_Monado_II.sh --install-deps` repair for supported Fedora 45
+  Distrobox environments. Only the reviewed package-manager command may request
+  sudo; generation and compilation remain under the ordinary user. Native hosts
+  retain manual system-package setup, and background updates never install or
+  prompt. Unsupported libc baselines stop with compatible-environment guidance.
+- Preserve clean build-tool discovery and show bounded actual compiler/loader
+  diagnostics in build errors. Existing input, saves, settings and optional
+  Quick Step metadata retain their formats and locations. No renderer or gameplay
+  behavior is changed.
+- Updating requires a full local game rebuild because the build recipes changed.
+  The updater keeps the working version selected until the replacement passes
+  its checks. Missing prerequisites do not trigger package installation during
+  background updates; install the reported requirements before retrying.
+- The baseline remains Linux x86-64-v2, CPython 3.14, glibc 2.43+ and the required
+  native GNU/audio/graphics interfaces. Fedora 45 and Debian userspace checks,
+  a fresh native build and a real 0.1.12 updater rehearsal passed; actual Steam
+  Deck/Bazzite desktop gameplay and interactive Distrobox installation remain
+  unverified. Windows implementation is unchanged. No cheats are included.
+
 ## 0.1.12 — November 10, 2026
 
 - Keep only the active Linux launcher and its required game payload after a
