@@ -83,6 +83,9 @@ class NativeFileGuard(unittest.TestCase):
                 with self.subTest(path=path),self.assertRaises(ValueError):directory.read_regular(path)
         for path in ('C:relative','\\relative',r'\\?\C:\anything',r'\\.\NUL'):
             with self.subTest(path=path),self.assertRaises(ValueError):guard.canonical_path(path)
+        # Lexical canonicalization does not contact or create an SMB share.
+        self.assertEqual(guard.canonical_path(r'\\authored-server\share'),r'\\authored-server\share'+'\\')
+        self.assertEqual(guard.canonical_path(r'\\authored-server\share'+'\\'),r'\\authored-server\share'+'\\')
     def test_installation_lease_excludes_second_process(self):
         code="import sys;sys.path.insert(0,sys.argv[1]);import windows_file_guard as g;\ntry:\n with g.installation_lease(sys.argv[2],timeout_ms=0): pass\nexcept TimeoutError: sys.exit(23)"
         command=[sys.executable,"-X","utf8","-B","-c",code,str(ROOT/'tools'),str(self.profile)]

@@ -95,6 +95,10 @@ def canonical_path(path):
         raise ValueError("Expected an ordinary absolute Unicode Windows path")
     value = value.replace("/", "\\")
     drive, tail = ntpath.splitdrive(value)
+    # A UNC share root is absolute with or without its final separator.
+    # GetFullPathNameW is lexical and does not contact the share.
+    if drive.startswith("\\\\") and tail == "":
+        value, tail = drive + "\\", "\\"
     if not drive or not tail.startswith("\\"):
         raise ValueError("Absolute drive or UNC path required")
     if drive.startswith("\\\\"):

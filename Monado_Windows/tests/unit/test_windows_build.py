@@ -19,7 +19,7 @@ class NativeBuildBoundary(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="authored-build-", dir=PORT / "build")
         self.base = Path(self.temp.name)
         args = argparse.Namespace(output=self.base / "output ü $() ` space", prefix=None,
-                                  stage="runtime", jobs=1, keep_going=False)
+                                  stage="runtime", jobs=1, keep_going=False, split_game=False)
         self.builder = build.Builder(args)
 
     def tearDown(self):
@@ -52,6 +52,22 @@ class NativeBuildBoundary(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "existing build preserved"):
             build.Builder(self.builder.args)
         self.assertEqual(marker.read_text(encoding="utf-8"), "preserve")
+
+    def test_cleanup_authority_is_exact_recipe_and_excludes_human_state(self):
+        self.builder.preflight()
+        extras = ("human-note.txt", "xcde.ini", "saves/human.save", "build/foreign.dll")
+        for name in extras:
+            target = self.builder.output / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"human data: retain and refuse cleanup")
+        self.builder.receipt["outputs"] = self.builder.output_inventory()
+        identities = self.builder.retention_inventory()
+        self.assertIn("dependency-probe.exe", identities)
+        self.assertIn("preflight.c", identities)
+        self.assertNotIn("build-receipt.json", identities)
+        for name in extras:
+            self.assertNotIn(name, identities)
+            self.assertEqual((self.builder.output / name).read_bytes(), b"human data: retain and refuse cleanup")
 
     def test_linked_manifest_enables_utf8_ansi_file_arguments(self):
         source = self.base / "utf8-manifest.c"

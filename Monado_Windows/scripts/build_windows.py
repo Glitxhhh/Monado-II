@@ -288,7 +288,7 @@ class Builder:
         print(f"Native dependency preflight passed; {len(closure)} runtime DLLs checked", flush=True)
 
     def compile(self, sources, tag=""):
-        header_paths = sorted((ROOT / "runtime").rglob("*.h"))
+        header_paths = sorted(p for p in (ROOT / "runtime").rglob("*") if p.suffix in (".h", ".inc"))
         headers = {str(p): digest(p) for p in header_paths}
         def one(source):
             relative = source.relative_to(ROOT).as_posix() if source.is_relative_to(ROOT) else str(source)
@@ -326,8 +326,9 @@ class Builder:
                         break
         if errors:
             raise RuntimeError("\n".join(map(str, errors)))
-        if {str(p): digest(p) for p in sorted((ROOT / "runtime").rglob("*.h"))} != headers:
+        if {str(p): digest(p) for p in sorted(p for p in (ROOT / "runtime").rglob("*") if p.suffix in (".h", ".inc"))} != headers:
             raise RuntimeError("Runtime headers changed during compilation; retry in a fresh build output")
+        self.receipt["sources"].update({Path(p).relative_to(ROOT).as_posix(): sha for p, sha in headers.items()})
         return sorted(results)
 
     def link(self, name, objects, launcher=False, extra=None):
@@ -353,16 +354,7 @@ class Builder:
             shutil.copy2(dll, dest)
         return exe
 
-    def split_link(self, host_objects, game_objects):
-        spec = importlib.util.spec_from_file_location("monado_coff", ROOT / "tools/coff_symbols.py")
-        coff = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(coff)
-        dll_helpers = [o for o in host_objects if o.name.endswith("_windows_fma.o")]
-        if len(dll_helpers) != 1:
-            raise RuntimeError("Both native images require one explicit baseline Windows fma/fmaf helper")
-        imports = coff.host_imports(game_objects + dll_helpers, host_objects)
-        if not imports or any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", n) for n in imports):
-            raise RuntimeError("Unrepresentable/empty native authored host export list")
+    def game_identity(self, imports=None):
         entry = ROOT / "runtime/host/gamelib_entry_windows.c"
         if not ordinary(entry):
             raise RuntimeError("Missing authored Windows GameLib entry")
@@ -374,8 +366,43 @@ class Builder:
                     "compiler": {"version": self.receipt["zig"], "sha256": digest(compiler)},
                     "flags": FLAGS, "input": self.receipt["input"]["exefs"],
                     "generator_closure": generator_closure(), "entry_sha256": digest(entry),
-                    "native_game_helpers": {"runtime/platform/windows_fma.c": digest(ROOT / "runtime/platform/windows_fma.c")},
-                    "host_imports": imports}
+                    "native_game_helpers": {"runtime/platform/windows_fma.c": digest(ROOT / "runtime/platform/windows_fma.c")}}
+        if imports is not None:
+            identity["host_imports"] = imports
+        return identity
+
+
+    def split_link(self, host_objects, game_objects):
+        spec = importlib.util.spec_from_file_location("monado_coff", ROOT / "tools/coff_symbols.py")
+        coff = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(coff)
+        dll_helpers = [o for o in host_objects if o.name.endswith("_windows_fma.o")]
+        if len(dll_helpers) != 1:
+            raise RuntimeError("Both native images require one explicit baseline Windows fma/fmaf helper")
+        candidate, reuse = None, None
+        if self.args.reuse_game_library:
+            reuse = importlib.util.spec_from_file_location("monado_game_reuse", ROOT / "tools/game_library_reuse_windows.py")
+            helper = importlib.util.module_from_spec(reuse)
+            sys.modules[reuse.name] = helper
+            reuse.loader.exec_module(helper)
+            host_definitions = {}
+            for object_path in host_objects:
+                host_definitions.update(coff.symbols(object_path)[0])
+            candidate = helper.inspect(self.args.reuse_game_library, self.game_identity(), host_definitions)
+            imports, identity = candidate.imports, candidate.identity
+            self.receipt["reused_game_library"] = {"previous": str(candidate.previous), "receipt_sha256": candidate.receipt_sha256,
+                                                   "id": candidate.identifier, "dll_sha256": hashlib.sha256(candidate.files["lasgame.dll"]).hexdigest()}
+            self.receipt["generator_closure"] = identity["generator_closure"]
+            for file in (ROOT / "tools/game_library_reuse_windows.py", ROOT / "tools/pe_symbols_windows.py", ROOT.parent / "tools/windows_file_guard.py"):
+                self.receipt["sources"][os.path.relpath(file, ROOT).replace("\\", "/")] = digest(file)
+        else:
+            imports = coff.host_imports(game_objects + dll_helpers, host_objects)
+            identity = self.game_identity(imports)
+        if not imports or any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", n) for n in imports):
+            raise RuntimeError("Unrepresentable/empty native authored host export list")
+        entry = ROOT / "runtime/host/gamelib_entry_windows.c"
+        self.receipt["sources"].update(identity["generator_closure"])
+        self.receipt["sources"]["runtime/host/gamelib_entry_windows.c"] = identity["entry_sha256"]
         self.gamelib_id = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
         definition = self.output / "host-game-imports.def"
         definition.write_text("LIBRARY xcde.exe\nEXPORTS\n" + "".join("  " + n + (" DATA" if k == "data" else "") + "\n" for n, k in imports.items()), encoding="ascii", newline="\n")
@@ -386,22 +413,26 @@ class Builder:
         host_objects = [o for o in host_objects if o != original_loader] + [final_loader]
         implib = self.output / "xcde-host.dll.a"
         host = self.link("xcde.exe", host_objects, extra=[str(definition), "-Wl,--out-implib," + str(implib), "-lbcrypt", "-ladvapi32"])
-        glue = self.compile([entry], tag="_" + self.gamelib_id[:12])
         dll = host.parent / "lasgame.dll"
-        arguments = [str(p) for p in game_objects + glue + dll_helpers] + [str(implib), "-shared", "-o", str(dll), "-march=x86_64_v2"]
-        response = self.output / "lasgame.dll.rsp"
-        response.write_text("\n".join('"' + a.replace("\\", "/").replace('"', '\\"') + '"' for a in arguments), encoding="utf-8", newline="\n")
-        self.run("link-local-gamecode-dll", self.cxx + ["@" + str(response)], timeout=1800)
+        if candidate:
+            helper.copy(candidate, host.parent)
+        else:
+            glue = self.compile([entry], tag="_" + self.gamelib_id[:12])
+            arguments = [str(p) for p in game_objects + glue + dll_helpers] + [str(implib), "-shared", "-o", str(dll), "-march=x86_64_v2", "-Wl,--out-implib," + str(host.parent / "lasgame-local.lib")]
+            response = self.output / "lasgame.dll.rsp"
+            response.write_text("\n".join('"' + a.replace("\\", "/").replace('"', '\\"') + '"' for a in arguments), encoding="utf-8", newline="\n")
+            self.run("link-local-gamecode-dll", self.cxx + ["@" + str(response)], timeout=1800)
         for dependency in dll_closure([dll], self.prefix, own_images=[host]):
             dest = host.parent / dependency.name
             if dest.exists() and digest(dest) != digest(dependency):
                 raise RuntimeError("GameLib dependency conflicts with the authored runtime")
             shutil.copy2(dependency, dest)
-        for suffix, value in ((".id", self.gamelib_id), (".sha256", digest(dll))):
-            with Path(str(dll) + suffix).open("x", encoding="ascii", newline="\n") as stream:
-                stream.write(value + "\n")
-                stream.flush()
-                os.fsync(stream.fileno())
+        if not candidate:
+            for suffix, value in ((".id", self.gamelib_id), (".sha256", digest(dll))):
+                with Path(str(dll) + suffix).open("x", encoding="ascii", newline="\n") as stream:
+                    stream.write(value + "\n")
+                    stream.flush()
+                    os.fsync(stream.fileno())
         self.receipt["split_game"] = {"id": self.gamelib_id, "identity": identity,
                                       "dll_sha256": digest(dll), "host_import_library_sha256": digest(implib),
                                       "sidecars": {suffix: digest(Path(str(dll) + suffix)) for suffix in (".id", ".sha256")}}
@@ -513,6 +544,86 @@ class Builder:
         print(f"Reused {len(objects)} checked local static game objects", flush=True)
         return objects
 
+    def output_inventory(self):
+        # Exact linked images and their checked native closure, never ambient
+        # *.dll/*.exe globs which could bless a human's unrelated extra file.
+        names = []
+        if self.args.stage in ("all", "boot"):
+            names.append("xcde_boot.exe" if self.args.stage == "boot" else "xcde.exe")
+        if self.args.stage in ("all", "launcher"):
+            names.append("xcde_launcher.exe")
+        if self.args.split_game and self.args.stage == "all":
+            names.append("lasgame.dll")
+        images = [self.output / "build" / name for name in names]
+        if any(not ordinary(p) for p in images):
+            raise RuntimeError("A recipe-linked output image is missing or nonordinary")
+        own = [p for p in images if p.name == "xcde.exe"]
+        paths = set(images)
+        for dependency in dll_closure(images, self.prefix, own_images=own):
+            path = self.output / "build" / dependency.name
+            if not ordinary(path) or digest(path) != digest(dependency):
+                raise RuntimeError("Copied native dependency differs from selected prefix: " + dependency.name)
+            paths.add(path)
+        if "lasgame.dll" in names:
+            paths.update(self.output / "build" / ("lasgame.dll" + suffix) for suffix in (".id", ".sha256"))
+        return {p.relative_to(self.output).as_posix(): digest(p) for p in sorted(paths)}
+
+    def retention_inventory(self):
+        # The finalized build-receipt.json is deliberately excluded: its own
+        # embedded digest would recurse. The checked supervisor adds that one
+        # finalized file identity before authorizing an obsolete transaction.
+        paths = {self.output / name for name in self.receipt["outputs"]}
+        for name in ("preflight.c", "dependency-probe.exe", "dependency-probe.pdb", "windows_utf8.res",
+                     "xcde.exe.rsp", "xcde_boot.exe.rsp", "xcde_launcher.exe.rsp", "lasgame.dll.rsp",
+                     "host-game-imports.def", "xcde-host.dll.a", "gamecode-identity.json", "LICENSE", "NOTICE.md",
+                     "inc/smaa_hlsl.inc", "build/xcde.pdb", "build/xcde_boot.pdb", "build/xcde_launcher.pdb",
+                     "build/lasgame.pdb", "build/lasgame-local.lib"):
+            path = self.output / name
+            if path.exists():
+                paths.add(path)
+        for command in self.receipt["commands"]:
+            if command.get("exit") != 0:
+                raise RuntimeError("A failed command cannot acquire cleanup authority")
+            paths.update(Path(command[key]) for key in ("stdout", "stderr"))
+            argv = command["argv"]
+            if len(argv) >= 4 and argv[-4] == "-c" and argv[-2] == "-o":
+                paths.add(Path(argv[-1]))
+            if command["name"] == "launcher-resources":
+                manifest = json.loads(Path(command["stdout"]).read_text(encoding="utf-8"))
+                allowed = {"launcher_fonts.inc", "launcher_art.inc", "DejaVu-font-license.txt"}
+                if not set(manifest["generated"]).issubset(allowed):
+                    raise RuntimeError("Unexpected launcher resource artifact")
+                for name, identity in manifest["generated"].items():
+                    path = self.output / "inc/launcher-theme" / name
+                    if path.stat().st_size != identity["bytes"] or digest(path) != identity["sha256"]:
+                        raise RuntimeError("Generated launcher resource changed")
+                    paths.add(path)
+        for value in self.receipt.get("reused_game_objects", {}).get("objects", {}):
+            paths.add(Path(value))
+        stamp = self.output / "generated/generated-receipt.json"
+        if stamp.exists():
+            if digest(stamp) != self.receipt.get("generated_receipt_sha256"):
+                raise RuntimeError("Generated cleanup receipt changed")
+            paths.add(stamp)
+            generated = json.loads(stamp.read_text(encoding="utf-8"))
+            for name, sha in generated["sources"].items():
+                if not re.fullmatch(r"(main|sdk)/(main|sdk)_(?:[0-9]{3}|table)\.c", name) or name.split("/")[0] != name.split("/")[1].split("_")[0]:
+                    raise RuntimeError("Unknown generated recipe output")
+                path = stamp.parent / name
+                if digest(path) != sha:
+                    raise RuntimeError("Generated cleanup source changed")
+                paths.add(path)
+            for name in ("main.log", "sdk.log"):
+                path = stamp.parent / name
+                if path.exists():
+                    paths.add(path)
+        inventory = {}
+        for path in sorted(paths):
+            if path.absolute() != path or not path.is_relative_to(self.output) or path.resolve() != path or not ordinary(path) or path.stat().st_nlink != 1:
+                raise RuntimeError("Nonordinary or escaping recipe cleanup artifact: " + str(path))
+            inventory[path.relative_to(self.output).as_posix()] = {"bytes": path.stat().st_size, "sha256": digest(path)}
+        return inventory
+
     def build(self):
         self.preflight()
         if self.args.stage == "preflight":
@@ -529,7 +640,9 @@ class Builder:
             objects = self.compile(sources)
             self.receipt["authored_objects"] = [str(o) for o in objects]
         if stage in ("generated", "boot", "all"):
-            if self.args.reuse_game_build:
+            if self.args.reuse_game_library:
+                game_objects = []  # compatible checked local DLL: no generated C/objects required
+            elif self.args.reuse_game_build:
                 game_objects = self.reuse_game_objects(self.args.reuse_game_build)
             else:
                 generated = self.args.generated
@@ -621,6 +734,7 @@ def main(argv=None):
     ap.add_argument("--input", type=Path)
     ap.add_argument("--output", type=Path, default=ROOT / "build" / ("windows-dev-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + f"-{os.getpid()}"))
     ap.add_argument("--generated", type=Path)
+    ap.add_argument("--reuse-game-library", type=Path, help="reuse a compatible checked owned local lasgame.dll across source/version roots; never execute while checking")
     ap.add_argument("--reuse-game-build", type=Path, help="verify a selected private static compile receipt and reuse its unchanged game objects")
     ap.add_argument("--split-game", action="store_true", help="link an authored runtime plus locally generated lasgame.dll with strict identity/hash sidecars")
     ap.add_argument("--prefix", type=Path)
@@ -629,8 +743,13 @@ def main(argv=None):
     ap.add_argument("--launch-current", action="store_true", help="verify active pair/DLLs, then open only its settings launcher")
     ap.add_argument("--check-current", action="store_true", help="verify active pair/DLLs without launching anything")
     args = ap.parse_args(argv)
+    if args.reuse_game_library is not None:
+        # Normalize CLI spelling without resolving any reparse-point ancestry.
+        args.reuse_game_library = args.reuse_game_library.absolute()
     if args.split_game and args.stage != "all":
         ap.error("--split-game currently requires the complete graphics --stage all; static/headless fallback remains available")
+    if args.reuse_game_library and (not args.split_game or args.generated or args.reuse_game_build):
+        ap.error("--reuse-game-library requires --split-game and cannot be combined with generated/object reuse")
     builder = None
     try:
         if args.launch_current or args.check_current:
@@ -639,7 +758,8 @@ def main(argv=None):
         builder = Builder(args)
         builder.build()
         builder.receipt["status"] = "success"
-        builder.receipt["outputs"] = {p.relative_to(builder.output).as_posix(): digest(p) for p in (builder.output / "build").glob("*") if p.suffix.lower() in (".exe", ".dll") or p.name in ("lasgame.dll.id", "lasgame.dll.sha256")}
+        builder.receipt["outputs"] = builder.output_inventory()
+        builder.receipt["retention_files"] = builder.retention_inventory()
         atomic_json(builder.output / "build-receipt.json", builder.receipt)
         if args.stage == "all":
             atomic_json(ROOT / "build/active-windows-build.json", {"root": str(builder.output), "receipt_sha256": digest(builder.output / "build-receipt.json")})
@@ -648,8 +768,10 @@ def main(argv=None):
     except (Exception, KeyboardInterrupt) as error:
         if builder:
             builder.receipt.update(status="failed", error=str(error))
+            if getattr(error, "failure_kind", None) == "incompatible-game-library":
+                builder.receipt["failure_kind"] = "incompatible-game-library"
         print(str(error), file=sys.stderr)
-        return 1
+        return 3 if getattr(error, "failure_kind", None) == "incompatible-game-library" else 1
     finally:
         if builder:
             builder.guard.close()
