@@ -4097,8 +4097,8 @@
       "sha256": "f3eb244617307d29f46d8997b1946c2f457b060abdbee0e669d8a15b218ace71"
     },
     "Monado_Windows/tests/unit/test_windows_builder.py": {
-      "bytes": 26297,
-      "sha256": "a1207e7871de7496e07555d8bddc6dd81185dc73af12b30847fdbe202b6e6260"
+      "bytes": 26550,
+      "sha256": "aa11c7fa51ff7097cead067d2ab02632630daf6d9448ca420e19e44e0ef756d8"
     },
     "Monado_Windows/tests/unit/test_windows_game_library_reuse.py": {
       "bytes": 8703,
