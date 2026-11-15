@@ -52,6 +52,21 @@ inline bool ordinary(const std::wstring &p,bool directory=false){
     if(directory)return true;Handle f(CreateFileW(native(p).c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));BY_HANDLE_FILE_INFORMATION info{};
     return f.value!=INVALID_HANDLE_VALUE&&GetFileInformationByHandle(f.value,&info)&&info.nNumberOfLinks==1&&!(info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT));
 }
+inline std::wstring final_directory(const std::wstring &p){
+    // An MSIX host can virtualize AppData without exposing a reparse point.
+    // Resolve the existing ordinary directory through its retained handle so
+    // the native frontend and its Python child use the same physical cache.
+    Handle folder(CreateFileW(native(p).c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+    FILE_ATTRIBUTE_TAG_INFO info{};
+    require(folder.value!=INVALID_HANDLE_VALUE&&GetFileInformationByHandleEx(folder.value,FileAttributeTagInfo,&info,sizeof info)&&
+            (info.FileAttributes&FILE_ATTRIBUTE_DIRECTORY)&&!(info.FileAttributes&FILE_ATTRIBUTE_REPARSE_POINT),"Cache base is not an ordinary directory");
+    std::vector<wchar_t> path(32768);DWORD n=GetFinalPathNameByHandleW(folder.value,path.data(),(DWORD)path.size(),FILE_NAME_NORMALIZED|VOLUME_NAME_DOS);
+    require(n>0&&n<path.size(),"Cannot obtain the physical cache directory");std::wstring result(path.data(),n);
+    if(result.rfind(L"\\\\?\\UNC\\",0)==0)result=L"\\\\"+result.substr(8);
+    else if(result.rfind(L"\\\\?\\",0)==0)result=result.substr(4);
+    else throw std::runtime_error("Unsupported physical cache directory path");
+    require(ordinary(result,true),"Physical cache directory is unavailable or linked");return result;
+}
 inline void directory(const std::wstring &p){
     if(CreateDirectoryW(native(p).c_str(),nullptr))return;
     require(GetLastError()==ERROR_ALREADY_EXISTS && ordinary(p,true),"Cache directory is missing, busy or contains a link");

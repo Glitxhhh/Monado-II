@@ -43,6 +43,11 @@ static void cancel_after_member(uint32_t, uint32_t) {
 int wmain(int argc, wchar_t **argv) {
     if (argc != 3) return 2;
     try {
+        if (!wcscmp(argv[1], L"--canonical-directory")) {
+            auto path = utf8(final_directory(argv[2]));
+            write(GetStdHandle(STD_OUTPUT_HANDLE), path.data(), path.size());
+            return 0;
+        }
         Handle input(CreateFileW(native(argv[1]).c_str(), GENERIC_READ,
             FILE_SHARE_READ, nullptr, OPEN_EXISTING,
             FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
@@ -173,6 +178,33 @@ int wmain(int argc, wchar_t **argv) {
         self.assertGreater(len(str(self.cache / sha / "python/authored.txt")), 260)
         self.assertEqual(self.check(target), 0)
         self.assertEqual(self.check(target), 0)
+
+    def test_actual_native_appdata_final_path_matches_python_canonical_path(self):
+        # Under an MSIX-packaged host, the final ordinary directory may differ
+        # from the logical environment value despite having no reparse point.
+        for path in (self.cache, Path(os.environ["LOCALAPPDATA"])):
+            with self.subTest(path=str(path)):
+                result = subprocess.run(
+                    [str(self.cancel_exe), "--canonical-directory", str(path)],
+                    capture_output=True, timeout=30)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                physical = Path(result.stdout.decode("utf-8"))
+                self.assertEqual(physical, path.resolve(strict=True))
+                self.assertEqual(physical.resolve(strict=True), physical)
+
+    def test_actual_native_final_directory_rejects_reparse_leaf(self):
+        import _winapi
+        outside = self.root / "outside"
+        outside.mkdir()
+        link = self.root / "cache-junction"
+        _winapi.CreateJunction(str(outside), str(link))
+        try:
+            result = subprocess.run(
+                [str(self.cancel_exe), "--canonical-directory", str(link)], timeout=30)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(list(outside.iterdir()), [])
+        finally:
+            link.rmdir()
 
     def test_actual_native_modified_or_undeclared_cache_preserved(self):
         target, sha = self.fixture()
