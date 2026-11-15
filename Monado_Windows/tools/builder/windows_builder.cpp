@@ -134,7 +134,11 @@ void start_settings(const std::wstring &path,const std::vector<std::wstring> &ar
     std::wstring command=quote(path);for(auto &a:arguments)command+=L" "+quote(a);std::vector<wchar_t>b(command.begin(),command.end());b.push_back(0);STARTUPINFOW si{};si.cb=sizeof si;PROCESS_INFORMATION pi{};
     auto slash=path.find_last_of(L"\\/");std::wstring cwd=path.substr(0,slash); // backend returns <install>/build/launcher; runtime cwd is parent of build.
     auto parent=cwd.find_last_of(L"\\/");if(parent!=std::wstring::npos)cwd.resize(parent);
-    require(CreateProcessW(path.c_str(),b.data(),nullptr,nullptr,FALSE,0,nullptr,cwd.c_str(),&si,&pi),"Cannot open the checked settings launcher");CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
+    // All checked launcher results carry an explicit profile; the child must
+    // select that profile before settings or any mutable state is opened.
+    if(cwd.size()+1>=MAX_PATH)require(arguments.size()>=2&&arguments[0]==L"--profile-root","A long runtime path requires an explicit checked profile");
+    auto application=process_application(path);cwd=absolute_child_directory(cwd);
+    require(CreateProcessW(application.c_str(),b.data(),nullptr,nullptr,FALSE,0,nullptr,cwd.c_str(),&si,&pi),"Cannot open the checked settings launcher");CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
 }
 void backend(std::wstring action,std::wstring selected_input,std::wstring selected_dest,int jobs,bool precompile,bool startup,monado_preparation::Selection sources,monado_preparation::ToolSelection tools,ProviderSelection providers){
     Event final;final.complete=true;
@@ -157,7 +161,7 @@ void backend(std::wstring action,std::wstring selected_input,std::wstring select
         HANDLE handles[]={output.value,nul.value};BOOL attr=UpdateProcThreadAttribute(attributes,0,PROC_THREAD_ATTRIBUTE_HANDLE_LIST,handles,sizeof handles,nullptr,nullptr);
         STARTUPINFOEXW si{};si.StartupInfo.cb=sizeof si;si.StartupInfo.dwFlags=STARTF_USESTDHANDLES;si.StartupInfo.hStdInput=nul.value;si.StartupInfo.hStdOutput=si.StartupInfo.hStdError=output.value;si.lpAttributeList=attributes;PROCESS_INFORMATION pi{};
         Handle job(CreateJobObjectW(nullptr,nullptr));JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};limits.BasicLimitInformation.LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;require(job.value&&SetInformationJobObject(job.value,JobObjectExtendedLimitInformation,&limits,sizeof limits),"Cannot create owned setup job");
-        auto environment=clean_environment();BOOL created=attr&&CreateProcessW(python.c_str(),b.data(),nullptr,nullptr,TRUE,CREATE_SUSPENDED|CREATE_NO_WINDOW|CREATE_UNICODE_ENVIRONMENT|EXTENDED_STARTUPINFO_PRESENT,environment.data(),cache.c_str(),&si.StartupInfo,&pi);DeleteProcThreadAttributeList(attributes);require(created,"Cannot start the bundled setup backend");Handle process(pi.hProcess),thread(pi.hThread);
+        auto environment=clean_environment();auto application=process_application(python),startup_directory=absolute_child_directory(cache);BOOL created=attr&&CreateProcessW(application.c_str(),b.data(),nullptr,nullptr,TRUE,CREATE_SUSPENDED|CREATE_NO_WINDOW|CREATE_UNICODE_ENVIRONMENT|EXTENDED_STARTUPINFO_PRESENT,environment.data(),startup_directory.c_str(),&si.StartupInfo,&pi);DeleteProcThreadAttributeList(attributes);require(created,"Cannot start the bundled setup backend");Handle process(pi.hProcess),thread(pi.hThread);
         if(!AssignProcessToJobObject(job.value,process.value)){TerminateProcess(process.value,1);throw std::runtime_error("Cannot supervise the owned setup backend");}require(ResumeThread(thread.value)!=DWORD(-1),"Cannot resume setup backend");
         uint64_t position=0;std::string pending;DWORD exit=STILL_ACTIVE;bool final_seen=false,drained=false,cancel_sent=false;uint64_t close_tick=0;
         do{

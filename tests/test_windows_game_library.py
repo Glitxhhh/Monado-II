@@ -50,16 +50,55 @@ GAMELIB_EXPORT const GameLibTables *lasgame_tables(void){return &tables;}
                      '-o', cls.out / 'boot.o'])
         cls.compile(['-shared', cls.out / 'code.c', PORT / 'runtime/host/gamelib_entry_windows.c', '-o', cls.out / 'valid.dll'])
         cls.compile(['-shared', cls.out / 'wrong.c', '-o', cls.out / 'wrong.dll'])
+        cls.resource=cls.out/'process-manifest.res'
+        built=subprocess.run([cls.python,'-m','ziglang','rc','/I',str(PORT/'tools'),'/fo',str(cls.resource),str(PORT/'tools/windows_utf8.rc')],env=cls.env,capture_output=True,text=True,timeout=30)
+        if built.returncode:raise AssertionError(built.stdout+built.stderr)
         common = [cls.out / 'boot.o', PORT / 'tests/native/test_boot_game_library.c',
-                  PORT / 'runtime/host/run_diagnostics_windows.c']
+                  PORT / 'runtime/host/run_diagnostics_windows.c',cls.resource]
         cls.compile([*common, PORT / 'runtime/gamelib.c', '-lbcrypt', '-ladvapi32', '-o', cls.out / 'dynamic.exe'])
         cls.compile([*common, PORT / 'runtime/host/gamelib_static.c', cls.out / 'code.c',
                      '-lbcrypt', '-ladvapi32', '-o', cls.out / 'static.exe'])
+        cls.compile(['-DAUTHORED_DIRECT_ENTRY',*common,PORT/'runtime/gamelib.c','-lbcrypt','-ladvapi32','-o',cls.out/'direct.exe'])
+        built=subprocess.run([cls.python,'-m','ziglang','c++','-std=c++17','-O1','-UNDEBUG','-municode',
+            str(PORT/'tests/native/test_launcher_profile_spawn_windows.cpp'),str(cls.resource),'-o',str(cls.out/'spawn.exe')],
+            env=cls.env,capture_output=True,text=True,timeout=120)
+        if built.returncode:raise AssertionError(built.stdout+built.stderr)
         cls.compile(['-DXCDE_GFX','-Dmain=authored_boot_main','-include',PORT/'tests/native/test_boot_relaunch_hooks.h',
                      '-c',PORT/'runtime/host/main_boot.c','-o',cls.out/'relaunch-boot.o'])
         cls.compile([cls.out/'relaunch-boot.o',PORT/'tests/native/test_boot_game_library.c',
                      PORT/'runtime/host/run_diagnostics_windows.c',PORT/'runtime/host/gamelib_static.c',cls.out/'code.c',
-                     '-lbcrypt','-ladvapi32','-o',cls.out/'relaunch.exe'])
+                     cls.resource,'-lbcrypt','-ladvapi32','-o',cls.out/'relaunch.exe'])
+
+    def test_explicit_long_unicode_profile_applies_before_precompile_static_and_missing_library(self):
+        with tempfile.TemporaryDirectory(dir=self.out,prefix='profile-start-') as temporary:
+            base=Path(temporary);profile=base/('雪 literal $() ` '+('x'*70))/('nested '+('y'*70))/('profile '+('z'*70))
+            profile.mkdir(parents=True);(profile/'profile-marker').write_bytes(b'authored')
+            self.assertGreater(len(str(profile)),300)
+            source=base/'input';(source/'exefs').mkdir(parents=True);(source/'romfs').mkdir()
+            env=dict(self.env,AUTHORED_LIBRARY_ROOT=str(source),AUTHORED_PROFILE_ROOT=str(profile));env.pop('XCDE_WATCHDOG',None)
+            for binary,mode,code,text in [('dynamic.exe','profile-precompile',23,'AUTHORED precompile boundary'),
+                                           ('static.exe','profile-game',0,'stopped before guest execution'),
+                                           ('dynamic.exe','profile-game',1,'FATAL: cannot load game code')]:
+                with self.subTest(binary=binary,mode=mode):
+                    result=subprocess.run([str(self.out/binary),mode,str(source)],env=env,cwd=self.out,capture_output=True,text=True,timeout=20)
+                    self.assertEqual(result.returncode,code,result.stderr);self.assertIn(text,result.stderr)
+            for mode in ['missing','empty','relative','duplicate']:
+                result=subprocess.run([str(self.out/'dynamic.exe'),'profile-'+mode,str(source)],env=env,cwd=self.out,capture_output=True,text=True,timeout=20)
+                self.assertEqual(result.returncode,2,result.stderr);self.assertNotIn('AUTHORED',result.stderr)
+
+    def test_production_launcher_spawn_long_runtime_and_profile_preserves_all_arguments(self):
+        with tempfile.TemporaryDirectory(dir=self.out,prefix='long-launch-') as temporary:
+            base=Path(temporary)/('雪 literal $() ` '+('a'*70))/('nested '+('b'*70))
+            runtime=base/('runtime '+('c'*60));(runtime/'build').mkdir(parents=True)
+            profile=base/('profile '+('d'*60));(profile/'build').mkdir(parents=True)
+            (profile/'profile-marker').write_bytes(b'authored');shutil.copyfile(self.out/'direct.exe',runtime/'build/xcde.exe')
+            self.assertGreater(len(str(runtime)),300);self.assertGreater(len(str(profile)),300)
+            env=dict(self.env,AUTHORED_LIBRARY_ROOT=str(runtime),AUTHORED_PROFILE_ROOT=str(profile),
+                     AUTHORED_PRECOMPILE_TARGET='authored target 雪 $() ` quote" slash\\');env.pop('XCDE_WATCHDOG',None)
+            result=subprocess.run([str(self.out/'spawn.exe'),str(runtime),str(profile)],env=env,cwd=self.out,capture_output=True,text=True,timeout=30)
+            self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+            self.assertIn('PASS production launcher short-CWD spawn',result.stdout)
+            self.assertIn('AUTHORED precompile boundary',(profile/'build/authored-start.log').read_text())
 
     @classmethod
     def compile(cls, args):

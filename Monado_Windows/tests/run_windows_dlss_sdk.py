@@ -26,6 +26,11 @@ def identity(data):
 
 
 def main():
+    # Receipts/logs retain UTF-8 independently of the launching console's code
+    # page, including diagnostics containing the explicitly selected long path.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, 'reconfigure'):
+            stream.reconfigure(encoding='utf-8', errors='replace')
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--sdk-directory', type=Path, help='Explicit approved staged provider ROOT containing windows-providers.json')
     parser.add_argument('--output', type=Path, help='Fresh private fixture output directory')
@@ -47,13 +52,22 @@ def main():
     prefix = args.prefix or Path(json.loads((PORT / '.deps/windows-deps.json').read_text())['prefix'])
     binary = output / 'build' / 'authored-dlss.exe'
     binary.parent.mkdir()
+    # CreateProcessW still imposes MAX_PATH on lpCurrentDirectory even when
+    # the executable and all authored inputs use valid extended Win32 paths.
+    # Keep incidental vendor/compiler logs private and off the long input/output
+    # path, without changing any guarded identity used to stage or verify it.
+    launch_state = PORT / 'runs' / ('dlss-sdk-state-' + uuid.uuid4().hex[:8])
+    launch_state.mkdir()
+    if len(str(launch_state)) >= 248:
+        raise ValueError('The private fixture launch directory must fit the Win32 current-directory limit')
     sources = [PORT/'runtime/nvn/vulkan/dlss.cpp', PORT/'runtime/nvn/vulkan/dlss.h',
                PORT/'runtime/nvn/vulkan/vk.h', PORT/'runtime/nvn/vulkan/temporal.h',
                PORT/'runtime/nvn/vulkan/temporal_camera.h', PORT/'runtime/settings.h',
-               PORT/'runtime/platform/windows_optional_library.h', PORT/'runtime/platform/windows_save_io.h',
+               PORT/'runtime/platform/windows_optional_library.h', PORT/'runtime/platform/windows_module_path.h', PORT/'runtime/platform/windows_save_io.h',
+               PORT/'tools/windows_utf8.rc', PORT/'tools/windows_utf8.manifest',
                PORT/'tests/native/test_dlss_sdk_windows.cpp', Path(__file__), ROOT/'tools/windows_file_guard.py']
     hashes = lambda: {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}
-    receipt = {'status': 'failed', 'sources_before': hashes(), 'commands': [],
+    receipt = {'status': 'failed', 'sources_before': hashes(), 'commands': [], 'working_directory': str(launch_state),
                'scope': 'actual production DLSS, explicit approved local SDK and authored hidden SDL/Vulkan GPU frames; no game, profile, FPS or full renderer qualification'}
     env = os.environ.copy()
     for key in list(env):
@@ -63,8 +77,14 @@ def main():
                ZIG_GLOBAL_CACHE_DIR=str(PORT/'.deps/zig-global-cache'), ZIG_LOCAL_CACHE_DIR=str(output/'zig-cache'))
     env['PATH'] = str(prefix/'bin') + os.pathsep + env.get('PATH', '')
     def run(label, command, timeout):
-        result = subprocess.run([str(item) for item in command], cwd=output, env=env, capture_output=True, text=True, timeout=timeout)
-        receipt['commands'].append({'argv': [str(item) for item in command], 'returncode': result.returncode})
+        argv = [str(item) for item in command]
+        if len(argv[0]) >= 248 and not argv[0].startswith('\\\\?\\'):
+            argv[0] = '\\\\?\\UNC\\' + argv[0][2:] if argv[0].startswith('\\\\') else '\\\\?\\' + argv[0]
+        # Supply lpApplicationName explicitly: otherwise CreateProcessW searches
+        # argv[0] through its legacy MAX_PATH parser even for extended spelling.
+        result = subprocess.run(argv, executable=argv[0], cwd=launch_state, env=env, capture_output=True, text=True,
+                                encoding='utf-8', errors='replace', timeout=timeout)
+        receipt['commands'].append({'argv': argv, 'returncode': result.returncode})
         (output/(label+'.log')).write_text(result.stdout+result.stderr, encoding='utf-8')
         print(result.stdout, end='', flush=True)
         if result.returncode:
@@ -75,10 +95,13 @@ def main():
                  '-fno-strict-aliasing', '-Wall', '-Wextra', '-Werror', '-Wno-missing-field-initializers',
                  '-Wno-unused-parameter', '-Wno-unused-function', '-Wno-missing-braces', '-Wno-nullability-completeness']
         receipt['flags'] = flags
+        resource = output/'windows_utf8.res'
+        run('compile-native-manifest', [sys.executable, '-B', '-m', 'ziglang', 'rc', '/I', PORT/'tools',
+            '/fo', resource, PORT/'tools/windows_utf8.rc'], 60)
         run('compile', [sys.executable, '-B', '-m', 'ziglang', 'c++', *flags,
             '-I'+str(PORT/'runtime'), '-I'+str(prefix/'include'), '-I'+str(PORT/'third_party/streamline/include'),
             PORT/'tests/native/test_dlss_sdk_windows.cpp', PORT/'runtime/nvn/vulkan/dlss.cpp',
-            prefix/'lib/libSDL3.dll.a', prefix/'lib/libvulkan-1.dll.a', '-ladvapi32', '-luser32', '-o', binary], 180)
+            resource, prefix/'lib/libSDL3.dll.a', prefix/'lib/libvulkan-1.dll.a', '-ladvapi32', '-luser32', '-o', binary], 180)
         receipt['executable'] = identity(binary.read_bytes())
         if args.compile_only:
             receipt['status'] = 'compiled-not-run'

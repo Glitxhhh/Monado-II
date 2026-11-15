@@ -63,6 +63,16 @@ static HANDLE start(const std::string &runtime_root,const std::string &profile_r
                     const char *log_name,DWORD priority=0) {
     std::wstring directory=wide(profile_root),exe=wide(runtime_root+"/build/xcde.exe"),log=wide(profile_root+"/"+log_name);
     if(directory.empty() || exe.empty() || log.empty()){SetLastError(ERROR_NO_UNICODE_TRANSLATION);return nullptr;}
+    wchar_t system_directory[MAX_PATH];UINT system_length=GetSystemDirectoryW(system_directory,MAX_PATH);
+    if(!system_length||system_length>=MAX_PATH){SetLastError(ERROR_FILENAME_EXCED_RANGE);return nullptr;}
+    // Application-name paths may exceed MAX_PATH, while lpCurrentDirectory may
+    // not. The child applies its explicit profile before any runtime work.
+    for(wchar_t &ch:exe)if(ch==L'/')ch=L'\\';
+    if(exe.rfind(L"\\\\?\\",0)!=0) {
+        if(exe.rfind(L"\\\\",0)==0)exe=L"\\\\?\\UNC\\"+exe.substr(2);
+        else if(exe.size()>=3&&exe[1]==L':'&&exe[2]==L'\\')exe=L"\\\\?\\"+exe;
+        else {SetLastError(ERROR_BAD_PATHNAME);return nullptr;}
+    }
     DWORD attributes=GetFileAttributesW(exe.c_str());
     if(attributes==INVALID_FILE_ATTRIBUTES || (attributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT))) {
         SetLastError(ERROR_FILE_NOT_FOUND);return nullptr;
@@ -89,12 +99,12 @@ static HANDLE start(const std::string &runtime_root,const std::string &profile_r
     STARTUPINFOEXW si{};si.StartupInfo.cb=sizeof si;si.lpAttributeList=list;
     si.StartupInfo.dwFlags=STARTF_USESTDHANDLES;si.StartupInfo.hStdInput=input;
     si.StartupInfo.hStdOutput=si.StartupInfo.hStdError=output;
-    std::wstring command=quote(exe);
+    std::wstring command=quote(exe)+L" "+quote(L"--profile-root")+L" "+quote(directory);
     for(const auto &arg:arguments)command+=L" "+quote(arg);
     std::vector<wchar_t> buffer(command.begin(),command.end());buffer.push_back(0);
     PROCESS_INFORMATION process{};
     BOOL ok=updated && CreateProcessW(exe.c_str(),buffer.data(),nullptr,nullptr,TRUE,
-             EXTENDED_STARTUPINFO_PRESENT|CREATE_NO_WINDOW|priority,nullptr,directory.c_str(),&si.StartupInfo,&process);
+             EXTENDED_STARTUPINFO_PRESENT|CREATE_NO_WINDOW|priority,nullptr,system_directory,&si.StartupInfo,&process);
     DWORD error=GetLastError();DeleteProcThreadAttributeList(list);CloseHandle(input);CloseHandle(output);
     if(!ok){SetLastError(error);return nullptr;}
     CloseHandle(process.hThread);return process.hProcess;

@@ -89,8 +89,19 @@ extern "C" bool dlss_init_early(void) {
     static wchar_t dir[4096];
     DWORD n = GetModuleFileNameW(NULL, dir, 4096);
     if(!n || n>=4096){dlss_note("The runtime executable path is unavailable or too long; DLSS unavailable.");return false;}
+    // Streamline appends a forward slash when locating its plugins. Extended
+    // namespace paths treat that slash literally; give the SDK the ordinary
+    // DOS/UNC spelling while retaining checked extended mapping in our loader.
+    if(!monado_windows_module_path(dir,4096,dir)){dlss_note("The runtime executable path is not an ordinary module path; DLSS unavailable.");return false;}
+    n=(DWORD)wcslen(dir);DWORD module_length=n;
     while (n && dir[n - 1] != L'\\' && dir[n - 1] != L'/') n--;
     dir[n] = 0;
+    // The official SDK can fail inside plugin/signature handling beyond its
+    // MAX_PATH boundary, even though our own native loader supports long paths.
+    // Include its added separator, longest selected SDK DLL basename and NUL.
+    if(module_length+1>=MAX_PATH || n+1+sizeof(L"NvLowLatencyVk.dll")/sizeof(wchar_t)>=MAX_PATH) {
+        dlss_note("DLSS unavailable: this installation path exceeds the NVIDIA SDK path limit; use a shorter installation folder.");return false;
+    }
     wchar_t path[4096 + 32];
     swprintf(path, 4096 + 32, L"%lssl.interposer.dll", dir);
     char load_reason[512];

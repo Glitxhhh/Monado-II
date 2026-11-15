@@ -14,6 +14,7 @@
 
 #include "../platform.h"
 #include "guest_fp_windows.h"
+#include "windows_module_path.h"
 
 // [XCDE] WINPARITY-001: portable guest helpers require a known host FP baseline.
 bool plat_guest_fp_init(void) { return monado_windows_guest_fp_init(); }
@@ -437,7 +438,7 @@ int plat_cpu_count(void) {
 bool plat_exe_path(char *buf, size_t size) {
     wchar_t path[32768];
     DWORD n = GetModuleFileNameW(NULL, path, 32768);
-    return n > 0 && n < 32768 && size <= INT_MAX &&
+    return n > 0 && n < 32768 && monado_windows_module_path(path,32768,path) && size <= INT_MAX &&
         WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, path, -1, buf, (int)size, NULL, NULL) > 0;
 }
 

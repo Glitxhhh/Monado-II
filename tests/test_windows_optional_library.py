@@ -43,12 +43,26 @@ BOOL WINAPI DllMain(HINSTANCE instance,DWORD reason,LPVOID reserved){
 __declspec(dllexport) int authored_provider_value(void){return fixture_dependency()+guarded;}
 ''',encoding='ascii')
             compile(provider,library,['-shared',str(implib)])
-            binary=root/'fixture.exe';compile(PORT/'tests/native/test_optional_library_windows.c',binary,['-municode','-ladvapi32'])
+            resource=root/'windows_utf8.res'
+            manifest=subprocess.run(compiler[:-1]+['rc','/I',str(PORT/'tools'),'/fo',str(resource),str(PORT/'tools/windows_utf8.rc')],env=environment,capture_output=True,text=True,timeout=60)
+            self.assertEqual(manifest.returncode,0,manifest.stdout+manifest.stderr)
+            binary=root/'fixture.exe';compile(PORT/'tests/native/test_optional_library_windows.c',binary,[str(resource),'-municode','-ladvapi32'])
             def run(path,mode='reject'):
                 result=subprocess.run([binary,path,mode],cwd=root,capture_output=True,text=True,timeout=30)
                 self.assertEqual(result.returncode,0,result.stdout+result.stderr);self.assertIn('PASS',result.stdout)
                 return result.stdout
             self.assertIn('local sibling dependency',run(library,'good'))
+            self.assertIn('local sibling dependency',run('\\\\?\\'+str(library),'good'))
+            long_local=local/('long owned SDK 雪 '+('x'*95))/('Unicode résumé '+('y'*95));long_local.mkdir(parents=True)
+            long_library=long_local/library.name
+            import shutil
+            shutil.copyfile(library,long_library);shutil.copyfile(local/dependency,long_local/dependency)
+            self.assertGreater(len(str(long_library)),260)
+            self.assertIn('local sibling dependency',run(long_library,'good'))
+            self.assertIn('local sibling dependency',run('\\\\?\\'+str(long_library),'good'))
+            for unsafe in ('\\\\?\\GLOBALROOT\\Device\\HarddiskVolume1\\evil.dll','\\\\.\\C:\\evil.dll',
+                           '\\\\?\\C:\\safe\\file.dll:payload','\\\\?\\C:\\safe\\..\\evil.dll','\\\\?\\Volume{1234}\\evil.dll'):
+                run(unsafe)
             run(local/'missing.dll')
             bad=local/'bad.dll';bad.write_bytes(b'authored invalid PE'+b'\0'*128);run(bad)
             alias=local/'hardlink.dll';os.link(library,alias);run(library);alias.unlink()
@@ -62,6 +76,9 @@ __declspec(dllexport) int authored_provider_value(void){return fixture_dependenc
             self.assertEqual(made.returncode,0,made.stdout+made.stderr)
             try:run(junction/library.name)
             finally:junction.rmdir()
+            long_alias=long_local/'hardlink.dll';os.link(long_library,long_alias)
+            run('\\\\?\\'+str(long_library));long_alias.unlink()
+            run('\\\\?\\'+str(long_library),'locked')
             self.assertTrue(library.is_file())
 
 if __name__=='__main__':unittest.main()

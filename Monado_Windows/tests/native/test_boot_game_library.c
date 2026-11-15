@@ -45,7 +45,14 @@ BOOL WINAPI authored_AssignProcessToJobObject(HANDLE job,HANDLE child) {
     return relaunch_fault(L"assign")?FALSE:AssignProcessToJobObject(job,child);
 }
 DWORD WINAPI authored_ResumeThread(HANDLE thread) {return relaunch_fault(L"resume")?(DWORD)-1:ResumeThread(thread);}
-void plat_init(void) { phase = 1; }
+static void assert_profile(void) {
+    const wchar_t *expected=_wgetenv(L"AUTHORED_PROFILE_ROOT");if(!expected)return;
+    wchar_t actual[4096];DWORD count=GetCurrentDirectoryW(4096,actual);
+    assert(count&&count<4096&&!_wcsicmp(actual,expected));
+    HANDLE marker=CreateFileW(L"profile-marker",GENERIC_READ,FILE_SHARE_READ,NULL,OPEN_EXISTING,0,NULL);
+    assert(marker!=INVALID_HANDLE_VALUE);CloseHandle(marker);
+}
+void plat_init(void) { assert_profile();phase = 1; }
 void plat_sleep_until_ns(uint64_t n) { (void)n; abort(); }
 uint64_t plat_now_ns(void) { return 0; }
 void guest_call(Cpu *c, uint64_t a) { (void)c; (void)a; abort(); }
@@ -80,7 +87,8 @@ bool tmp_fsr4_configure(const char *assets,const char *component) {
 }
 const char *tmp_fsr4_status(void) {return "authored local models unavailable";}
 int vk_precompile_main(const char *p) {
-    (void)p; assert(!phase);
+    assert_profile();assert(!phase);
+    const char *expected=getenv("AUTHORED_PRECOMPILE_TARGET");if(expected)assert(!strcmp(p,expected));
     assert(getenv("XCDE_PRECOMPILE_SESSION")&&getenv("XCDE_PRECOMPILE_ID"));
     fputs("AUTHORED precompile boundary\n", stderr); return 23;
 }
@@ -95,6 +103,9 @@ bool plat_exe_path(char *out, size_t n) {
     return snprintf(out, n, "%s/host.exe", utf8) < (int)n;
 }
 int main(int argc, char **argv) {
+#ifdef AUTHORED_DIRECT_ENTRY
+    return authored_boot_main(argc,argv);
+#else
     assert(argc == 3);
     const wchar_t *expected=_wgetenv(L"AUTHORED_RELAUNCH_EXPECT");
     if(expected)assert(wcsstr(GetCommandLineW(),expected));
@@ -102,6 +113,18 @@ int main(int argc, char **argv) {
     char input[8192];
     wchar_t *wide_input = _wgetenv(L"AUTHORED_LIBRARY_ROOT");
     assert(wide_input && WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide_input, -1, input, sizeof input, NULL, NULL));
+    if(!strncmp(argv[1],"profile-",8)) {
+        wchar_t *wide_profile=_wgetenv(L"AUTHORED_PROFILE_ROOT");char profile[16384];
+        assert(wide_profile&&WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,wide_profile,-1,profile,sizeof profile,NULL,NULL));
+        char *prepared[]={argv[0],"--profile-root",profile,"--precompile",input,"--session","bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "--identity","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",NULL};
+        if(!strcmp(argv[1],"profile-missing"))return authored_boot_main(2,prepared);
+        if(!strcmp(argv[1],"profile-empty"))prepared[2]="";
+        if(!strcmp(argv[1],"profile-relative"))prepared[2]="relative-profile";
+        if(!strcmp(argv[1],"profile-duplicate")){prepared[3]="--profile-root";return authored_boot_main(5,prepared);}
+        if(!strcmp(argv[1],"profile-game")){prepared[3]=input;return authored_boot_main(4,prepared);}
+        return authored_boot_main(9,prepared);
+    }
     if(!strcmp(argv[1],"fsr4")||!strcmp(argv[1],"fsr4-missing")) {
         char *configured[]={argv[0],"--fsr4-assets","C:/authored models/雪","--fsr4-component","C:/authored component.dll",input,NULL};
         return authored_boot_main(!strcmp(argv[1],"fsr4")?6:3,configured);
@@ -128,4 +151,5 @@ int main(int argc, char **argv) {
         return authored_boot_main(count,prepared);
     }
     char *args[]={argv[0],input,input,NULL};return authored_boot_main(2,args);
+#endif
 }

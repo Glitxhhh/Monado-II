@@ -29,7 +29,10 @@ static bool is(const char *name){GetEnvironmentVariableA("MONADO_AUTHORED_DLSS",
 static sl::Result bad(){return (sl::Result)1;}
 #define API extern "C"
 API unsigned authored_stats(unsigned i){return stats[i];}
-API sl::Result slInit(const sl::Preferences&,uint64_t){return is("init-fail")?bad():sl::Result::eOk;}
+API sl::Result slInit(const sl::Preferences &p,uint64_t){
+ if(p.numPathsToPlugins!=1||!p.pathsToPlugins||!p.pathsToPlugins[0]||!wcsncmp(p.pathsToPlugins[0],L"\\\\?\\",4))return bad();
+ return is("init-fail")?bad():sl::Result::eOk;
+}
 API sl::Result slShutdown(){stats[0]++;return sl::Result::eOk;}
 API sl::Result slFreeResources(sl::Feature,const sl::ViewportHandle&){return sl::Result::eOk;}
 API sl::Result slGetFeatureRequirements(sl::Feature,sl::FeatureRequirements &r){
@@ -63,8 +66,19 @@ PRELUDE=r'''
 #include <SDL3/SDL.h>
 #include <cstring>
 #include <cassert>
-static const char *authored_case;static HWND authored_window;
+#include <string>
+static const char *authored_case;static HWND authored_window;static unsigned authored_loads;
 static bool is(const char *name){return !strcmp(authored_case,name);}
+static DWORD authored_module_path(HMODULE module,wchar_t *output,DWORD capacity){
+ if(is("long-module-path")||is("long-extended-module-path")){
+  std::wstring path=L"C:\\";while(path.size()<300)path+=L"authored folder\\";path+=L"xcde.exe";
+  if(is("long-extended-module-path"))path=L"\\\\?\\"+path;
+  if(path.size()>=capacity)return capacity;memcpy(output,path.c_str(),(path.size()+1)*sizeof(wchar_t));return (DWORD)path.size();
+ }
+ wchar_t path[4096];DWORD n=GetModuleFileNameW(module,path,4096);if(!n||n>=4096)return 0;
+ if(is("extended-module-path")){if(n+4>=capacity)return capacity;memcpy(output,L"\\\\?\\",4*sizeof(wchar_t));memcpy(output+4,path,(n+1)*sizeof(wchar_t));return n+4;}
+ if(n>=capacity)return capacity;memcpy(output,path,(n+1)*sizeof(wchar_t));return n;
+}
 static VkResult authored_instance_extensions(const char*,uint32_t *n,VkExtensionProperties *p){if(p){memset(p,0,sizeof *p);strcpy(p->extensionName,is("instance-extension-missing")?"VK_OTHER":"VK_AUTHORED_instance");}*n=1;return VK_SUCCESS;}
 static void authored_properties(VkPhysicalDevice,VkPhysicalDeviceProperties *p){memset(p,0,sizeof *p);p->vendorID=is("non-nvidia")?0x1002:0x10de;}
 static VkResult authored_extensions(VkPhysicalDevice,const char*,uint32_t *n,VkExtensionProperties *p){if(p){memset(p,0,sizeof *p);strcpy(p->extensionName,is("extension-missing")?"VK_OTHER":"VK_AUTHORED_required");}*n=1;return VK_SUCCESS;}
@@ -81,12 +95,14 @@ static void *authored_pointer(SDL_PropertiesID,const char*,void*){return authore
 #define vkGetPhysicalDeviceSurfaceSupportKHR authored_present
 #define SDL_GetWindowProperties authored_window_properties
 #define SDL_GetPointerProperty authored_pointer
+#define GetModuleFileNameW authored_module_path
 '''
 
 MAIN=r'''
 Settings g_settings;
 int main(int argc,char **argv){assert(argc==2);authored_case=argv[1];SetEnvironmentVariableA("MONADO_AUTHORED_DLSS",authored_case);g_settings.upscaler=UPSCALE_DLSS;
  bool early=dlss_init_early();
+ if(is("long-module-path")||is("long-extended-module-path")){assert(!early&&!sl_initialized&&!dlss_available()&&authored_loads==0&&!GetModuleHandleW(L"sl.interposer.dll"));assert(strstr(dlss_status(),"shorter installation folder"));return 0;}
  if(is("init-fail")||is("requirements-fail")||is("missing-support")||is("missing-function")){assert(!early&&!dlss_available()&&!GetModuleHandleW(L"sl.interposer.dll"));assert(strstr(dlss_status(),is("init-fail")?"initialization failed":is("requirements-fail")?"plugin did not load":"required entry points"));return 0;}
  assert(early&&!dlss_available());const char *instance_extensions[2];int instance_count=dlss_instance_exts(instance_extensions,is("instance-capacity")?0:2);
  if(is("instance-capacity")||is("instance-extension-missing")){assert(instance_count==0&&!sl_ok&&!dlss_available()&&strstr(dlss_status(),"instance extensions"));dlss_shutdown();return 0;}
@@ -115,7 +131,8 @@ class Native(unittest.TestCase):
         sdk=out/'authored-sdk.cpp';sdk.write_text(SDK,encoding='utf-8')
         production=PORT/'runtime/nvn/vulkan/dlss.cpp';source=production.read_text(encoding='utf-8')
         begin=source[:source.index('static sl::Resource tex(')];tail=source[source.index('// Call only once the device is idle'):]
-        begin=begin.replace('#include "../../platform/windows_optional_library.h"','#include "'+(PORT/'runtime/platform/windows_optional_library.h').as_posix()+'"').replace('#include "temporal.h"','#include "nvn/vulkan/temporal.h"').replace('#include "dlss.h"','#include "nvn/vulkan/dlss.h"').replace('#include "temporal_camera.h"','#include "nvn/vulkan/temporal_camera.h"').replace('#include "../../settings.h"','#include "settings.h"')
+        load_boundary='\nstatic HMODULE authored_optional_load(const wchar_t *path,char *reason,size_t capacity){authored_loads++;return monado_optional_library_load(path,reason,capacity);}\n#define monado_optional_library_load authored_optional_load\n'
+        begin=begin.replace('#include "../../platform/windows_optional_library.h"','#include "'+(PORT/'runtime/platform/windows_optional_library.h').as_posix()+'"'+load_boundary).replace('#include "temporal.h"','#include "nvn/vulkan/temporal.h"').replace('#include "dlss.h"','#include "nvn/vulkan/dlss.h"').replace('#include "temporal_camera.h"','#include "nvn/vulkan/temporal_camera.h"').replace('#include "../../settings.h"','#include "settings.h"')
         harness=out/'production-loader.cpp';harness.write_text(PRELUDE+begin+tail+MAIN,encoding='utf-8')
         def run(label,argv):
             result=subprocess.run(argv,env=env,capture_output=True,text=True,timeout=180);(out/(label+'.log')).write_text(result.stdout+result.stderr,encoding='utf-8');self.assertEqual(result.returncode,0,label+': '+result.stderr[-3000:]);return result
@@ -127,7 +144,7 @@ class Native(unittest.TestCase):
             if name!='missing-function':exports.append('slGetFeatureFunction')
             definition=out/(name+'.def');definition.write_text('EXPORTS\n'+'\n'.join(exports)+'\n')
             dll=out/(name+'.dll');run('compile-'+name,[*base,*flags,'-shared',str(sdk),str(definition),'-o',str(dll)]);variants[name]=dll
-        cases=['success','zero-queues','init-fail','requirements-fail','missing-support','missing-function','instance-capacity','instance-extension-missing','non-nvidia','extension-missing','feature-missing','queue-missing','extension-capacity','device-fail','unsupported','options-missing','device-proxy-missing','surface-hook-missing','surface-fail','present-fail']
+        cases=['success','extended-module-path','long-module-path','long-extended-module-path','zero-queues','init-fail','requirements-fail','missing-support','missing-function','instance-capacity','instance-extension-missing','non-nvidia','extension-missing','feature-missing','queue-missing','extension-capacity','device-fail','unsupported','options-missing','device-proxy-missing','surface-hook-missing','surface-fail','present-fail']
         for name in cases:
             with self.subTest(case=name):
                 directory=out/name;directory.mkdir();shutil.copyfile(executable,directory/'authored-loader.exe');shutil.copyfile(variants.get(name,variants['normal']),directory/'sl.interposer.dll');run(name,[str(directory/'authored-loader.exe'),name])

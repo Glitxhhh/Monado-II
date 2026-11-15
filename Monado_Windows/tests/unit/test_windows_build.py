@@ -84,6 +84,47 @@ class NativeBuildBoundary(unittest.TestCase):
         self.builder.run("run-authored-utf8", [str(exe), str(target)])
         self.assertEqual(target.read_text(encoding="utf-8"), "authored UTF8")
 
+    def test_actual_long_unicode_executable_cwd_and_nested_child(self):
+        directory = self.base
+        while len(str(directory).encode("utf-16-le")) // 2 < 310:
+            directory /= "authored Unicode 測試 space"
+        directory.mkdir(parents=True)
+        source = directory / "authored-child.c"
+        source.write_text('#include <stdio.h>\n#include <wchar.h>\nint wmain(int argc,wchar_t **argv) { if(argc!=2)return 2; FILE *f=_wfopen(argv[1],L"wb");if(!f)return 3;fputs("native Unicode grandchild",f);return fclose(f)!=0;}\n', encoding="utf-8")
+        executable = directory / "authored-child.exe"
+        resource = self.builder.output / "windows_utf8.res"
+        self.builder.run("compile-long-manifest", self.builder.cc[:-1] + ["rc", "/I", str(PORT / "tools"),
+                         "/fo", str(resource), str(PORT / "tools/windows_utf8.rc")])
+        with mock.patch.object(build, "ROOT", directory):
+            # The actual compiler receives absolute long source/output names;
+            # both its first process and its nested compiler use a short cwd.
+            self.builder.run("compile-long-native", self.builder.cc + build.FLAGS + [str(source), str(resource), "-municode", "-o", str(executable)])
+            direct = directory / "direct 測試.txt"
+            self.builder.run("run-long-native", [str(executable), str(direct)])
+            script = directory / "nested checked Python 測試.py"
+            result = directory / "nested result 測試.json"
+            nested = directory / "grandchild 測試.txt"
+            script.write_text(
+                "import importlib.util,json,os,subprocess,sys\nfrom pathlib import Path\n"
+                "spec=importlib.util.spec_from_file_location('authored_driver',sys.argv[1]);driver=importlib.util.module_from_spec(spec);spec.loader.exec_module(driver)\n"
+                "command=[sys.argv[2],sys.argv[3]];options=driver.process_options(command,Path(sys.argv[4]),cwd_independent=True)\n"
+                "subprocess.run(command,**options,check=True)\n"
+                "Path(sys.argv[5]).write_text(json.dumps({'cwd':os.getcwd(),'spawn_cwd':options['cwd'],'executable':options['executable']},ensure_ascii=False),encoding='utf-8')\n",
+                encoding="utf-8")
+            self.builder.run("run-long-nested", [sys.executable, "-B", str(script), str(PORT / "scripts/build_windows.py"),
+                              str(executable), str(nested), str(directory), str(result)])
+        self.assertEqual(direct.read_text(), "native Unicode grandchild")
+        self.assertEqual(nested.read_text(), "native Unicode grandchild")
+        evidence = json.loads(result.read_text(encoding="utf-8"))
+        self.assertLess(len(evidence["cwd"]), 260)
+        self.assertEqual(Path(evidence["cwd"]), Path(evidence["spawn_cwd"]))
+        self.assertTrue(evidence["executable"].startswith("\\\\?\\"))
+        for row in self.builder.receipt["commands"]:
+            self.assertLess(len(row["cwd"]), 260)
+        # Stateful commands may not silently move profile-relative writes.
+        with self.assertRaisesRegex(ValueError, "profile-relative"):
+            build.process_options([str(executable)], directory)
+
     def test_native_coff_exact_host_import_inventory_and_truncation(self):
         coff_spec = importlib.util.spec_from_file_location("coff_fixture", PORT / "tools/coff_symbols.py")
         coff = importlib.util.module_from_spec(coff_spec)

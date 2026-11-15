@@ -51,6 +51,21 @@ dispatch. `platform/windows_library_identity.h` uses the Windows CNG SHA256 API;
 the local hash receipt detects a changed library and is not a publisher signature.
 The static full-source development fallback remains available.
 
+Native process startup separates the executable from its command-line spelling.
+Compiler inputs, scripts and outputs use absolute paths, allowing a short native
+startup directory when Windows rejects a long `CreateProcessW` working directory.
+Game and shader startup instead receive an explicit checked profile and apply it
+inside the child before library initialization or workers. Profile files keep
+their existing location. Ordinary extended DOS/UNC module paths returned by
+Windows are normalized before the unchanged owner, ancestor, PE and single-link
+checks; device namespaces remain ineligible. Authored fixtures exercise long
+Unicode executable/profile paths and literal arguments without starting a game.
+The optional NVIDIA SDK retains a separate path limit: native Streamline 2.14.16
+tests failed inside the vendor code with an excessively long plugin directory.
+Windows checks the full module/dependency pathname against `MAX_PATH` before
+loading it and reports a shorter-installation-folder requirement. Signature
+checks remain enabled. This limit does not move an existing profile or its saves.
+
 `scripts/build_windows.py`, `tools/windows_deps.py`, the pinned tool/dependency
 locks and the native BAT/PowerShell fallbacks replace inherited unchecked shell
 commands with explicit source/object membership, checked owned child processes,

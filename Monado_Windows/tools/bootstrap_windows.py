@@ -401,7 +401,13 @@ class Backend:
             environment = {k:v for k,v in os.environ.items() if not k.upper().startswith('PYTHON')}
             environment.update(PYTHONNOUSERSITE='1',PYTHONDONTWRITEBYTECODE='1',PYTHONUNBUFFERED='1',
                                PATH=str(self.cache/'native/ucrt64/bin')+os.pathsep+environment.get('PATH',''))
-            process = subprocess.Popen([str(a) for a in argv],cwd=cwd,env=environment,
+            command = [str(a) for a in argv]
+            # Build scripts use absolute paths throughout. Shader preparation
+            # explicitly selects its profile before any cache/log transaction.
+            startup = self.driver.process_options(command,cwd,cwd_independent=phase in ('build','update-build','shaders'))
+            self.log.write((json.dumps({'native_child':{'phase':phase,'argv':command,'cwd':startup['cwd'],
+                'executable':startup.get('executable',command[0])}},ensure_ascii=False)+'\n').encode('utf-8'));self.log.flush()
+            process = subprocess.Popen(command,**startup,env=environment,
                                        stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,
                                        creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
             guard.assign(process)
@@ -470,7 +476,7 @@ class Backend:
             with owned_runtime.open_regular('build/xcde.exe',max_bytes=512*1024*1024,owner=True) as executable:identity=digest_stream(executable)
         with self.guard_module.locked_directory(profile,owner=True) as owner,owner.child('cache',create=True,owner=True) as cache:
             def request():cache.atomic_write_new('precompile_cancel-'+session+'.txt',('monado_precompile_cancel 1\nsession '+session+'\n').encode('ascii'),owner=True)
-            self.run_child([runtime/'build/xcde.exe','--precompile',profile/'targets','--session',session,'--identity',identity],
+            self.run_child([runtime/'build/xcde.exe','--profile-root',profile,'--precompile',profile/'targets','--session',session,'--identity',identity],
                            cwd=profile,phase='shaders',cancel_request=request)
             status=shader_status(cache.read_regular('precompile_work.txt',max_bytes=4096,owner=True),session,identity)
             self.progress.emit('shaders','Current-session shader caches committed; remaining unsupported variants compile during play',

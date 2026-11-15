@@ -55,6 +55,41 @@ def ordinary(path):
     return path.is_file() and not path.is_symlink() and not path.is_junction()
 
 
+def process_options(command, cwd, *, cwd_independent=False):
+    """Spell the application explicitly and avoid CreateProcess's cwd limit.
+
+    Extended executable names are supported by lpApplicationName; extended
+    lpCurrentDirectory names still fail on supported Windows hosts. Only callers
+    using absolute input/output arguments may opt into a neutral short cwd. This
+    changes no path identity, process-global cwd, or profile-relative state.
+    """
+    if os.name != "nt":
+        return {"cwd": cwd}
+    executable = Path(command[0])
+    directory = Path(cwd)
+    if not executable.is_absolute() or not directory.is_absolute():
+        raise ValueError("Native child executable and working directory must be absolute")
+    application = str(executable)
+    if not application.startswith("\\\\?\\") and len(application.encode("utf-16-le")) // 2 + 1 >= 260:
+        application = "\\\\?\\UNC\\" + application[2:] if application.startswith("\\\\") else "\\\\?\\" + application
+    # Count native UTF-16 units, including the terminating NUL. Prefixing a
+    # too-long cwd does not remove this particular CreateProcess limitation.
+    if len(str(directory).encode("utf-16-le")) // 2 + 1 >= 260:
+        if not cwd_independent:
+            raise ValueError("This profile-relative native child needs a working directory shorter than 260 characters; choose a shorter profile location")
+        if not directory.is_dir():
+            raise ValueError("Native child working directory is unavailable")
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel.GetSystemDirectoryW.argtypes = [ctypes.c_wchar_p, ctypes.c_uint]
+        kernel.GetSystemDirectoryW.restype = ctypes.c_uint
+        buffer = ctypes.create_unicode_buffer(32768)
+        length = kernel.GetSystemDirectoryW(buffer, len(buffer))
+        if not length or length >= 259:
+            raise OSError("No short native system directory is available for compiler startup")
+        directory = Path(buffer.value)
+    return {"executable": application, "cwd": str(directory)}
+
+
 def git_identity():
     # A source-only export can be nested below an unrelated checkout. Never
     # search upward and attribute that enclosing repository to this build.
@@ -268,7 +303,10 @@ class Builder:
             env = os.environ.copy()
             env["PYTHONDONTWRITEBYTECODE"] = "1"
             env["ZIG_GLOBAL_CACHE_DIR"] = str(ROOT / ".deps/zig-cache")
-            process = subprocess.Popen(record["argv"], cwd=ROOT, stdout=stdout, stderr=stderr, env=env)
+            startup = process_options(record["argv"], ROOT, cwd_independent=True)
+            record["cwd"] = startup["cwd"]
+            record["executable"] = startup.get("executable", record["argv"][0])
+            process = subprocess.Popen(record["argv"], **startup, stdout=stdout, stderr=stderr, env=env)
             self.guard.assign(process)
             try:
                 record["exit"] = process.wait(timeout=timeout)
@@ -475,7 +513,7 @@ class Builder:
         self.args.input = self.args.input.resolve()
         if self.args.input.is_relative_to(self.output) or self.output.is_relative_to(self.args.input):
             raise RuntimeError("Input and build output must not overlap")
-        self.run("check-input", [sys.executable, "-B", "tools/extract/check_dump.py", str(self.args.input)], timeout=600)
+        self.run("check-input", [sys.executable, "-B", str(ROOT / "tools/extract/check_dump.py"), str(self.args.input)], timeout=600)
         identities = {}
         for name in ("main", "sdk"):
             file = self.args.input / "exefs" / name
@@ -689,7 +727,7 @@ class Builder:
             self.validate_input()
         if stage in ("runtime", "boot", "all"):
             (self.output / "inc").mkdir()
-            self.run("smaa-source", [sys.executable, "tools/gen_smaa_inc.py", "third_party/smaa/SMAA.hlsl", str(self.output / "inc/smaa_hlsl.inc")])
+            self.run("smaa-source", [sys.executable, "-B", str(ROOT / "tools/gen_smaa_inc.py"), str(ROOT / "third_party/smaa/SMAA.hlsl"), str(self.output / "inc/smaa_hlsl.inc")])
             units = [n if n != "host/gamelib_static" or not self.args.split_game else "gamelib" for n in RUNTIME]
             sources = [ROOT / ("runtime/" + n + ".c") for n in units]
             sources += [ROOT / ("runtime/nvn/" + n + ".c") for n in NVN] + [ROOT / n for n in CPP]
@@ -705,7 +743,7 @@ class Builder:
                 identity = generator_closure()
                 if generated is None:
                     generated = self.output / "generated"
-                    self.run("generate-game", [sys.executable, "-B", "tools/gen_all.py", "--exefs", str(self.args.input / "exefs"), "--out", str(generated)], timeout=1800)
+                    self.run("generate-game", [sys.executable, "-B", str(ROOT / "tools/gen_all.py"), "--exefs", str(self.args.input / "exefs"), "--out", str(generated)], timeout=1800)
                     if generator_closure() != identity:
                         raise RuntimeError("Generator/guest-header source changed during generation; retry in a fresh build")
                     stamp = {"schema": 1, "input": self.receipt["input"]["exefs"], "generator_closure": identity,
@@ -759,7 +797,7 @@ class Builder:
                                 preparation_available=context["status"] == "available", preparation_reason=context["reason"])
             self.receipt["sources"]["tools/preparation_context_windows.py"] = digest(helper_path)
             (self.output / "inc").mkdir(exist_ok=True)
-            self.run("launcher-resources", [sys.executable, "-B", "tools/launcher/theme_resource.py", "--assets", "tools/launcher/assets", "--output", str(self.output / "inc/launcher-theme")])
+            self.run("launcher-resources", [sys.executable, "-B", str(ROOT / "tools/launcher/theme_resource.py"), "--assets", str(ROOT / "tools/launcher/assets"), "--output", str(self.output / "inc/launcher-theme")])
             self.link("xcde_launcher.exe", self.compile([ROOT / n for n in LAUNCHER]), launcher=True)
         for name, sha in self.receipt["sources"].items():
             path = ROOT / name
@@ -796,7 +834,8 @@ def checked_current(launch=False):
         images.append(game.parent / "lasgame.dll")
     dll_closure(images, game.parent, flat=True, own_images=[game])
     if launch:
-        subprocess.Popen([str(launcher)], cwd=install, close_fds=True)
+        arguments = [str(launcher), "--profile-root", str(install)]
+        subprocess.Popen(arguments, **process_options(arguments, install, cwd_independent=True), close_fds=True)
     print(str(launcher))
     return install
 

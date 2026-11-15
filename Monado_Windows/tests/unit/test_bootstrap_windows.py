@@ -355,13 +355,14 @@ class NativeContracts(unittest.TestCase):
         before=self.backend.state_guard.read_regular('checked-installations.json');commands=[]
         def child(argv,*,cwd,phase,cancel_request=None,**unused):
             commands.append(argv);self.assertEqual(phase,'shaders');self.assertEqual(Path(cwd),profile)
+            self.assertEqual(argv[1:3],['--profile-root',profile])
             session=argv[argv.index('--session')+1];identity=argv[argv.index('--identity')+1]
             self.assertEqual(identity,sha((runtime/'build/xcde.exe').read_bytes()))
             cancel_request();cancel=profile/'cache'/('precompile_cancel-'+session+'.txt')
             self.assertEqual(cancel.read_bytes(),('monado_precompile_cancel 1\nsession '+session+'\n').encode())
             (profile/'cache/precompile_work.txt').write_bytes(shader_work(session,identity))
         self.backend.run_child=child;self.backend.prepare_shaders(runtime,profile);self.backend.prepare_shaders(runtime,profile)
-        self.assertNotEqual(commands[0][4],commands[1][4])
+        self.assertNotEqual(commands[0][commands[0].index('--session')+1],commands[1][commands[1].index('--session')+1])
         self.assertEqual(self.backend.state_guard.read_regular('checked-installations.json'),before)
         def stale(argv,**unused):
             (profile/'cache/precompile_work.txt').write_bytes(shader_work('0'*32,argv[argv.index('--identity')+1]))
@@ -506,6 +507,27 @@ print('checked Python environment')
             backend.run_child([sys.executable,'-c',code],cwd=self.folder,phase='authored-environment')
         log=backend.log_path.read_text();self.assertIn('nested checked Python environment',log)
         self.assertIn('checked Python environment',log)
+
+    def test_real_build_child_uses_absolute_long_unicode_paths_and_short_spawn_cwd(self):
+        backend=self.backend_open();directory=self.folder
+        while len(str(directory).encode('utf-16-le'))//2<310:
+            directory/='authored build Unicode 測試 space'
+        directory.mkdir(parents=True)
+        executable=directory/'authored companion 測試.exe';executable.write_bytes(self.exe_bytes)
+        # Both primary long executable and actual Python grandchild use the
+        # same production options as portable build/update children.
+        backend.run_child([executable],cwd=directory,phase='build')
+        result=directory/'nested progress 測試.json'
+        script=directory/'nested builder 測試.py'
+        script.write_text("import importlib.util,json,os,subprocess,sys\nfrom pathlib import Path\n"
+            "spec=importlib.util.spec_from_file_location('authored_driver',sys.argv[1]);driver=importlib.util.module_from_spec(spec);spec.loader.exec_module(driver)\n"
+            "command=[sys.argv[2]];options=driver.process_options(command,Path(sys.argv[3]),cwd_independent=True)\n"
+            "subprocess.run(command,**options,check=True)\n"
+            "Path(sys.argv[4]).write_text(json.dumps({'cwd':os.getcwd(),'spawn_cwd':options['cwd']},ensure_ascii=False),encoding='utf-8')\n",encoding='utf-8')
+        backend.run_child([sys.executable,'-B',script,self.cache/'source/Monado_Windows/scripts/build_windows.py',executable,directory,result],
+                          cwd=directory,phase='update-build')
+        row=json.loads(result.read_text(encoding='utf-8'))
+        self.assertLess(len(row['cwd']),260);self.assertEqual(Path(row['cwd']),Path(row['spawn_cwd']))
 
     def test_busy_exact_authored_runtime_refuses_without_closing_it(self):
         root=self.folder/'busy';self.make_install(root);process=subprocess.Popen([str(root/'build/xcde.exe'),'sleep'])

@@ -37,6 +37,15 @@ class NativePreparation(unittest.TestCase):
         self.assertEqual(result['exit'],23);self.assertEqual(json.loads(log.read_bytes()),arguments);before=log.read_bytes()
         with self.assertRaises(FileExistsError):run([sys.executable,'-c','raise AssertionError()'],cwd=self.root,log=log,environment=os.environ,timeout=10)
         self.assertEqual(log.read_bytes(),before)
+    def test_long_capture_work_directory_refuses_before_child_or_log_and_preserves_selection(self):
+        directory=self.root
+        while len(str(directory).encode('utf-16-le'))//2<310:directory/='authored capture Unicode 測試'
+        directory.mkdir(parents=True);selection=directory/'authored-selection.json';selection.write_bytes(b'preserve selected models')
+        marker=directory/'MUST-NOT-EXIST';log=directory/'MUST-NOT-CREATE.log'
+        with self.assertRaisesRegex(ValueError,'shorter than 260'):
+            run([sys.executable,'-c','from pathlib import Path;import sys;Path(sys.argv[1]).write_bytes(b"wrong")',str(marker)],
+                cwd=directory,log=log,environment=os.environ,timeout=10)
+        self.assertFalse(log.exists());self.assertFalse(marker.exists());self.assertEqual(selection.read_bytes(),b'preserve selected models')
     def test_cancel_kills_only_owned_descendants_and_preserves_unrelated_process(self):
         from ctypes import wintypes as W
         kernel=C.WinDLL('kernel32',use_last_error=True);kernel.OpenProcess.argtypes=[W.DWORD,W.BOOL,W.DWORD];kernel.OpenProcess.restype=W.HANDLE

@@ -10,6 +10,11 @@ class Cancelled(RuntimeError): pass
 def run(argv, *, cwd, log, environment, timeout, checkpoint=lambda:None,output=None,max_log_bytes=64*1024*1024):
     """Assign the suspended child to a kill-on-close job before its first thread runs."""
     if os.name!='nt': raise OSError('Native Windows process supervision required')
+    # Capture children intentionally use relative shim/capture paths. Unlike
+    # compilation, moving their cwd to a short directory would change inputs
+    # and state. Refuse this optional attempt before a log or child is created.
+    if len(str(cwd).encode('utf-16-le'))//2+1>=260:
+        raise ValueError('Optional native FSR4 preparation needs a working directory shorter than 260 characters; choose a shorter installation location. Existing work and selected models are preserved')
     import msvcrt
     K=C.WinDLL('kernel32',use_last_error=True)
     class SI(C.Structure):

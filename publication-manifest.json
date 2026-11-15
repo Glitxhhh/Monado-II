@@ -2697,12 +2697,12 @@
       "sha256": "9cc3902bdc549d09d7a9728b9feac287faa392bad8e3d138e342db38cb8cb0d7"
     },
     "Monado_Windows/docs/UPSTREAM.md": {
-      "bytes": 17483,
-      "sha256": "d2364402d6d6ee39df83c919239073020ba918eb98dc86cee20e642089c9d79d"
+      "bytes": 18594,
+      "sha256": "96bb72708ec449585f5120c89db9bf006c402a301fab2b778e938ad24d06927c"
     },
     "Monado_Windows/docs/WINDOWS_BUILDER_BACKEND.md": {
-      "bytes": 9549,
-      "sha256": "6df6b9376164a020cfdab5e3fe252d86e28db744d7cb8dfb60896c5d32bfcb14"
+      "bytes": 10099,
+      "sha256": "4ab03499d087cd7d4ee8abe466caa3bc8d540f9e95eb1fc4393ad128f69f1565"
     },
     "Monado_Windows/docs/WINDOWS_CONTROLLER_RECOVERY.md": {
       "bytes": 1503,
@@ -3105,8 +3105,8 @@
       "sha256": "6ac23229f677f6b5c00d84f49718e9bfe3e9f59c369d919e10ccd7aeba204067"
     },
     "Monado_Windows/runtime/host/main_boot.c": {
-      "bytes": 12282,
-      "sha256": "f391d23d4593bf4b77c1baa0373f95b5cfda34bf00b277ab45e45cb4818022ad"
+      "bytes": 12921,
+      "sha256": "e257858025d96b6f35a19cc52c901204df9af1b7fdcbbc4d2d34214ea58e61ee"
     },
     "Monado_Windows/runtime/host/menu_stub.c": {
       "bytes": 407,
@@ -3293,8 +3293,8 @@
       "sha256": "635d61cd6b751380554c758368824ba19f0ca8ef6944898ec59e9df880d6c366"
     },
     "Monado_Windows/runtime/nvn/vulkan/dlss.cpp": {
-      "bytes": 25500,
-      "sha256": "dc0fb0db5297ee0f1caed6042b4752a98d98be6b0200baf9ed3c8f1ce7253b31"
+      "bytes": 26427,
+      "sha256": "701f3d12cac974a4209dec3f136fb51a34e08c278b81345501afa6a57fb04c81"
     },
     "Monado_Windows/runtime/nvn/vulkan/dlss.h": {
       "bytes": 1350,
@@ -3436,6 +3436,10 @@
       "bytes": 1106,
       "sha256": "5abff3e9ef63291eaff51e5dd64c869f921dab2cef7de599a9b05e34636f7ec3"
     },
+    "Monado_Windows/runtime/platform/profile_startup_windows.h": {
+      "bytes": 2930,
+      "sha256": "863d4b21dd47b2558180ff6a54ad1d294d4af7e2dcf24094724256fc0fba099d"
+    },
     "Monado_Windows/runtime/platform/sdl_controller_diagnostics.h": {
       "bytes": 2452,
       "sha256": "016c6699e695df10918081367c40fca6b98e82c06fb22f70a9c770261837f587"
@@ -3453,8 +3457,8 @@
       "sha256": "de82799505350302f3ce33739c823b3483d310dac2819ffe62bc4e882049be32"
     },
     "Monado_Windows/runtime/platform/windows.c": {
-      "bytes": 37721,
-      "sha256": "9e18169fd7126475c551b0b23ec7f8832fecd4e168fe976c006693e0af641dbe"
+      "bytes": 37801,
+      "sha256": "4cacfcd4ada53465e6b42cc111ea22f5c5759a23ff89227286e39d79ce9c48fa"
     },
     "Monado_Windows/runtime/platform/windows_cache_transaction.h": {
       "bytes": 7409,
@@ -3468,9 +3472,13 @@
       "bytes": 3659,
       "sha256": "10a5a5c4946fb6044a1bbb780fae9ed5de15fa69326a9a9b8bc2c5d6668c673e"
     },
+    "Monado_Windows/runtime/platform/windows_module_path.h": {
+      "bytes": 4426,
+      "sha256": "830c33f8513db2ad717d3dc2dc93eb034efea2e94f7b56f7eef1cac8f6030735"
+    },
     "Monado_Windows/runtime/platform/windows_optional_library.h": {
-      "bytes": 3775,
-      "sha256": "cd50ade5899e6d7db43557210e3de8324fca112deefb1b32f559f21ebbfcd064"
+      "bytes": 3912,
+      "sha256": "7b08fc06a43a70d755daa3a80c8e3ac657ae932b07d567f018cebef129a13274"
     },
     "Monado_Windows/runtime/platform/windows_save_dir.h": {
       "bytes": 1935,
@@ -3601,8 +3609,8 @@
       "sha256": "999a23b15cb55d0bb6ab4cf792601541a560b52e8e8ccf0a7c0c2763b989664c"
     },
     "Monado_Windows/scripts/build_windows.py": {
-      "bytes": 54166,
-      "sha256": "975e562f4d5e310bc9b59f8118b501a79bd0f0a2ac2baa4f80496abb05965250"
+      "bytes": 56625,
+      "sha256": "64e8912fd1a6fe897eba9c02f31e538a8a7a11a7ac5c65ca1bbb9b83fa983a87"
     },
     "Monado_Windows/scripts/ci.sh": {
       "bytes": 355,
@@ -3685,8 +3693,8 @@
       "sha256": "98673f47e61cbcb6db5f8509d8882edf84458e0a2b5bb7a364cbebca7d31c412"
     },
     "Monado_Windows/tests/native/test_boot_game_library.c": {
-      "bytes": 6808,
-      "sha256": "d78f94ab9e5afb7ea9c19e9eb568abbedbf6b41a62b6f4c256ce817e329880f2"
+      "bytes": 8420,
+      "sha256": "e699b7b593a578fb42b369e23f8cf4371c6cadb850fc8d4a4642a79222913cfc"
     },
     "Monado_Windows/tests/native/test_boot_relaunch_hooks.h": {
       "bytes": 598,
@@ -3792,6 +3800,10 @@
       "bytes": 3155,
       "sha256": "05287b6184b66842062d283fc670dca92cd473c728e59a225b0a4995f996c6cb"
     },
+    "Monado_Windows/tests/native/test_launcher_profile_spawn_windows.cpp": {
+      "bytes": 1209,
+      "sha256": "315ce101c50b31ddf0c965d14a1c15353e250ba4fecd572e7e9f29386175bac2"
+    },
     "Monado_Windows/tests/native/test_launcher_profile_windows.cpp": {
       "bytes": 4102,
       "sha256": "1c8b14a090fa66a7dc2992b62b3175297c99c7783f1e225235fff98d8e6b3fa6"
@@ -3799,6 +3811,10 @@
     "Monado_Windows/tests/native/test_launcher_windows.cpp": {
       "bytes": 1169,
       "sha256": "b053696925028528d13d77739d9e37ebc21bb33d0c54f5031fe5c218668fa01f"
+    },
+    "Monado_Windows/tests/native/test_module_path_windows.c": {
+      "bytes": 2946,
+      "sha256": "d7b3e2a60379db0790e67d3fb6165d64aa601b817455b6c8fb1def32dc5d0118"
     },
     "Monado_Windows/tests/native/test_movie_buf.c": {
       "bytes": 2024,
@@ -4105,8 +4121,8 @@
       "sha256": "7eb7b8e736ffada0349bd6e9950dfe95e9cea2465cffeea638c4a4eafca8ea63"
     },
     "Monado_Windows/tests/run_windows_dlss_sdk.py": {
-      "bytes": 8297,
-      "sha256": "dfb78b6b6a7bd807c0382a0f6947faac471dc2ce36bd9e795ebd90284c507c7c"
+      "bytes": 9988,
+      "sha256": "536948200d145fa9fe8010fdb45244c795aef8e139159e5df6b3223b424803e2"
     },
     "Monado_Windows/tests/run_windows_fma.py": {
       "bytes": 5593,
@@ -4173,8 +4189,8 @@
       "sha256": "7ee56354b71646d603e38af89474d95f60b053095a81508fa959579738935f16"
     },
     "Monado_Windows/tests/unit/test_bootstrap_windows.py": {
-      "bytes": 53016,
-      "sha256": "e6c88c9d9f7092e146cb27e7cd81b28bbdd41794c57dbb6da799af81e20e89cd"
+      "bytes": 54849,
+      "sha256": "f2da12c73c6b4ca7a05a30b105755c94a8de71c93e902b522bc14319232c3cfa"
     },
     "Monado_Windows/tests/unit/test_check_dump.py": {
       "bytes": 5329,
@@ -4213,20 +4229,20 @@
       "sha256": "948b0b49984fabe2512e0a325f25cca967629e7a337f81ef85ddf141b2c2536d"
     },
     "Monado_Windows/tests/unit/test_windows_build.py": {
-      "bytes": 10973,
-      "sha256": "f3eb244617307d29f46d8997b1946c2f457b060abdbee0e669d8a15b218ace71"
+      "bytes": 14169,
+      "sha256": "07aeb89877f87d9bb6f6cda45ba47a0686dc0da2ebef30032f34e008bd703915"
     },
     "Monado_Windows/tests/unit/test_windows_builder.py": {
-      "bytes": 33159,
-      "sha256": "39ae48bfad303f02daa3a43c5418e43bc78f77426119fe752b9bb6d3e3dd903b"
+      "bytes": 36307,
+      "sha256": "f0c091603d311511b988b90b166d76677513ba05d5d3e3b900be4382e715b806"
     },
     "Monado_Windows/tests/unit/test_windows_dlss_download.py": {
       "bytes": 5565,
       "sha256": "9898d804769d75ce71cfd88cde6fe135dca2a55474e8efeec284b8075e8d34fb"
     },
     "Monado_Windows/tests/unit/test_windows_dlss_loader.py": {
-      "bytes": 12551,
-      "sha256": "a48ef164c51df64c1b4223956a1a5652eaa6408eec7c9e0977ba1a946e9c637d"
+      "bytes": 14134,
+      "sha256": "593120c0d57a08506793199ed9445d244b37336eca3827dbcfd04909502e177c"
     },
     "Monado_Windows/tests/unit/test_windows_game_library_reuse.py": {
       "bytes": 8703,
@@ -4749,8 +4765,8 @@
       "sha256": "aa6f46306ded983208d7cfb2cf3fec4fb78dde7d88d5d441cb35369876e0c668"
     },
     "Monado_Windows/tools/bootstrap_windows.py": {
-      "bytes": 80976,
-      "sha256": "8d62aad36df56338d8ab8dbdaf81c202262d7482ae265981764aaef0e821f767"
+      "bytes": 81548,
+      "sha256": "dcf0b1e156fdc74cfce04807c1d6a51eb58575e9f7236a208f22158b014fa8c1"
     },
     "Monado_Windows/tools/boss_tour_gen.py": {
       "bytes": 2008,
@@ -4769,12 +4785,12 @@
       "sha256": "e87545b4ce6c83855bed1a357785ea0d8be12a0b1bad0b649e092b46fef7670c"
     },
     "Monado_Windows/tools/builder/payload_windows.h": {
-      "bytes": 22937,
-      "sha256": "41a328365e8399282c9245ffcc048d652ce027f0f986c963f98106e4a2b4d31e"
+      "bytes": 23638,
+      "sha256": "7aab21f8aa6e23f9f88bb95a3d63cda1669313559c8e9a4929c48cbac95d3a05"
     },
     "Monado_Windows/tools/builder/windows_builder.cpp": {
-      "bytes": 39835,
-      "sha256": "681cc5fee56f5536efd591e44cb76d9e5bb2b2730f50ca1a7096b7e7cc962282"
+      "bytes": 40341,
+      "sha256": "7c2573a4cc52da2e7377f822f03299adf5e72d1d84166fd8b89dfe02cfc2f612"
     },
     "Monado_Windows/tools/builder/windows_provider_ui.h": {
       "bytes": 7435,
@@ -4821,8 +4837,8 @@
       "sha256": "35ab9505aac7dea38d0fbe03f65cbbc9e8b53424d81778c216d80e8df6b9b137"
     },
     "Monado_Windows/tools/fsr4_process_windows.py": {
-      "bytes": 6518,
-      "sha256": "8031921cc3184a9b9454e9ed19e689ddf4753400295e8a1a3944df66dab3c892"
+      "bytes": 7008,
+      "sha256": "f971c64feac4f36927ecca1baa52ad93fe275895fe3f1e6870591be627396fee"
     },
     "Monado_Windows/tools/game_library_reuse_windows.py": {
       "bytes": 7544,
@@ -4897,8 +4913,8 @@
       "sha256": "1406010c827888b4f61422a33a7f92cdc44b98898924dae7f466bbbf46db706d"
     },
     "Monado_Windows/tools/launcher/windows_host.h": {
-      "bytes": 5893,
-      "sha256": "338c8b907d1aea8cb9949a23481b8796eb9a7ce7047883e07483016bb39c3f76"
+      "bytes": 6614,
+      "sha256": "6cc75d9e3c3f780e29a3aaf33e702f25ee7709ebdf0a443f11df56dac1afd93a"
     },
     "Monado_Windows/tools/launcher/windows_json.h": {
       "bytes": 4311,
@@ -4909,8 +4925,8 @@
       "sha256": "f4b02d3b0e655f9aee1cca5cac3b52df5c74cda40c1b9be10d22933ee416986e"
     },
     "Monado_Windows/tools/launcher/windows_preparation.h": {
-      "bytes": 17784,
-      "sha256": "b668f977beededc19e9ae8fe5ea3860bc068739736f0589583b874a468eb7548"
+      "bytes": 17992,
+      "sha256": "9c3e3ba870df659e6c38180f4e843228523058e1e7cf0193b0db34d929811eaf"
     },
     "Monado_Windows/tools/launcher/windows_profile.h": {
       "bytes": 5604,
@@ -5889,12 +5905,12 @@
       "sha256": "3bbaca86414dcbb821b1a0c78974854fdb89cf2deaa8ac601f72a2abd53e7987"
     },
     "tests/test_windows_fsr4_preparation.py": {
-      "bytes": 8641,
-      "sha256": "1322fdf246ebe4bb29e493c652467ac9126a3ad15a5504cb44c625caeca802c4"
+      "bytes": 9500,
+      "sha256": "7b29e46c4831bc4966f08726c4669ca2385daa8cecf9467311b5efea4711dbe4"
     },
     "tests/test_windows_game_library.py": {
-      "bytes": 12387,
-      "sha256": "341578dcd476a1eddbd47f5c5eebbc45bee0c19b7bb96cb0116ad699a619848b"
+      "bytes": 16227,
+      "sha256": "13afe81ef48a55a8e760481187e8d9f4f68e7858c1f0ef272111b9a97015f40f"
     },
     "tests/test_windows_gpu_selection.py": {
       "bytes": 2844,
@@ -5908,9 +5924,13 @@
       "bytes": 8933,
       "sha256": "76ddeca40177339f2869477b7d0a1c2d43637d020557d60f51a200019ae749c8"
     },
+    "tests/test_windows_module_paths.py": {
+      "bytes": 3347,
+      "sha256": "e6ed34cb159742e8cd864d2b712f502071c5d5ab37226330ebf86b8e11e0fdaa"
+    },
     "tests/test_windows_optional_library.py": {
-      "bytes": 4063,
-      "sha256": "908d7047b104d928a3b1a9609476a29cab8058f8f5f10b720f57902ea959cd7f"
+      "bytes": 5487,
+      "sha256": "05d8d3240f99a1812c2070641a2ed23f0904c8ea20394de81a73c14d3bb1a95d"
     },
     "tests/test_windows_renderer.py": {
       "bytes": 10895,

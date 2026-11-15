@@ -13,6 +13,7 @@
 #include "../hle.h"
 #include "../kernel.h"
 #include "../rt.h"
+#include "../platform/profile_startup_windows.h"
 #ifdef XCDE_GFX
 #include "../nvn/vulkan/precompile_status.h"
 #include "../platform/window_launch_hint_windows.h"
@@ -126,20 +127,37 @@ static DWORD WINAPI watchdog_main(LPVOID p) {
 int main(int argc, char **argv) {
     if (argc >= 6 && !strcmp(argv[1], "--minidump")) return diag_minidump_helper(argc, argv);  // [XCDE] T028: crash helper process
     int argument=1;
+    const char *profile=NULL;
 #ifdef XCDE_GFX
     const char *fsr4_assets=NULL,*fsr4_component=NULL;
-    while(argument<argc && (!strcmp(argv[argument],"--fsr4-assets") || !strcmp(argv[argument],"--fsr4-component") || !strcmp(argv[argument],"--launch-monitor"))) {
+#endif
+    while(argument<argc) {
+        if(!strcmp(argv[argument],"--profile-root")) {
+            if(profile||argument+1>=argc||!*argv[argument+1]){fprintf(stderr,"--profile-root requires one absolute existing profile\n");return 2;}
+            profile=argv[argument+1];argument+=2;continue;
+        }
+#ifdef XCDE_GFX
         if(!strcmp(argv[argument],"--launch-monitor")){
             if(*g_window_launch_monitor||argument+1>=argc||!window_launch_monitor_valid(argv[argument+1])){
                 fprintf(stderr,"--launch-monitor requires one native display device identity\n");return 2;
             }
             memcpy(g_window_launch_monitor,argv[argument+1],strlen(argv[argument+1])+1);argument+=2;continue;
         }
+        if(strcmp(argv[argument],"--fsr4-assets")&&strcmp(argv[argument],"--fsr4-component"))break;
         const char **slot=!strcmp(argv[argument],"--fsr4-assets")?&fsr4_assets:&fsr4_component;
         if(*slot || argument+1>=argc || !*argv[argument+1]) {fprintf(stderr,"FSR4 options require one explicit path each\n");return 2;}
         *slot=argv[argument+1];argument+=2;
+#else
+        break;
+#endif
     }
+#ifdef XCDE_GFX
     if((fsr4_assets!=NULL)!=(fsr4_component!=NULL)){fprintf(stderr,"FSR4 requires both --fsr4-assets and --fsr4-component\n");return 2;}
+#endif
+    if(profile&&!startup_profile_apply(profile)) {
+        fprintf(stderr,"--profile-root must be an accessible ordinary absolute directory owned by the current user (Windows error %lu)\n",(unsigned long)GetLastError());return 2;
+    }
+#ifdef XCDE_GFX
     if(fsr4_assets) {
         extern bool tmp_fsr4_configure(const char*,const char*);
         extern const char *tmp_fsr4_status(void);

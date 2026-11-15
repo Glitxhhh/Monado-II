@@ -39,6 +39,9 @@ class NativePortableBuilder(unittest.TestCase):
         cancel_source.write_text(r'''
 #include "../launcher/windows_preparation.h"
 #include "../launcher/windows_precompile.h"
+#define wWinMain authored_builder_fixture_entry
+#include "windows_builder.cpp"
+#undef wWinMain
 #include <cstdio>
 using namespace monado_builder;
 static void cancel_after_member(uint32_t, uint32_t) {
@@ -46,6 +49,9 @@ static void cancel_after_member(uint32_t, uint32_t) {
 }
 int wmain(int argc, wchar_t **argv) {
     try {
+        if (argc == 4 && !wcscmp(argv[1], L"--start-settings-child")) {
+            start_settings(argv[2],{L"--profile-root",argv[3]});return 0;
+        }
         if (argc == 4 && !wcscmp(argv[1], L"--materialize-created-appdata")) {
             std::vector<wchar_t> env(32768);DWORD n=GetEnvironmentVariableW(L"LOCALAPPDATA",env.data(),(DWORD)env.size());require(n&&n<env.size(),"authored LocalAppData unavailable");
             auto root=builder_cache_root(std::wstring(env.data(),n));std::wstring leaf=argv[3];require(leaf.rfind(L"authored-msix-cache-",0)==0&&leaf.find_first_of(L"\\/:")==std::wstring::npos,"authored cache leaf");root+=L"\\"+leaf;directory(root);
@@ -116,6 +122,7 @@ int wmain(int argc, wchar_t **argv) {
                 Sleep(20);
             }
             auto result=worker.snapshot();
+            if(result.status!="error"||result.message!="authored worker diagnostic")fprintf(stderr,"Authored worker result: status=%s message=%s log=%s\n",result.status.c_str(),result.message.c_str(),result.log.c_str());
             if(result.busy)return 20;
             if(!wcscmp(argv[5],L"cancel-fixture"))return result.status=="cancelled"?0:21;
             return result.status=="error"&&result.message=="authored worker diagnostic"&&!result.log.empty()?0:22;
@@ -160,7 +167,7 @@ int wmain(int argc, wchar_t **argv) {
         result = subprocess.run(
             [sys.executable, "-m", "ziglang", "c++", "-std=c++17", "-O1",
              str(cancel_source), "-I", str(PORT / "tools/builder"),
-             "-o", str(cls.cancel_exe), "-lbcrypt", "-ladvapi32", "-lcabinet", "-lole32", "-lshell32", "-luuid", "-municode"],
+             "-o", str(cls.cancel_exe), "-lbcrypt", "-ladvapi32", "-lcabinet", "-lole32", "-lshell32", "-luuid", "-lcomctl32", "-lgdi32", "-luser32", "-municode"],
             env=env, capture_output=True, timeout=300)
         if result.returncode:
             raise RuntimeError(result.stderr.decode("utf-8", "replace"))
@@ -275,9 +282,12 @@ int wmain(int argc, wchar_t **argv) {
         (self.cache / sha / "python/authored.txt").write_bytes(b"authored post-lease change")
         self.assertNotEqual(self.check(target), 0)
 
-    def preparation_context(self, *, interpreter=False):
+    def preparation_context(self, *, interpreter=False, long_paths=False):
         root = self.root / "preparation-runtime"
-        root.mkdir()
+        if long_paths:
+            while len(str(root).encode("utf-16-le")) // 2 < 310:
+                root /= "authored runtime Unicode 測試 space"
+        root.mkdir(parents=True)
         profile = self.root / "preparation-profile"
         profile.mkdir()
         files = {}
@@ -329,6 +339,42 @@ int wmain(int argc, wchar_t **argv) {
     def test_actual_native_preparation_worker_cancels_owned_child(self):
         root, profile, identity, _ = self.preparation_context(interpreter=True)
         self.assertEqual(subprocess.run([str(self.cancel_exe), "--run-preparation-worker", str(root), str(profile), identity, "cancel-fixture"], timeout=30).returncode, 0)
+
+    def test_actual_native_long_unicode_preparation_worker_uses_checked_context(self):
+        root, profile, identity, _ = self.preparation_context(interpreter=True,long_paths=True)
+        self.assertGreater(len(str(root / "python/python.exe")),310)
+        self.assertEqual(subprocess.run([str(self.cancel_exe), "--run-preparation-worker", str(root), str(profile), identity, "error-fixture"], timeout=30).returncode, 0)
+
+    def test_actual_native_checked_settings_spawn_from_long_runtime(self):
+        import time
+        runtime=self.root/'settings-runtime'
+        while len(str(runtime).encode('utf-16-le'))//2<310:
+            runtime/='authored runtime Unicode 測試 space'
+        runtime.mkdir(parents=True);profile=self.root/'checked profile Unicode 測試';profile.mkdir()
+        source=self.root/'authored-settings-child.c';child=runtime/'authored-settings-child.exe'
+        source.write_text(r'''#include <windows.h>
+#include <stdio.h>
+#include <wchar.h>
+int wmain(int argc,wchar_t **argv){
+    if(argc!=3||wcscmp(argv[1],L"--profile-root"))return 2;
+    wchar_t cwd[32768],name[32768];DWORD n=GetCurrentDirectoryW(32768,cwd);if(!n||n>=260)return 3;
+    _snwprintf(name,32768,L"%ls\\authored-settings-observed.txt",argv[2]);FILE *f=_wfopen(name,L"wb");if(!f)return 4;
+    fwrite(argv[2],sizeof(wchar_t),wcslen(argv[2]),f);wchar_t newline=L'\n';fwrite(&newline,sizeof(wchar_t),1,f);fwrite(cwd,sizeof(wchar_t),wcslen(cwd),f);return fclose(f)!=0;
+}
+''',encoding='utf-8')
+        environment=dict(os.environ,ZIG_GLOBAL_CACHE_DIR=str(PORT/'.deps/zig-global-cache'))
+        result=subprocess.run([sys.executable,'-B','-m','ziglang','cc',str(source),'-municode','-o',str(child)],
+                              env=environment,capture_output=True,timeout=120)
+        self.assertEqual(result.returncode,0,result.stdout+result.stderr)
+        self.assertEqual(subprocess.run([str(self.cancel_exe),'--start-settings-child',str(child),str(profile)],timeout=30).returncode,0)
+        marker=profile/'authored-settings-observed.txt';deadline=time.monotonic()+10;observed=[]
+        while time.monotonic()<deadline:
+            try:observed=marker.read_text(encoding='utf-16-le').splitlines()
+            except (FileNotFoundError,PermissionError):pass
+            if len(observed)==2:break
+            time.sleep(.02)
+        self.assertEqual(observed[0],str(profile));self.assertEqual(len(observed),2)
+        self.assertLess(len(observed[1]),260)
 
     def test_actual_native_preparation_completion_before_first_ui_poll(self):
         self.assertEqual(subprocess.run([str(self.cancel_exe), "--check-fast-preparation-completion"], timeout=30).returncode, 0)

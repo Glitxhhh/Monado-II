@@ -51,6 +51,15 @@ inline std::wstring native(const std::wstring &p){
     if(p.rfind(L"\\\\",0)==0)return L"\\\\?\\UNC\\"+p.substr(2);
     require(p.size()>=3&&p[1]==L':'&&p[2]==L'\\',"Absolute cache path required");return L"\\\\?\\"+p;
 }
+// These startup adapters are only for children whose state/input/output roots
+// are explicit absolute arguments. CreateProcess accepts extended application
+// names, but rejects even extended lpCurrentDirectory names beyond MAX_PATH.
+inline std::wstring process_application(const std::wstring &path){return path.size()+1>=MAX_PATH?native(path):path;}
+inline std::wstring absolute_child_directory(const std::wstring &path){
+    if(path.size()+1<MAX_PATH)return path;
+    std::vector<wchar_t> value(32768);UINT n=GetSystemDirectoryW(value.data(),(UINT)value.size());
+    require(n&&n+1<MAX_PATH,"No short system directory is available for native child startup");return std::wstring(value.data(),n);
+}
 inline bool ordinary(const std::wstring &p,bool directory=false){
     DWORD a=GetFileAttributesW(native(p).c_str());if(a==INVALID_FILE_ATTRIBUTES||(a&FILE_ATTRIBUTE_REPARSE_POINT)||bool(a&FILE_ATTRIBUTE_DIRECTORY)!=directory)return false;
     if(directory)return true;Handle f(CreateFileW(native(p).c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));BY_HANDLE_FILE_INFORMATION info{};

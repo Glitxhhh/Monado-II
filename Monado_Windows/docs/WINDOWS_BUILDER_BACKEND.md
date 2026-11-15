@@ -95,6 +95,14 @@ inside its own kill-on-close job. Real bounded stage events stream to the GUI.
 Cancellation/failure leaves the prior selection and all human state intact;
 retry uses a new `fsr4-preparations/prepare-TIMESTAMP-RANDOM` output.
 
+The optional capture/tool process currently requires its working directory to be
+shorter than 260 UTF-16 characters, including the terminating NUL. A longer
+attempt is refused before its child or log is created; existing work and selected
+models remain intact. The recorder uses relative shim/capture files, so its work
+is never silently relocated. This optional limit does not apply to native game
+build/update, settings or shader preparation: those pass explicit absolute state
+roots and use a short native process-start directory when necessary.
+
 Only the installed all-resource/component verifier can authorize activation.
 The single durable `PROFILE/fsr4-preparation.json` changes atomically after final
 validation, cancellation and game-session checks. Model files and settings are

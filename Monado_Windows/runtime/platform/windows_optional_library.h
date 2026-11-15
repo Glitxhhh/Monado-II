@@ -4,6 +4,7 @@
 #pragma once
 #ifdef _WIN32
 #include "windows_save_io.h"
+#include "windows_module_path.h"
 #include <aclapi.h>
 
 static bool monado_optional_owned(HANDLE file) {
@@ -31,9 +32,8 @@ static bool monado_optional_pe(HANDLE file) {
     return machine==0x8664&&optional>=2&&(flags&0x2000)&&magic==0x20b;
 }
 static HMODULE monado_optional_library_load(const wchar_t *path,char *reason,size_t capacity) {
-    char utf8[WS_PATH*3];WsGuard guard;
-    bool absolute=path&&((wcslen(path)>=3&&path[1]==L':'&&(path[2]==L'\\'||path[2]==L'/'))||(path[0]==L'\\'&&path[1]==L'\\'));
-    if(!absolute||!WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,path,-1,utf8,sizeof utf8,NULL,NULL)) {
+    char utf8[WS_PATH*3];wchar_t normal[WS_PATH];WsGuard guard;
+    if(!monado_windows_module_path(normal,WS_PATH,path)||!WideCharToMultiByte(CP_UTF8,WC_ERR_INVALID_CHARS,normal,-1,utf8,sizeof utf8,NULL,NULL)) {
         snprintf(reason,capacity,"optional SDK DLL requires an explicit absolute Unicode path");return NULL;
     }
     if(ws_guard_open(&guard,utf8)) {snprintf(reason,capacity,"optional SDK DLL ancestors are inaccessible or contain a reparse point");return NULL;}
@@ -46,7 +46,11 @@ static HMODULE monado_optional_library_load(const wchar_t *path,char *reason,siz
     if(!valid) {
         CloseHandle(file);ws_guard_close(&guard);snprintf(reason,capacity,"optional SDK DLL must be an ordinary single-link current-user-owned AMD64 PE DLL");return NULL;
     }
-    HMODULE module=LoadLibraryExW(guard.path,NULL,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32);
+    wchar_t mapping[WS_PATH+8];
+    HMODULE module=NULL;
+    if(monado_windows_module_mapping_path(mapping,WS_PATH+8,guard.path))
+        module=LoadLibraryExW(mapping,NULL,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_SYSTEM32);
+    else SetLastError(ERROR_INVALID_NAME);
     DWORD error=GetLastError();CloseHandle(file);ws_guard_close(&guard);
     if(!module){snprintf(reason,capacity,"checked optional SDK DLL could not load (Windows %lu); local SDK siblings/system dependencies required",error);return NULL;}
     snprintf(reason,capacity,"checked local optional SDK DLL mapped");return module;
