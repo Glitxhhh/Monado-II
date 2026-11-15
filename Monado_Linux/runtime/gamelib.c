@@ -8,6 +8,9 @@
 #include <windows.h>
 #else
 #include <dlfcn.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+#include <unistd.h>
 #endif
 
 #include "paths.h"
@@ -20,29 +23,54 @@ static char g_error[256];
 static bool id_matches(const char *lib) {
     char path[1100], id[128] = {0};
     snprintf(path, sizeof path, "%s.id", lib);
+#ifdef __linux__
+    int fd = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+    if (fd < 0) return false;
+    struct stat st;
+    bool valid = !fstat(fd, &st) && S_ISREG(st.st_mode) && st.st_nlink == 1 && st.st_uid == getuid() &&
+        (st.st_size == 64 || st.st_size == 65);
+    ssize_t n = valid ? read(fd, id, sizeof id - 1) : -1;
+    close(fd);
+    if (!valid || n != st.st_size || (n == 65 && id[64] != '\n')) return false;
+    for (int i = 0; i < 64; i++) if (!((id[i] >= '0' && id[i] <= '9') || (id[i] >= 'a' && id[i] <= 'f'))) return false;
+    id[64] = 0;
+    return !strcmp(id, GAMELIB_ID);
+#else
     FILE *f = fopen(path, "rb");
     if (!f) return false;
     size_t n = fread(id, 1, sizeof id - 1, f);
     fclose(f);
     while (n && (id[n - 1] == '\n' || id[n - 1] == '\r')) id[--n] = 0;
     return !strcmp(id, GAMELIB_ID);
+#endif
 }
 
 static bool exists(const char *p) {
+#ifdef __linux__
+    struct stat st;
+    return !lstat(p, &st) && S_ISREG(st.st_mode) && st.st_nlink == 1;
+#else
     FILE *f = fopen(p, "rb");
     if (f) fclose(f);
     return f != NULL;
+#endif
 }
 
 // The places to look, in order (gamelib.h). Returns how many were filled.
 static int candidates(const char *game_dir, char out[3][1100]) {
     int n = 0;
+#ifndef __linux__
     const char *env = getenv("LARECOMP_GAME_LIB");
     if (env && *env) snprintf(out[n++], 1100, "%s", env);
+#endif
     char exe_side[1024];
     if (rt_resource(GAMELIB_NAME, NULL, exe_side, sizeof exe_side) && exists(exe_side))
         snprintf(out[n++], 1100, "%s", exe_side);
+#ifndef __linux__
     if (game_dir) snprintf(out[n++], 1100, "%s/%s", game_dir, GAMELIB_NAME);
+#else
+    (void)game_dir; // Linux selects only the receipted companion beside this runtime.
+#endif
     return n;
 }
 
@@ -81,10 +109,13 @@ bool gamelib_load(const char *game_dir, char *why, size_t why_size) {
         snprintf(g_error, sizeof g_error, "the game code hasn't been built: set up the game files on the start screen");
         char c[3][1100];
         int n = candidates(game_dir, c);
-        const char *env = getenv("LARECOMP_GAME_LIB");
         for (int i = 0; i < n && !g_tables; i++) {
             if (!exists(c[i])) continue;
-            bool given = i == 0 && env && *env;  // LARECOMP_GAME_LIB: loaded as given, the library's own id decides
+            bool given = false;
+#ifndef __linux__
+            const char *env = getenv("LARECOMP_GAME_LIB");
+            given = i == 0 && env && *env;
+#endif
             if (!given && !id_matches(c[i])) {
                 snprintf(g_error, sizeof g_error, "%s was built for another version", c[i]);
                 continue;

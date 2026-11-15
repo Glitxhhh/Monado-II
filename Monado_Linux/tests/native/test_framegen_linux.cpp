@@ -71,7 +71,8 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_message(VkDebugUtilsMessageSeverityF
     return VK_FALSE;
 }
 static VkDebugUtilsMessengerEXT debug_messenger;
-static void create_device(bool headless_probe) {
+static bool renderer_feedback_feature,renderer_feedback_local;
+static void create_device(bool headless_probe,bool feedback_fixture=false) {
     uint32_t count{}; VK_OK(vkEnumerateInstanceExtensionProperties(nullptr, &count, nullptr));
     std::vector<VkExtensionProperties> iexts(count); VK_OK(vkEnumerateInstanceExtensionProperties(nullptr, &count, iexts.data()));
     auto has = [&](const char *name) { return std::any_of(iexts.begin(), iexts.end(), [&](const auto &e) { return !strcmp(e.extensionName, name); }); };
@@ -114,6 +115,25 @@ static void create_device(bool headless_probe) {
     VkPhysicalDeviceVulkan11Features f11{}; f11.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES; f11.pNext = &f12;
     VkPhysicalDeviceFeatures2 available{}; available.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2; available.pNext = &f11;
     vkGetPhysicalDeviceFeatures2(physical, &available);
+    VkPhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT feedback_features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ATTACHMENT_FEEDBACK_LOOP_LAYOUT_FEATURES_EXT};
+    VkPhysicalDeviceDynamicRenderingLocalReadFeaturesKHR feedback_local_features{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_LOCAL_READ_FEATURES_KHR};
+    std::vector<const char *> extra_extensions;
+    if(feedback_fixture){
+        uint32_t n=0;VK_OK(vkEnumerateDeviceExtensionProperties(physical,nullptr,&n,nullptr));std::vector<VkExtensionProperties> extensions(n);VK_OK(vkEnumerateDeviceExtensionProperties(physical,nullptr,&n,extensions.data()));
+        auto extension=[&](const char *name){return std::any_of(extensions.begin(),extensions.end(),[&](const auto&e){return !strcmp(e.extensionName,name);});};
+        if(extension(VK_EXT_ATTACHMENT_FEEDBACK_LOOP_LAYOUT_EXTENSION_NAME)){
+            VkPhysicalDeviceFeatures2 query{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};query.pNext=&feedback_features;vkGetPhysicalDeviceFeatures2(physical,&query);
+            renderer_feedback_feature=feedback_features.attachmentFeedbackLoopLayout;
+            if(renderer_feedback_feature)extra_extensions.push_back(VK_EXT_ATTACHMENT_FEEDBACK_LOOP_LAYOUT_EXTENSION_NAME);
+        }
+        if(renderer_feedback_feature && extension(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME)){
+            VkPhysicalDeviceFeatures2 query{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};query.pNext=&feedback_local_features;vkGetPhysicalDeviceFeatures2(physical,&query);
+            renderer_feedback_local=feedback_local_features.dynamicRenderingLocalRead;
+            if(renderer_feedback_local)extra_extensions.push_back(VK_KHR_DYNAMIC_RENDERING_LOCAL_READ_EXTENSION_NAME);
+        }
+        printf("RENDERER_FEEDBACK feature=%u local_read=%u dynamic_rendering=%u\n",renderer_feedback_feature,renderer_feedback_local,f13.dynamicRendering);
+    }
+
     printf("CAPABILITIES {\"gpu\":\"%s\",\"vendor\":%u,\"device\":%u,\"driver\":%u,\"api\":%u,\"headless_surface_advertised\":%s,\"validation_layer\":%s,\"buffer_device_address\":%s,\"float16\":%s,\"int16\":%s,\"subgroup_size_control\":%s}\n",
         selected.deviceName, selected.vendorID, selected.deviceID, selected.driverVersion, selected.apiVersion,
         headless ? "true" : "false", validation ? "true" : "false", f12.bufferDeviceAddress ? "true" : "false",
@@ -161,6 +181,13 @@ static void create_device(bool headless_probe) {
     VkDeviceQueueCreateInfo qi{}; qi.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO; qi.queueFamilyIndex = queue_family; qi.queueCount = 1; qi.pQueuePriorities = &priority;
     VkDeviceCreateInfo dc{}; dc.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO; dc.pNext = &enable11;
     dc.queueCreateInfoCount = 1; dc.pQueueCreateInfos = &qi; dc.pEnabledFeatures = &features;
+    if(feedback_fixture){
+        enable13.dynamicRendering=f13.dynamicRendering;
+        if(renderer_feedback_feature){feedback_features.pNext=enable13.pNext;enable13.pNext=&feedback_features;}
+        if(renderer_feedback_local){feedback_local_features.pNext=enable13.pNext;enable13.pNext=&feedback_local_features;}
+        dc.enabledExtensionCount=(uint32_t)extra_extensions.size();dc.ppEnabledExtensionNames=extra_extensions.data();
+    }
+
     VK_OK(vkCreateDevice(physical, &dc, nullptr, &device)); vkGetDeviceQueue(device, queue_family, 0, &queue);
     printf("PROCS {\"buffer_requirements_khr\":%s,\"buffer_requirements_core\":%s,\"image_requirements_khr\":%s,\"image_requirements_core\":%s}\n",
         vkGetDeviceProcAddr(device,"vkGetBufferMemoryRequirements2KHR")?"true":"false",vkGetDeviceProcAddr(device,"vkGetBufferMemoryRequirements2")?"true":"false",
@@ -206,17 +233,17 @@ struct Buffer {
     }
 };
 struct Image {
-    VkImage image{}; VkImageView view{}; VkDeviceMemory memory{}; VkFormat format; uint32_t width, height; bool initialized{};
-    Image(VkFormat f, uint32_t w, uint32_t h) : format(f), width(w), height(h) {
+    VkImage image{}; VkImageView view{}; VkDeviceMemory memory{}; VkFormat format; uint32_t width, height,levels; bool initialized{};
+    Image(VkFormat f, uint32_t w, uint32_t h, VkImageUsageFlags extra_usage=0,uint32_t mip_levels=1) : format(f), width(w), height(h),levels(mip_levels) {
         VkFormatProperties p{}; vkGetPhysicalDeviceFormatProperties(physical, format, &p);
         CHECK((p.optimalTilingFeatures & (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)) == (VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT));
         VkImageCreateInfo ci{}; ci.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO; ci.imageType = VK_IMAGE_TYPE_2D; ci.format = format;
-        ci.extent = {w, h, 1}; ci.mipLevels = ci.arrayLayers = 1; ci.samples = VK_SAMPLE_COUNT_1_BIT; ci.tiling = VK_IMAGE_TILING_OPTIMAL;
-        ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+        ci.extent = {w, h, 1}; ci.mipLevels = levels;ci.arrayLayers = 1; ci.samples = VK_SAMPLE_COUNT_1_BIT; ci.tiling = VK_IMAGE_TILING_OPTIMAL;
+        ci.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | extra_usage;
         VK_OK(vkCreateImage(device, &ci, nullptr, &image)); VkMemoryRequirements requirements{}; vkGetImageMemoryRequirements(device, image, &requirements);
         VkMemoryAllocateInfo ai{}; ai.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO; ai.allocationSize = requirements.size; ai.memoryTypeIndex = memory_type(requirements.memoryTypeBits, 0, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
         VK_OK(vkAllocateMemory(device, &ai, nullptr, &memory)); VK_OK(vkBindImageMemory(device, image, memory, 0));
-        VkImageViewCreateInfo vi{}; vi.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO; vi.image = image; vi.viewType = VK_IMAGE_VIEW_TYPE_2D; vi.format = format; vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        VkImageViewCreateInfo vi{}; vi.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO; vi.image = image; vi.viewType = VK_IMAGE_VIEW_TYPE_2D; vi.format = format; vi.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, levels, 0, 1};
         VK_OK(vkCreateImageView(device, &vi, nullptr, &view));
     }
     Image(const Image &) = delete;
@@ -226,7 +253,7 @@ struct Image {
         b.oldLayout = initialized ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_UNDEFINED; b.newLayout = VK_IMAGE_LAYOUT_GENERAL;
         b.srcAccessMask = initialized ? VK_ACCESS_TRANSFER_WRITE_BIT | VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT : 0;
         b.dstAccessMask = destination; b.srcQueueFamilyIndex = b.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED; b.image = image;
-        b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+        b.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, levels, 0, 1};
         vkCmdPipelineBarrier(command, initialized ? VK_PIPELINE_STAGE_ALL_COMMANDS_BIT : VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
             VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &b); initialized = true;
     }

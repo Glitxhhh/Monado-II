@@ -3,7 +3,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools", "lifter"))
-from patchfmt import FunctionEntries, Patch  # noqa: E402,F401
+from patchfmt import FunctionEntries, Patch, PatchMismatch  # noqa: E402,F401
 
 
 # [XCDE] LINUX-041: the native bounded item-kind switch crosses generator
@@ -796,3 +796,276 @@ def _cheats_fall(gen, addr):
 
 PATCHES[0x7000446864] = Patch(0xb9400815, _cheats_fall, 'LINUX-072',
                             'optional ordinary PC fall immunity before nonlethal/lethal split; forced events remain native')
+
+
+# [XCDE] LINUX-089: perspective-camera and CPU-frustum aspect adapters. These
+# checked scalar loads/stores preserve the native camera, projection construction,
+# frustum tests, scripted FOV and near/far planes. They never patch a shared float
+# literal or mutate persistent camera parameters (which would accumulate on each
+# update). The runtime defaults to exact identity and qualifies only 16:9 cameras.
+ASPECT_BUILD_ID = '7e1df8e08d60544bbdca1e333c153c97'
+ASPECT_CAMERA_CONTEXT = {
+    0x70005d9110: 0x6db93bef,  # perspective update entry
+    0x70005d9130: 0xf9404013,  # current camera data -> x19
+    0x70005d994c: 0xf9404013,  # auxiliary frustum camera data -> x19
+    0x70005d87d0: 0xb4000321,  # world-to-screen entry
+    0x70005d8934: 0x1e221821,  # horizontal screen compensation
+    0x70005d894c: 0x1e230842,  # vertical screen compensation
+    0x70006f7d80: 0xd10383ff,  # render-camera update entry
+    0x70006f7dc0: 0xf9403c08,  # current logical camera in x0, data pointer +0x78
+    0x70006f7e7c: 0xf944c108,  # render-size owner -> dimensions
+    0x70006f7e80: 0x2d451504,  # drawable width/height -> s4/s5
+    0x70006f7e90: 0x5e21d8a5,  # signed integer height -> s5
+    0x70006f7e98: 0x5e21d884,  # signed integer width -> s4
+    0x70006f7e9c: 0x1e251884,  # rounded render dimensions -> native aspect
+    0x70006f7ea4: 0xf9403c0a,  # same current logical camera data -> x10
+    0x70006f822c: 0xbd04c660,  # renderer camera vertical FOV radians
+    0x70006f82a4: 0xbd018264,  # renderer perspective horizontal focal length
+}
+
+
+def _aspect_plain(gen, addr):
+    if gen.name != 'main' or gen.nso.build_id != ASPECT_BUILD_ID:
+        raise PatchMismatch('LINUX-089: native camera adapter requires checked DE 2.0.0 main')
+    for site, expected in ASPECT_CAMERA_CONTEXT.items():
+        if gen.word(site) != expected:
+            raise PatchMismatch(f'{site:#x}: LINUX-089 native camera context changed')
+    original = gen.lift(addr)
+    if original.kind != 'op':
+        raise ValueError(f'{addr:#x}: LINUX-089 camera adapter requires a plain scalar instruction')
+    return original.code
+
+
+def _aspect_scalar(register, helper, before=False):
+    def emit(gen, addr):
+        original = _aspect_plain(gen, addr)
+        argument = f'(uint32_t)c->v[{register}]'
+        declaration = f'extern uint32_t {helper}(uint32_t);'
+        adapted = f'{{ {declaration} c->v[{register}] = {helper}({argument}); }}'
+        return adapted + ' ' + original if before else original + ' ' + adapted
+    return emit
+
+
+def _aspect_fov(register, data_register, renderer=False):
+    helper = 'xcde_aspect_render_fov_degrees_bits' if renderer else 'xcde_aspect_fov_degrees_bits'
+    def emit(gen, addr):
+        original = _aspect_plain(gen, addr)
+        if renderer:
+            # LINUX-093: no intervening native call changes x0 before this
+            # second adapter. Read that camera's canonical aspect just as the
+            # renderer-ratio adapter does, never infer it from target dimensions.
+            return (original + ' { extern _Bool xcde_aspect_active(void); '
+                    f'extern uint32_t {helper}(uint32_t, uint32_t); '
+                    'if (xcde_aspect_active()) { '
+                    'uint64_t aspect_camera_data = *(const uint64_t *)(uintptr_t)(c->x[0] + 0x78); '
+                    f'c->v[{register}] = {helper}((uint32_t)c->v[{register}], '
+                    '*(const uint32_t *)(uintptr_t)(aspect_camera_data + 0x1f0)); } }')
+        return (original + ' { extern _Bool xcde_aspect_active(void); '
+                f'extern uint32_t {helper}(uint32_t, uint32_t); '
+                f'if (xcde_aspect_active()) c->v[{register}] = {helper}((uint32_t)c->v[{register}], '
+                f'*(const uint32_t *)(uintptr_t)(c->x[{data_register}] + 0x1f0)); }}')
+    return emit
+
+
+def _aspect_render_ratio(gen, addr):
+    # [XCDE] LINUX-093: x0 remains the selected logical camera through this
+    # guarded native prefix. Its current data (+0x78) supplies canonical aspect,
+    # as it supplies native near/far/FOV immediately around the original store.
+    # Keep Original's instruction and avoid any extra guest read when inactive.
+    original = _aspect_plain(gen, addr)
+    return ('{ extern _Bool xcde_aspect_active(void); '
+            'extern uint32_t xcde_aspect_render_ratio_bits(uint32_t, uint32_t); '
+            'if (xcde_aspect_active()) { '
+            'uint64_t aspect_camera_data = *(const uint64_t *)(uintptr_t)(c->x[0] + 0x78); '
+            'c->v[4] = xcde_aspect_render_ratio_bits((uint32_t)c->v[4], '
+            '*(const uint32_t *)(uintptr_t)(aspect_camera_data + 0x1f0)); } } ' + original)
+
+
+def _aspect_hud(register, horizontal):
+    def emit(gen, addr):
+        original = _aspect_plain(gen, addr)
+        return (original + ' { extern uint32_t xcde_aspect_hud_ratio_bits(uint32_t, _Bool); '
+                f'c->v[{register}] = xcde_aspect_hud_ratio_bits((uint32_t)c->v[{register}], '
+                f'{1 if horizontal else 0}); }}')
+    return emit
+
+
+ASPECT_CAMERA_PATCHES = {
+    0x70005d913c: (0xbd41ea60, _aspect_fov(0, 19), 'current perspective FOV degrees'),
+    0x70005d9170: (0xbd41f262, _aspect_scalar(2, 'xcde_aspect_ratio_bits'), 'near-plane horizontal extent'),
+    0x70005d9228: (0xbd41f26f, _aspect_scalar(15, 'xcde_aspect_ratio_bits'), 'perspective-matrix aspect'),
+    0x70005d923c: (0xbd41ea60, _aspect_fov(0, 19), 'perspective-matrix FOV degrees'),
+    0x70005d938c: (0xbd41ea60, _aspect_fov(0, 19), 'CPU frustum FOV degrees'),
+    0x70005d93a0: (0xbd41f10a, _aspect_scalar(10, 'xcde_aspect_ratio_bits'), 'CPU frustum aspect'),
+    0x70005d9958: (0xbd41ea60, _aspect_fov(0, 19), 'auxiliary frustum FOV degrees'),
+    0x70005d9984: (0xbd41f262, _aspect_scalar(2, 'xcde_aspect_ratio_bits'), 'auxiliary frustum aspect'),
+    0x70006f7ea0: (0xbd04c264, _aspect_render_ratio, 'render-camera canonical logical aspect before native store'),
+    0x70006f8224: (0xbd402be0, _aspect_fov(0, 19, renderer=True), 'render-camera FOV before radians conversion'),
+    0x70005d8930: (0xbd41f142, _aspect_hud(2, True), 'world markers into centered HUD horizontal canvas'),
+    0x70005d8948: (0xbd41f143, _aspect_hud(3, False), 'world markers into centered HUD vertical canvas'),
+}
+for _site, (_word, _emit, _note) in ASPECT_CAMERA_PATCHES.items():
+    assert _site not in PATCHES, f'Conflicting native aspect patch at {_site:#x}'
+    PATCHES[_site] = Patch(_word, _emit, 'LINUX-093' if _site in (0x70006f7ea0, 0x70006f8224) else 'LINUX-089', _note)
+
+
+# [XCDE] LINUX-103: adapted MIT graphics hooks from Monado-Reborn 3cc9eeb4.
+# [XCDE] Graphics options (runtime/hle/graphics.c, graphics_options.h, prop_lod.h).
+# T-GRAPHICS-SCALABILITY: f_70006b24e0 has just copied the complete 0x1220
+# render configuration. Invalidate any previous per-view overlay backup.
+# The final camera-setup boundary applies settings without changing the source.
+def _graphics_copy(gen, addr):
+    ins = gen.lift(addr)
+    if ins.kind != 'op': raise ValueError('graphics copy requires a plain epilogue instruction')
+    return ('{ extern void xcde_graphics_copy(uint64_t destination); '
+            'xcde_graphics_copy(c->x[19]); } ' + ins.code)
+PATCHES[0x70006b24f8] = Patch(0xa9417bfd, _graphics_copy, 'T-GRAPHICS-SCALABILITY',
+                          'ldp x29,x30,[sp,#0x10] - apply live render-config overrides after copy')
+
+# Camera-mode setup can restore bloom/AO/blur from the authored singleton AFTER
+# the copy. Apply the request at the final per-view setup boundary as well.
+def _graphics_finish(gen, addr):
+    return _graphics_copy(gen, addr).replace('xcde_graphics_copy', 'xcde_graphics_finish')
+PATCHES[0x70006b2918] = Patch(0xa9437bfd, _graphics_finish, 'T-GRAPHICS-SCALABILITY',
+                          'ldp x29,x30,[sp,#0x30] - apply overrides after camera-mode setup')
+
+
+# T-SHADOW-MAPS: size both native pool-layout calculations and all three
+# cascade defaults. The independent 256px target remains authored.
+def _shadow_pool_dimension(reg):
+    def emit(gen, addr):
+        ins=gen.lift(addr)
+        if ins.kind!='op':raise ValueError('shadow pool requires a plain original dimension')
+        return (ins.code+' { extern uint32_t xcde_shadow_map_size(void); uint32_t size_=xcde_shadow_map_size(); '
+                f'if(size_==2048)c->x[{reg}] = size_; }}')
+    return emit
+for _site,_word,_reg in ((0x70006a2234,0x321603e2,2),(0x70006a2238,0x321603e3,3)):
+    PATCHES[_site]=Patch(_word,_shadow_pool_dimension(_reg),'T-SHADOW-MAPS','native cascade pool dimensions')
+def _shadow_default(reg):
+    def emit(gen,addr):
+        ins=gen.lift(addr)
+        if ins.kind!='op':raise ValueError('shadow defaults require a plain load')
+        return (ins.code+' { extern uint32_t xcde_shadow_map_size(void); uint32_t size_=xcde_shadow_map_size(); '
+                f'if(size_==2048)c->v[{reg}]=(c->v[{reg}] & ~((__uint128_t)0xffffffffu<<32)) | ((__uint128_t)size_<<32); }}')
+    return emit
+for _site,_word,_reg in ((0x7000696a60,0xfd440100,0),(0x7000696a80,0xfd440901,1),(0x7000696aa0,0xfd440d01,1)):
+    PATCHES[_site]=Patch(_word,_shadow_default(_reg),'T-SHADOW-MAPS','native cascade resolution default; preserve near/far floats')
+
+# T-PROP-LOD: decoded prop buffer and its size from the selected 64-byte map
+# stream record are available before the native prop constructor consumes it.
+def _prop_lod_prepare(gen,addr):
+    ins=gen.lift(addr)
+    if ins.kind!='op':raise ValueError('prop LOD hook requires a plain load')
+    return ('{ extern void xcde_prop_lod(uint64_t data,uint32_t size); '
+            'xcde_prop_lod(c->x[22],LD32(c->x[8]+0x38)); } '+ins.code)
+PATCHES[0x700067b77c]=Patch(0xb9403908,_prop_lod_prepare,'T-PROP-LOD','ldr w8,[x8,#0x38] - guarded prop stream preparation')
+
+
+# Undo the prior frame's overlay even when the working configuration is reused.
+def _graphics_begin(gen, addr):
+    ins=gen.lift(addr)
+    if ins.kind!='op': raise ValueError('graphics begin requires a plain prologue')
+    return ('{ extern void xcde_graphics_begin(uint64_t destination); '
+            'xcde_graphics_begin(c->x[0]); } '+ins.code)
+PATCHES[0x70006b2720] = Patch(0xa9bc5ff8, _graphics_begin, 'T-GRAPHICS-SCALABILITY',
+                           'restore previous overrides before native per-view camera setup')
+
+
+# Reused/freed native configuration objects must not retain a prior view backup.
+def _graphics_construct(gen, addr):
+    ins=gen.lift(addr)
+    if ins.kind!='op': raise ValueError('graphics constructor requires a plain prologue')
+    return ('{ extern void xcde_graphics_forget(uint64_t destination); '
+            'xcde_graphics_forget(c->x[0]); } '+ins.code)
+def _graphics_destroy(gen, addr):
+    return '{ extern void xcde_graphics_forget(uint64_t destination); xcde_graphics_forget(c->x[0]); } return;'
+PATCHES[0x70006b1b00] = Patch(0xf81e0ff3, _graphics_construct, 'T-GRAPHICS-SCALABILITY',
+                           'forget prior overlays on native configuration construction')
+PATCHES[0x70006b24d0] = Patch(0xd65f03c0, _graphics_destroy, 'T-GRAPHICS-SCALABILITY',
+                           'forget prior overlays on native configuration destruction')
+
+
+# [XCDE] LINUX-103: opt-in bounded grass; exact native behavior at Original.
+# [XCDE] Grass draw distance presets (runtime/hle/foliage_distance.c, foliage_pool.c).
+# T-FOLIAGE-DISTANCE: apply the preset's separate MPF visibility and shading
+# ranges. Original retains High shading at 1x visibility; Low halves visibility.
+# Only bounded authored local ranges change; the broad
+# 7000/8000 fallback, terrain/tree/cliff LODs and instance placement stay intact.
+def _foliage_fade(gen, addr):
+    ins = gen.lift(addr)
+    if ins.kind != 'op':
+        raise ValueError('foliage fade patch needs a plain instruction')
+    return ('{ extern float xcde_foliage_shading_distance(float, float); '
+            'float near_, far_; uint32_t bits_; '
+            'memcpy(&near_, &c->v[0], 4); memcpy(&far_, &c->v[1], 4); '
+            'far_ = xcde_foliage_shading_distance(near_, far_); '
+            'memcpy(&bits_, &far_, 4); c->v[1] = bits_; } ' + ins.code)
+
+
+def _foliage_radius(gen, addr):
+    ins = gen.lift(addr)
+    if ins.kind != 'op':
+        raise ValueError('foliage radius patch needs a plain instruction')
+    return (ins.code + ' { extern float xcde_foliage_distance(float, float); '
+            'float radius_; uint32_t bits_; memcpy(&radius_, &c->v[8], 4); '
+            'radius_ = xcde_foliage_distance(0.f, radius_); '
+            'memcpy(&bits_, &radius_, 4); c->v[8] = bits_; }')
+
+
+PATCHES[0x7000655ab0] = Patch(0xbd0023e0, _foliage_fade, 'T-FOLIAGE-DISTANCE',
+                          'str s0, [sp, #0x20] - extend MPF material far fade')
+for _site in (0x7000655e80, 0x7000655f8c):
+    PATCHES[_site] = Patch(0xbd400908, _foliage_radius, 'T-FOLIAGE-DISTANCE',
+                          'ldr s8, [x8, #8] - extend MPF CPU patch-selection radius')
+
+# The type-3 default selector discards that input and loads a fixed 50-unit
+# radius for its 5-unit cells. Scale AFTER this replacement as well; otherwise
+# increasing the upstream radius leaves this grass edge unchanged. The original
+# load still executes and is scaled once, rather than multiplying its caller's
+# already-expanded radius again.
+PATCHES[0x7000659ca8] = Patch(0xbd4a71a8, _foliage_radius, 'T-FOLIAGE-DISTANCE',
+                          'ldr s8, [x13, #0xa70] - extend fixed 50-unit foliage radius')
+
+
+# T-FOLIAGE-STREAMING: high presets exhausted the authored 3.5 MiB patch pool.
+# Provision the complete contiguous native allocation for supported 3x live coverage.
+# Keep the bitmap, free-list pool, metadata and scratch/table offsets coherent;
+# no live pool is resized, reset or freed outside the guest's normal lifetime.
+def _foliage_pool(reg, part, base=False):
+    def emit(gen, addr):
+        ins = gen.lift(addr)
+        if ins.kind != 'op': raise ValueError('foliage layout requires a plain instruction')
+        return (ins.code + ' { extern uint32_t xcde_foliage_pool_layout(int part); '
+                f'c->x[{reg}] = ' + ('c->x[0] + ' if base else '') +
+                f'xcde_foliage_pool_layout({part}); }}')
+    return emit
+for _site, _word, _reg, _part, _base in (
+    (0x700068751c, 0xb81a03a8, 1, 0, False),
+    (0x7000687524, 0x91400808, 8, 1, True),
+    (0x700068752c, 0x914e8808, 8, 2, True),
+    (0x7000687538, 0x72a00748, 8, 3, False),
+    (0x7000687544, 0x914e0809, 9, 4, True),
+    (0x7000687580, 0x320d0bea, 10, 5, False),
+):
+    PATCHES[_site] = Patch(_word, _foliage_pool(_reg, _part, _base), 'T-FOLIAGE-STREAMING',
+                           'coherent MPF bitmap/pool allocation for all live grass presets')
+
+
+# The game's fixed map heap cannot hold 3x coverage. Own a bounded private
+# guest-address arena and release it at the original MPF destructor boundary.
+def _foliage_allocate(gen, addr):
+    ins=gen.lift(addr)
+    if ins.kind!='bl' or ins.target!=0x70005f6300:
+        raise ValueError('foliage allocation must preserve the checked native allocator')
+    return ('{ extern uint64_t xcde_foliage_pool_alloc(uint64_t owner); '
+            'extern void f_70005f6300(Cpu *c); uint64_t storage_=xcde_foliage_pool_alloc(c->x[19]); '
+            'c->x[30]=0x7000687524ull; if(storage_)c->x[0]=storage_; else f_70005f6300(c); }')
+def _foliage_release(gen, addr):
+    ins=gen.lift(addr)
+    if ins.kind!='bl' or ins.target!=0x70005f63c0:
+        raise ValueError('foliage release must preserve the checked native deallocator')
+    return ('{ extern _Bool xcde_foliage_pool_free(uint64_t address); '
+            'extern void f_70005f63c0(Cpu *c); c->x[30]=0x7000687718ull; '
+            'if(!xcde_foliage_pool_free(c->x[0]))f_70005f63c0(c); }')
+PATCHES[0x7000687520]=Patch(0x97fdbb78,_foliage_allocate,'LINUX-103','expanded grass uses bounded private arena; Original calls native allocator')
+PATCHES[0x7000687714]=Patch(0x97fdbb2b,_foliage_release,'LINUX-103','expanded grass releases private arena; Original calls native deallocator')

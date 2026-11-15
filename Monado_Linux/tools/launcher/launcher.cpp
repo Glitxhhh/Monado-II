@@ -4,6 +4,9 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
 #include "../../runtime/platform/sdl_controller_diagnostics.h"  // [XCDE] LINUX-077
+#include "../../runtime/settings.h" // [XCDE] LINUX-089: shared aspect indices/default.
+#include "../../runtime/gpu_selection.h" // [XCDE] LINUX-103: stable adapter preference
+#include "../../runtime/quality_policy.h" // [XCDE] LINUX-103: shared config semantics.
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -16,13 +19,19 @@
 #include <map>
 #ifdef __linux__
 #include "linux_host.h"
+#include "linux_gpu_probe.h" // [XCDE] LINUX-103: read-only GPU capability query
+#include "linux_report.h" // [XCDE] LINUX-103
 #include "linux_precompile.h"  // [XCDE] LINUX-018
+#include "input_recovery.h" // Native picker before profile, state or game initialization.
 #endif
 
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
 #include "theme.h"
+#ifdef __linux__
+#include "../../runtime/ui/quality_controls_linux.h" // [XCDE] LINUX-103
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -85,14 +94,25 @@ static int key_from_ini(const char *v) {
 
 struct Cfg {
     bool fullscreen = false;
+    int aspect = ASPECT_ORIGINAL; // [XCDE] LINUX-089: non-original framing is opt-in.
     int win = 0;            // index into k_wins
     int res = 0;            // index into k_res
     int upscaler = 1;       // 0 bilinear, 1 FSR 1, 2 FSR 3.1, 3 DLSS
     int uquality = 1;       // FSR 3 / DLSS: 0 native AA, 1 quality, 2 balanced, 3 performance, 4 ultra performance
     bool frame_gen = false;
+    bool frame_gen_smooth_motion = false; // [XCDE] LINUX-097: external, restart required
+    bool frame_gen_match_display = false; // [XCDE] LINUX-097: preserve legacy native-cap behavior
     bool smaa = false;
     bool dof = true;        // the game's depth of field (T183)
     bool game_blur = true;  // the game's own AA / temporal AA / motion blur (lib_nx.ini)
+    // [XCDE] LINUX-103: independent original-default quality preferences.
+    int quality_preset = QUALITY_CUSTOM;
+    int dynamic_min_height = 0, dynamic_max_height = 0;
+    float upscale_sharpness = -1.f;
+    bool taa_off = false, input_rumble = false;
+    int grass_lod = GRASS_ORIGINAL;
+    GraphicsOptions graphics = {};
+    char gpu_uuid[33] = {}; // [XCDE] LINUX-103: automatic unless explicitly selected
     bool vsync = true;      // FIFO presentation at 30 / 60 fps
     int cutscenes = 0;      // T224: 0 at the FPS setting, 1 at 30 (xcde.ini cutscenes = same | 30)
     bool cut_fg = false;    // T224: cutscenes at 30 + frame generation, gameplay without it (xcde.ini cutscenes = 30fg)
@@ -103,6 +123,7 @@ struct Cfg {
     int cheat_percent[6] = {100, 100, 100, 100, 100, 100};
     bool cheat_no_fall_damage = false;
     bool show_fps = false;
+    bool show_fps_overlay = false; // [XCDE] LINUX-094: separate from the legacy title-bar preference
     int fps = 0;  // index into k_fps_ini
     int menu_navigation_speed = 0;  // 0 normal (30 FPS style), 1 fast (60 FPS style)
     int volume = 100;
@@ -135,9 +156,14 @@ static int icons_effective(int sel) {
     return t == SDL_GAMEPAD_TYPE_XBOX360 || t == SDL_GAMEPAD_TYPE_XBOXONE ? 2 :
            t == SDL_GAMEPAD_TYPE_PS3 || t == SDL_GAMEPAD_TYPE_PS4 || t == SDL_GAMEPAD_TYPE_PS5 ? 3 : 1;
 }
-static const char *const k_ups_ini[] = {"bilinear", "fsr", "fsr3", "dlss"};
+static const char *const k_ups_ini[] = {"bilinear", "fsr", "fsr3", "dlss", "fsr4_lite"};
 static const char *const k_uq_ini[] = {"native", "quality", "balanced", "performance", "ultra"};
-static const char *const k_wins[] = {"1280x720", "1600x900", "1920x1080", "2560x1440", "3840x2160"};
+// [XCDE] LINUX-089: stable native/original keys; fixed ratios are independent of window size.
+static const char *const k_aspect_ini[N_ASPECTS] = {"native", "original", "16:10", "21:9", "32:9"};
+// [XCDE] LINUX-089: retain the old preset indices, then add native handheld/ultrawide sizes.
+static const char *const k_wins[] = {"1280x720", "1600x900", "1920x1080", "2560x1440", "3840x2160",
+    "1280x800", "1920x1200", "2560x1600", "2560x1080", "3440x1440", "5120x1440", "7680x2160"};
+static constexpr int N_WINS = sizeof k_wins / sizeof *k_wins;
 static const char *const k_res_ini[] = {"match", "1", "2", "3", "75%", "50%", "dynamic"};
 static const char *const k_res_ui[] = {"Igual que la ventana (recomendado)", "1x - 720p (como Switch)", "2x - 1440p",
                                        "3x - 2160p (4K)", "75% de la ventana", "50% de la ventana", "Dinámica (según rendimiento)"};
@@ -146,6 +172,31 @@ static const char *const k_lang_ini[] = {"auto", "en-US", "es", "fr", "de", "it"
 static const char *const k_lang_ui[] = {"Inglés (por defecto)", "Inglés", "Español", "Francés", "Alemán", "Italiano", "Japonés"};
 
 static Cfg g;
+#ifdef __linux__
+static const int quality_res_values[]={RES_MATCH,1,2,3,RES_Q75,RES_Q50,RES_DYNAMIC};
+static Settings quality_settings() {
+    Settings s{};
+    s.res_mode=quality_res_values[g.res>=0 && g.res<7?g.res:0];
+    s.upscaler=g.upscaler==4?UPSCALE_FSR4_LITE:g.upscaler==3?UPSCALE_DLSS:g.upscaler==2?UPSCALE_FSR3:g.upscaler==1?UPSCALE_FSR1:UPSCALE_BILINEAR;
+    s.dof_off=!g.dof;s.game_blur=g.game_blur;
+    s.quality_preset=g.quality_preset;s.dynamic_min_height=g.dynamic_min_height;s.dynamic_max_height=g.dynamic_max_height;
+    s.upscale_sharpness=g.upscale_sharpness;s.taa_off=g.taa_off;s.input_rumble=g.input_rumble;s.grass_lod=g.grass_lod;s.graphics=g.graphics;
+    return s;
+}
+static void quality_from_settings(const Settings &s) {
+    for(int i=0;i<7;i++)if(quality_res_values[i]==s.res_mode)g.res=i;
+    g.dof=!s.dof_off;g.quality_preset=s.quality_preset;g.dynamic_min_height=s.dynamic_min_height;g.dynamic_max_height=s.dynamic_max_height;
+    g.upscale_sharpness=s.upscale_sharpness;g.taa_off=s.taa_off;g.input_rumble=s.input_rumble;g.grass_lod=s.grass_lod;g.graphics=s.graphics;
+}
+static bool quality_load(const char *key,const char *value) {
+    Settings s=quality_settings();if(!xcde_quality_load(&s,key,value))return false;
+    quality_from_settings(s);return true;
+}
+static bool quality_key(const char *key) {
+    Settings s{};return xcde_quality_load(&s,key,"")!=0;
+}
+#endif
+
 // [XCDE] LINUX-072: launcher cheat configuration, shared key/units contract with settings_ini.c.
 static const char *const k_cheat_ini[] = {"damage_dealt", "damage_received", "exp", "ap", "sp", "gold"};
 static bool cheat_enabled_value(const char *v) { return !strcmp(v, "1") || !strcmp(v, "true"); }
@@ -242,6 +293,16 @@ static const char *const k_en[][2] = {
     {"Dinámica (según rendimiento)", "Dynamic (by performance)"},
     {"Inglés (por defecto)", "English (default)"}, {"Inglés", "English"}, {"Español", "Spanish"}, {"Francés", "French"},
     {"Alemán", "German"}, {"Italiano", "Italian"}, {"Japonés", "Japanese"},
+    {"Relación de aspecto", "Aspect ratio"},
+    {"Original (16:9)", "Original (16:9)"},
+    {"Igual que la pantalla (experimental)", "Match the display (experimental)"},
+    {"16:10 (experimental)", "16:10 (experimental)"},
+    {"21:9 (experimental)", "21:9 (experimental)"},
+    {"32:9 (experimental)", "32:9 (experimental)"},
+    {"Vista 3D adaptada; menús y HUD conservan sus proporciones en una zona central de 16:9.",
+     "Adapt the 3D view; menus and HUD keep their proportions in a centered 16:9 area."},
+    {"Las proporciones fijas añaden bandas cuando no coinciden con la ventana o pantalla.",
+     "Fixed ratios add bars when they differ from the window or display."},
     {"Pantalla", "Display"}, {"Pantalla completa", "Fullscreen"}, {"Tamaño de la ventana", "Window size"},
     {"Resolución y escalado", "Resolution and scaling"}, {"Resolución interna", "Internal resolution"},
     {"El juego original renderiza a 720p. Más resolución = imagen más nítida y más carga para la GPU.",
@@ -300,6 +361,9 @@ static const char *const k_en[][2] = {
      "Switch's 720p: at 1080p or more they soften the whole image.\n"
      "Off: a sharp image (combine it with SMAA for the edges)."},
     {"Mostrar FPS en la barra de título", "Show FPS in the title bar"}, {"Velocidad", "Speed"},
+    {"Mostrar FPS en pantalla", "Show FPS on screen"},
+    {"Muestra los FPS reales del juego, también en pantalla completa.\nNo incluye imágenes generadas ni presentaciones repetidas.",
+     "Shows rendered game FPS, including in fullscreen.\nExcludes generated frames and repeated presentations."},
     {"30 (como en Switch)", "30 (like Switch)"}, {"Sin límite", "Unlimited"},
     {"Ranura exclusiva de Paso rápido", "Dedicated Quick Step gem slot"},
     {"Equipa una gema de Paso rápido en una ranura propia del personaje, incluso sin botas.", "Equip a Quick Step gem in a character-owned slot, including without boots."},
@@ -428,6 +492,13 @@ struct TList { const char *p[48]; };
 static TList TL(const char *const *a, int n) { TList t{}; for (int i = 0; i < n && i < 48; i++) t.p[i] = T(a[i]); return t; }
 static std::string g_root;  // Linux: private state; Windows: original portable repository root
 #ifdef __linux__
+static bool g_fsr3_available, g_fsr4_available;
+static std::string g_fsr4_unavailable_reason;
+static bool linux_fsr4_available(){return g_fsr4_available||launcher_linux::fsr4_models_ready;}
+static bool linux_component_hint(const char *value, bool *out) {
+    if (!value || (strcmp(value,"0") && strcmp(value,"1"))) return false;
+    *out=!strcmp(value,"1"); return true;
+}
 // [XCDE] LINUX-017: feature choice follows the selected game's local resources.
 static bool linux_dlss_packaged() {
     auto slash = launcher_linux::game.find_last_of('/');
@@ -438,14 +509,18 @@ static bool linux_dlss_packaged() {
 }
 static bool linux_framegen_packaged() {
     auto slash = launcher_linux::game.find_last_of('/');
-    if (slash == std::string::npos || !linux_dlss_packaged()) return false;
+    if (slash == std::string::npos) return false;
     const auto parent = launcher_linux::game.substr(0, slash + 1);
     return access((parent + "libmonado-fidelityfx.so").c_str(), R_OK) == 0 &&
         access((parent + "FidelityFX-MIT.txt").c_str(), R_OK) == 0;
 }
 static void linux_graphics_normalize() {
-    if (g.upscaler == 2 || g.upscaler < 0 || g.upscaler > 3 || (g.upscaler == 3 && !linux_dlss_packaged())) g.upscaler = 1;
-    if (g.upscaler != 3 || !linux_framegen_packaged()) g.frame_gen = g.cut_fg = false;
+    if ((g.upscaler == 2 && !g_fsr3_available) || (g.upscaler==4&&!linux_fsr4_available()) || g.upscaler < 0 || g.upscaler > 4 || (g.upscaler == 3 && !linux_dlss_packaged())) g.upscaler = 1;
+    // [XCDE] LINUX-097: never run two generation methods together. Resolve a
+    // malformed mixed request before capability fallback, so it fails closed.
+    if (g.frame_gen || g.cut_fg) g.frame_gen_smooth_motion = false;
+    if ((g.upscaler != 2 && g.upscaler != 3 && g.upscaler!=4) || !linux_framegen_packaged()) g.frame_gen = g.cut_fg = false;
+    if (!launcher_linux::smooth_motion_layer_available) g.frame_gen_smooth_motion = false;
 }
 #endif
 
@@ -460,8 +535,16 @@ static int find(const char *const *list, int n, const char *v) {
 }
 
 static void load() {
+    g.aspect = ASPECT_ORIGINAL; // [XCDE] LINUX-089: missing/invalid preference preserves vanilla framing.
+    g.gpu_uuid[0]=0;
     g.menu_navigation_speed = 0;
     g.quickstep_slot = false; // [XCDE] LINUX-039: missing/invalid key resets OFF
+    g.show_fps_overlay = false; // [XCDE] LINUX-094: independent opt-in on every load
+    g.frame_gen = g.cut_fg = false;
+    g.frame_gen_smooth_motion = g.frame_gen_match_display = false; // [XCDE] LINUX-097
+#ifdef __linux__
+    { Settings s=quality_settings();xcde_quality_defaults(&s);quality_from_settings(s); }
+#endif
     cheats_reset(); // [XCDE] LINUX-072: old/missing configurations always opt out.
     for (int i = 0; i < NPAD; i++) g.pad[i] = k_def_pad[i];
     for (int i = 0; i < NACT; i++) g.key[i] = k_def_key[i], g.key2[i] = k_def_key2[i];
@@ -483,10 +566,12 @@ static void load() {
         while (*v == ' ' || *v == '\t') v++;
         for (char *e = v + strlen(v); e > v && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r' || e[-1] == '\n'); ) *--e = 0;
         int i;
-        if (!strcmp(k, "fullscreen")) g.fullscreen = atoi(v) != 0;
-        else if (!strcmp(k, "window") && (i = find(k_wins, 5, v)) >= 0) g.win = i;
+        if (!strcmp(k, "aspect_ratio")) g.aspect = (i = find(k_aspect_ini, N_ASPECTS, v)) >= 0 ? i : ASPECT_ORIGINAL;
+        else if (!strcmp(k,"gpu_uuid")) monado_gpu_uuid_normalize(v,g.gpu_uuid);
+        else if (!strcmp(k, "fullscreen")) g.fullscreen = atoi(v) != 0;
+        else if (!strcmp(k, "window") && (i = find(k_wins, N_WINS, v)) >= 0) g.win = i;
         else if (!strcmp(k, "resolution") && (i = find(k_res_ini, 7, v)) >= 0) g.res = i;
-        else if (!strcmp(k, "upscaler")) g.upscaler = !strcmp(v, "fsr") ? 1 : !strcmp(v, "fsr3") ? 2 : !strcmp(v, "dlss") ? 3 : 0;
+        else if (!strcmp(k, "upscaler")) g.upscaler = !strcmp(v, "fsr") ? 1 : !strcmp(v, "fsr3") ? 2 : !strcmp(v, "dlss") ? 3 : !strcmp(v,"fsr4_lite") ? 4 : 0;
         else if (!strcmp(k, "upscale_quality") && (i = find(k_uq_ini, 5, v)) >= 0) {
             g.uquality = i;
 #ifdef __linux__
@@ -494,6 +579,8 @@ static void load() {
 #endif
         }
         else if (!strcmp(k, "frame_gen")) g.frame_gen = atoi(v) != 0;
+        else if (!strcmp(k, "frame_gen_smooth_motion")) g.frame_gen_smooth_motion = !strcmp(v, "1") || !strcmp(v, "true");
+        else if (!strcmp(k, "frame_gen_match_display")) g.frame_gen_match_display = !strcmp(v, "1") || !strcmp(v, "true");
         else if (!strcmp(k, "antialias")) g.smaa = !strcmp(v, "smaa");
         else if (!strcmp(k, "depth_of_field")) g.dof = atoi(v) != 0;
         else if (!strcmp(k, "game_blur")) g.game_blur = atoi(v) != 0;
@@ -501,9 +588,13 @@ static void load() {
         else if (!strcmp(k, "cutscenes")) { g.cutscenes = !strcmp(v, "30") || !strcmp(v, "30fg") ? 1 : 0; g.cut_fg = !strcmp(v, "30fg"); }
         else if (!strcmp(k, "party_switch")) g.party_switch = atoi(v) != 0;
         else if (!strcmp(k, "show_fps")) g.show_fps = atoi(v) != 0;
+        else if (!strcmp(k, "show_fps_overlay")) g.show_fps_overlay = !strcmp(v, "1") || !strcmp(v, "true");
         else if (!strcmp(k, "fps")) { g.fps = 0; for (int j = 0; j < 6; j++) if (!strcmp(v, k_fps_ini[j])) g.fps = j; }
         else if (!strcmp(k, "menu_navigation_speed")) g.menu_navigation_speed = !strcmp(v, "fast") ? 1 : 0;
         else if (!strcmp(k, "quickstep_slot")) g.quickstep_slot = !strcmp(v, "1");
+#ifdef __linux__
+        else if (quality_load(k,v)) {} // [XCDE] LINUX-103: typed shared quality keys
+#endif
         else if (cheats_load(k, v)) {} // [XCDE] LINUX-072: recognized keys are not unrelated extras.
         else if (!strcmp(k, "volume")) g.volume = atoi(v);
         else if (!strcmp(k, "movie_audio")) g.movie_audio = atoi(v) != 0;
@@ -526,12 +617,12 @@ static void load() {
         else if (!strcmp(k, "mouse_invert")) g.mouse_invert = atoi(v) != 0;
         else if (!strcmp(k, "button_icons") && (i = find(k_icon_ini, 5, v)) >= 0) g.icons = i;
 #ifdef __linux__
-        if ((!strcmp(k, "window") && find(k_wins, 5, v) >= 0) ||
+        if ((!strcmp(k, "window") && find(k_wins, N_WINS, v) >= 0) ||
             (!strcmp(k, "resolution") && find(k_res_ini, 7, v) >= 0) ||
             (!strcmp(k, "fps") && find(k_fps_ini, 6, v) >= 0) ||
             (!strcmp(k, "language") && find(k_lang_ini, 7, v) >= 0)) g_custom.erase(k);
         if (!strcmp(k, "volume")) g.volume = std::clamp(g.volume, 0, 200);
-        if (!strcmp(k, "window") && find(k_wins, 5, v) < 0) {
+        if (!strcmp(k, "window") && find(k_wins, N_WINS, v) < 0) {
             int w = 0, h = 0; char extra;
             if (sscanf(v, "%dx%d%c", &w, &h, &extra) == 2 && w >= 320 && h >= 180 && w <= 7680 && h <= 4320) g_custom[k] = v;
         }
@@ -546,14 +637,18 @@ static void load() {
             const char *extra[] = {"zh-CN", "ko", "nl", "pt", "ru"};
             if (find(extra, 5, v) >= 0) g_custom[k] = v;
         }
-        const char *known[] = {"fullscreen","window","resolution","upscaler","upscale_quality","frame_gen","antialias","depth_of_field",
-            "game_blur","vsync","cutscenes","party_switch","show_fps","fps","menu_navigation_speed","quickstep_slot","volume","movie_audio","language","bind_layout",
+        const char *known[] = {"gpu_uuid","aspect_ratio","fullscreen","window","resolution","upscaler","upscale_quality","frame_gen","frame_gen_smooth_motion","frame_gen_match_display","antialias","depth_of_field",
+            "game_blur","vsync","cutscenes","party_switch","show_fps","show_fps_overlay","fps","menu_navigation_speed","quickstep_slot","volume","movie_audio","language","bind_layout",
             "mouse_look","mouse_sens","stick_deadzone","launcher_lang","mouse_invert","button_icons"};
-        if (is_cheat_key(k)) g_extra.erase(k); // [XCDE] LINUX-072: never serialize stale duplicate cheat keys.
+        if (quality_key(k) || is_cheat_key(k)) g_extra.erase(k); // [XCDE] LINUX-072: never serialize stale duplicate cheat keys.
         else if (find(known, sizeof known / sizeof *known, k) < 0 && strncmp(k, "mod_", 4) && strncmp(k, "bind_", 5)) g_extra[k] = v;
 #endif
     }
     fclose(f);
+#ifdef __linux__
+    { Settings q=quality_settings();xcde_quality_bounds(&q);quality_from_settings(q); }
+#endif
+    if (g.frame_gen || g.cut_fg) g.frame_gen_smooth_motion = false; // [XCDE] LINUX-097
 #ifdef __linux__
     if (g.upscaler == 3 && !quality_present) g.uquality = 0;
 #endif
@@ -571,14 +666,22 @@ static bool save() {
     fprintf(f, "# Monado settings (written by the launcher)\n");
     fprintf(f, "fullscreen = %d\nwindow = %s\nresolution = %s\nupscaler = %s\nantialias = %s\nshow_fps = %d\n", g.fullscreen,
             cfg_value("window", k_wins[g.win]), cfg_value("resolution", k_res_ini[g.res]), k_ups_ini[g.upscaler], g.smaa ? "smaa" : "off", g.show_fps);
+    fprintf(f,"gpu_uuid = %s\n",*g.gpu_uuid?g.gpu_uuid:"auto");
+    fprintf(f, "show_fps_overlay = %d\n", g.show_fps_overlay); // [XCDE] LINUX-094
     fprintf(f, "upscale_quality = %s\nframe_gen = %d\n", k_uq_ini[g.uquality], g.frame_gen);
+    fprintf(f, "frame_gen_smooth_motion = %d\nframe_gen_match_display = %d\n",
+            g.frame_gen_smooth_motion && !g.frame_gen && !g.cut_fg, g.frame_gen_match_display); // [XCDE] LINUX-097
     fprintf(f, "depth_of_field = %d\n", g.dof);
     fprintf(f, "game_blur = %d\n", g.game_blur);
+#ifdef __linux__
+    { Settings q=quality_settings();xcde_quality_save(f,&q); }
+#endif
     fprintf(f, "vsync = %d\n", g.vsync);
     fprintf(f, "cutscenes = %s\n", g.cut_fg ? "30fg" : g.cutscenes ? "30" : "same");
     fprintf(f, "party_switch = %d\n", g.party_switch);
     fprintf(f, "volume = %d\nmovie_audio = %d\nlanguage = %s\nfps = %s\n", g.volume, g.movie_audio, cfg_value("language", k_lang_ini[g.lang]), cfg_value("fps", k_fps_ini[g.fps]));
     fprintf(f, "menu_navigation_speed = %s\n", g.menu_navigation_speed == 1 ? "fast" : "normal");
+    fprintf(f, "aspect_ratio = %s\n", k_aspect_ini[g.aspect >= 0 && g.aspect < N_ASPECTS ? g.aspect : ASPECT_ORIGINAL]); // [XCDE] LINUX-089
     fprintf(f, "quickstep_slot = %d\n", g.quickstep_slot); // [XCDE] LINUX-039
     cheats_save(f); // [XCDE] LINUX-072
     for (const Mod &m : g_mods) if (!is_icon_mod(m.name)) fprintf(f, "mod_%s = %d", m.name.c_str(), m.on), fputc(10, f);
@@ -644,7 +747,7 @@ static void launch() {
     g_status = T("Juego iniciado. Registro: build/last_game.log");
     g_launched_ok = true;
 #elif defined(__linux__)
-    if (!launcher_linux::start_game(g_root)) g_status = "Could not start game: " + launcher_linux::error;
+    if (!launcher_linux::start_game(g_root, g.frame_gen_smooth_motion && !g.frame_gen && !g.cut_fg)) g_status = "Could not start game: " + launcher_linux::error;
     else g_status = "Starting game: validating build and input. Log: logs/launcher-game.log";
 #endif
 }
@@ -865,16 +968,72 @@ static bool capture_event(const SDL_Event &e) {
 }
 
 // ------------------------------------------------------------------ UI
+#ifdef __linux__
+static launcher_gpu::Result gpu_probe;
+static bool gpu_probe_done;
+static void tab_gpu_configuration() {
+    if(!ImGui::CollapsingHeader(g.ui_lang?"GPU selection and diagnostics (restart)":"Selección GPU y diagnóstico (reiniciar)"))return;
+    if(!gpu_probe_done){launcher_gpu::probe(&gpu_probe);gpu_probe_done=true;}
+    if(ImGui::Button(g.ui_lang?"Refresh GPU information":"Actualizar información GPU"))launcher_gpu::probe(&gpu_probe);
+    if(*gpu_probe.error)ImGui::TextWrapped("%s",gpu_probe.error);
+    int requested=-1;
+    for(uint32_t i=0;i<gpu_probe.count;i++)if(!strcmp(g.gpu_uuid,gpu_probe.adapters[i].uuid))requested=(int)i;
+    const char *preview=!*g.gpu_uuid?(g.ui_lang?"Automatic (recommended)":"Automática (recomendada)"):
+        requested>=0?gpu_probe.adapters[requested].name:(g.ui_lang?"Saved GPU unavailable":"GPU guardada no disponible");
+    if(ImGui::BeginCombo(g.ui_lang?"Graphics adapter":"Adaptador gráfico",preview)) {
+        if(ImGui::Selectable(g.ui_lang?"Automatic (recommended)":"Automática (recomendada)",!*g.gpu_uuid))g.gpu_uuid[0]=0;
+        for(uint32_t i=0;i<gpu_probe.count;i++) {
+            const auto &a=gpu_probe.adapters[i];ImGui::PushID((int)i);ImGui::BeginDisabled(!a.eligible);
+            if(ImGui::Selectable(a.name,requested==(int)i))snprintf(g.gpu_uuid,sizeof g.gpu_uuid,"%s",a.uuid);
+            ImGui::EndDisabled();ImGui::PopID();
+        }
+        ImGui::EndCombo();
+    }
+    if(*g.gpu_uuid && (requested<0 || !gpu_probe.adapters[requested].eligible))
+        ImGui::TextWrapped("%s",g.ui_lang?"The saved GPU is unavailable or unsuitable. The game will fall back to a usable automatic choice and report why.":"La GPU guardada no está disponible o no es compatible. El juego elegirá una GPU válida e indicará el motivo.");
+    ImGui::TextWrapped("%s",g.ui_lang?"This is a request for the next game launch. Available capabilities are not active features or gameplay certification; presentation and optional providers are checked at startup.":"Esta selección se aplica al próximo inicio. Las capacidades detectadas no certifican el juego; la presentación y los proveedores se comprueban al iniciar.");
+    for(uint32_t i=0;i<gpu_probe.count;i++) {
+        const auto &a=gpu_probe.adapters[i];ImGui::PushID((int)i);
+        if(ImGui::TreeNode("adapter","%s",a.name)) {
+            ImGui::Text("Vulkan %u.%u.%u | vendor %04x | driver %u",VK_API_VERSION_MAJOR(a.api),VK_API_VERSION_MINOR(a.api),VK_API_VERSION_PATCH(a.api),a.vendor,a.driver);
+            if(*a.driver_name)ImGui::Text("%s",a.driver_name);
+            ImGui::TextWrapped("%s",a.reason);
+            ImGui::Text(g.ui_lang?"Device-local heaps: %llu MiB (not free memory)":"Memoria local: %llu MiB (no es memoria libre)",(unsigned long long)(a.local_heap>>20));
+            ImGui::Text("Storage range: %u MiB | anisotropy: %s | float16: %s | int8: %s",a.max_storage_range>>20,a.anisotropy?"yes":"no",a.float16?"yes":"no",a.int8?"yes":"no");
+            ImGui::Text("Feedback-loop extension: %s | memory-budget extension: %s",a.feedback?"yes":"no",a.memory_budget?"yes":"no");
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+    }
+    if(gpu_probe.truncated)ImGui::TextDisabled("Additional adapters were omitted from this bounded diagnostic list.");
+}
+#endif
 static void tab_graphics() {
+#ifdef __linux__
+    Settings quality_before=quality_settings(),quality=quality_before;
+    if(monado_quality_controls_linux(&quality,g.ui_lang==1)) {
+        quality_from_settings(quality);
+        if(quality.res_mode!=quality_before.res_mode)g_custom.erase("resolution");
+    }
+#endif
+#ifdef __linux__
+    tab_gpu_configuration();
+#endif
     launcher_theme::section(T("Pantalla"));
     launcher_theme::checkbox(T("Pantalla completa"), &g.fullscreen);
     ImGui::SetNextItemWidth(260 * g_scale);
 #ifdef __linux__
-    if (launcher_theme::combo(T("Tamaño de la ventana"), &g.win, k_wins, 5)) g_custom.erase("window");
+    if (launcher_theme::combo(T("Tamaño de la ventana"), &g.win, k_wins, N_WINS)) g_custom.erase("window");
     custom_note("window");
 #else
-    launcher_theme::combo(T("Tamaño de la ventana"), &g.win, k_wins, 5);
+    launcher_theme::combo(T("Tamaño de la ventana"), &g.win, k_wins, N_WINS);
 #endif
+    // [XCDE] LINUX-089: projection/culling and centered native UI, never image stretching.
+    const char *aspect_ui[N_ASPECTS] = {T("Igual que la pantalla (experimental)"), T("Original (16:9)"),
+        T("16:10 (experimental)"), T("21:9 (experimental)"), T("32:9 (experimental)")};
+    launcher_theme::combo(T("Relación de aspecto"), &g.aspect, aspect_ui, N_ASPECTS);
+    ImGui::TextDisabled("%s", T("Vista 3D adaptada; menús y HUD conservan sus proporciones en una zona central de 16:9."));
+    ImGui::TextDisabled("%s", T("Las proporciones fijas añaden bandas cuando no coinciden con la ventana o pantalla."));
     launcher_theme::section(T("Resolución y escalado"));
     ImGui::SetNextItemWidth(360 * g_scale);
 #ifdef __linux__
@@ -889,37 +1048,81 @@ static void tab_graphics() {
     ImGui::SetNextItemWidth(320 * g_scale);
 #ifdef __linux__
     const bool have_dlss = linux_dlss_packaged();
-    const char *linux_ups[] = {ups[0], ups[1], "NVIDIA DLSS / DLAA (RTX)"};
-    const int linux_values[] = {0, 1, 3};
-    int selected = g.upscaler == 3 ? 2 : g.upscaler;
-    if (launcher_theme::combo(T("Escalado / antialiasing"), &selected, TL(linux_ups, have_dlss ? 3 : 2).p, have_dlss ? 3 : 2)) {
+    const char *linux_ups[5] = {ups[0], ups[1], nullptr, nullptr, nullptr};
+    int linux_values[5] = {0, 1, 0, 0, 0}, upscaler_count=2, selected=0;
+    if(g_fsr3_available) { linux_ups[upscaler_count]="AMD FSR 3.1 (temporal)";linux_values[upscaler_count++]=2; }
+    if(have_dlss) { linux_ups[upscaler_count]="NVIDIA DLSS / DLAA (RTX)";linux_values[upscaler_count++]=3; }
+    if(linux_fsr4_available()) { linux_ups[upscaler_count]="AMD FSR 4 Lite (experimental)";linux_values[upscaler_count++]=4; }
+    for(int i=0;i<upscaler_count;i++)if(linux_values[i]==g.upscaler)selected=i;
+    if (launcher_theme::combo(T("Escalado / antialiasing"), &selected, TL(linux_ups, upscaler_count).p, upscaler_count)) {
         // [XCDE] LINUX-056: entering DLSS starts at native 100% (DLAA).
         // An existing DLSS quality remains editable and persists on reopening.
         if (linux_values[selected] == 3 && g.upscaler != 3) g.uquality = 0;
         g.upscaler = linux_values[selected];
         linux_graphics_normalize();
     }
-    if (g.upscaler == 3) {
+    if (g.upscaler == 2 || g.upscaler == 3 || g.upscaler==4) {
         const char *quality[] = {"DLAA / Native (100%)", "Quality (67%)", "Balanced (59%)", "Performance (50%)", "Ultra Performance (33%)"};
         launcher_theme::combo(T("Calidad del escalado"), &g.uquality, quality, 5);
         ImGui::PushTextWrapPos();
-        ImGui::TextDisabled("Requires a compatible NVIDIA RTX GPU. Unavailable DLSS falls back to spatial scaling.");
-        ImGui::TextDisabled("DLAA uses native resolution. Match the window uses the selected SR quality.");
+        if(g.upscaler==3)ImGui::TextDisabled("Requires a compatible NVIDIA RTX GPU. Unavailable DLSS uses FSR 3 when available, otherwise spatial scaling.");
+        else if(g.upscaler==2) ImGui::TextDisabled("Uses the packaged native FSR 3.1 provider. Runtime GPU and scene input checks still apply.");
+        else ImGui::TextDisabled("Uses your locally prepared FSR4 Lite model. Unsupported GPUs or image sizes use the existing fallback.");
+        ImGui::TextDisabled("%s","Native uses temporal antialiasing at 100%. Match the window uses the selected SR quality.");
         ImGui::PopTextWrapPos();
     }
-    ImGui::TextDisabled("Linux: FSR 3.1 Super Resolution is unavailable.");
-    const bool have_fg = linux_framegen_packaged() && g.upscaler == 3;
-    ImGui::BeginDisabled(!have_fg);
-    launcher_theme::checkbox(T("Generación de frames (FSR 3, experimental)"), &g.frame_gen);
-    ImGui::SetItemTooltip("Experimental: performance varies; may reduce performance, stutter or show visual glitches.\nInterpolates one image between real frames.\nGame/input FPS stays unchanged. Adds latency.\nApplies when starting the game.");
-    ImGui::BeginDisabled(g.frame_gen);
-    launcher_theme::checkbox(T("Generación de frames solo en cinemáticas (experimental)"), &g.cut_fg);
-    ImGui::EndDisabled();
-    ImGui::EndDisabled();
+    if(!g_fsr3_available)ImGui::TextDisabled("Native FSR 3.1 component is not available in this build.");
+    if(launcher_linux::fsr4_preparing()) {
+        ImGui::TextWrapped("%s",launcher_linux::fsr4_status());
+        ImGui::ProgressBar(-float(ImGui::GetTime()),ImVec2(-1,0),"Preparing FSR4 Lite");
+        if(ImGui::Button("Cancel FSR4 preparation")) {
+            if(!launcher_linux::cancel_fsr4_prepare())g_status=launcher_linux::error;
+        }
+    } else {
+        ImGui::BeginDisabled(launcher_linux::activity_busy());
+        if(ImGui::Button(linux_fsr4_available()?"Prepare FSR4 Lite again":"Prepare FSR4 Lite (optional)")) {
+            if(!launcher_linux::request_fsr4_prepare())g_status=launcher_linux::error;
+        }
+        ImGui::EndDisabled();
+        if(*launcher_linux::fsr4_status())ImGui::TextWrapped("%s",launcher_linux::fsr4_status());
+        else if(!linux_fsr4_available()&&!g_fsr4_unavailable_reason.empty())ImGui::TextWrapped("%s",g_fsr4_unavailable_reason.c_str());
+        ImGui::TextWrapped("Downloads the official AMD tools and prepares local models using an installed Proton build. This can take a few minutes. Your chosen upscaler stays unchanged.");
+    }
+    // [XCDE] LINUX-097: choose one method. Availability is component-only;
+    // the NVIDIA driver decides whether the selected physical GPU supports FG.
+    const bool have_fg = linux_framegen_packaged() && (g.upscaler == 2 || g.upscaler == 3 || g.upscaler==4);
+    const char *fg_names[3] = {"Off", nullptr, nullptr};
+    int fg_values[3] = {0, 0, 0}, fg_count = 1;
+    if (have_fg) { fg_names[fg_count] = "FSR 3 (2x, experimental)"; fg_values[fg_count++] = 1; }
+    if (launcher_linux::smooth_motion_layer_available) {
+        fg_names[fg_count] = "NVIDIA Smooth Motion (2x, experimental)"; fg_values[fg_count++] = 2;
+    }
+    int method = g.frame_gen || g.cut_fg ? 1 : g.frame_gen_smooth_motion ? 2 : 0, selected_fg = 0;
+    for (int i = 0; i < fg_count; ++i) if (fg_values[i] == method) selected_fg = i;
+    if (launcher_theme::combo("Frame generation method", &selected_fg, fg_names, fg_count)) {
+        method = fg_values[selected_fg]; g.frame_gen = method == 1;
+        g.frame_gen_smooth_motion = method == 2; g.cut_fg = false;
+    }
+    if (method == 1) {
+        bool only_cutscenes = g.cut_fg;
+        if (launcher_theme::checkbox("Only in cutscenes (30 to 60 FPS)", &only_cutscenes)) {
+            g.cut_fg = only_cutscenes; g.frame_gen = !only_cutscenes;
+        }
+        ImGui::BeginDisabled(g.cut_fg);
+        launcher_theme::checkbox("Match display refresh with 2x generation", &g.frame_gen_match_display);
+        ImGui::SetItemTooltip("Limits the effective real-frame target to half the display refresh, without changing your saved FPS cap.\nFor a 180 Hz screen, at most 90 real / 180 output FPS. This is 2x, not multi-frame generation.\nCutscenes-only mode remains 30 game / 60 output FPS.");
+        ImGui::EndDisabled();
+        if (g.cut_fg) ImGui::TextDisabled("Cutscenes-only mode remains 30 game / 60 output FPS.");
+    }
     ImGui::PushTextWrapPos();
-    ImGui::TextDisabled("%s", T("Experimental: puede funcionar lentamente y mostrar errores visuales. Se recomienda dejarla desactivada por ahora."));
+    ImGui::TextDisabled("Generation is experimental, adds latency and may cost performance. Method changes apply when restarting the game.");
+    if (method == 2) {
+        ImGui::TextDisabled("Requires a compatible NVIDIA RTX 40-series or newer GPU and driver. The driver owns generation and presentation.");
+        ImGui::TextDisabled("Measured output FPS is recorded in the game log. Generated-only FPS is unavailable. Do not combine with another FG layer.");
+    }
+    if (!have_fg) ImGui::TextDisabled("Integrated FSR generation requires temporal upscaling and the packaged native provider.");
+    if (!launcher_linux::smooth_motion_layer_available) ImGui::TextDisabled("NVIDIA Smooth Motion driver component was not detected.");
     ImGui::PopTextWrapPos();
-    if (!have_fg) ImGui::TextDisabled("Frame generation requires a supported native build and NVIDIA DLSS / DLAA.");
 #else
     launcher_theme::combo(T("Escalado / antialiasing"), &g.upscaler, TL(ups, 4).p, 4);
     ImGui::SetItemTooltip("%s", T("FSR 1.0: escalado espacial, solo cuando la resolución interna es menor que la ventana.\n"
@@ -958,6 +1161,12 @@ static void tab_graphics() {
                           "aplica para los 720p de la Switch: a 1080p o más suavizan toda la imagen.\n"
                           "Desactivado: imagen nítida (combínalo con SMAA para los bordes)."));
     launcher_theme::checkbox(T("Mostrar FPS en la barra de título"), &g.show_fps);
+    launcher_theme::checkbox(T("Mostrar FPS en pantalla"), &g.show_fps_overlay);
+#ifdef __linux__
+    ImGui::SetItemTooltip("Shows rendered Game FPS and measured Output FPS (accepted presentation requests).\nFrame-generation readings are also recorded in the game log while this display is hidden. Generated-only NVIDIA FPS is unavailable. Output is not physical scanout.");
+#else
+    ImGui::SetItemTooltip("%s", T("Muestra los FPS reales del juego, también en pantalla completa.\nNo incluye imágenes generadas ni presentaciones repetidas."));
+#endif
     launcher_theme::section(T("Velocidad"));
     static const char *fps_ui[] = {"30 (como en Switch)", "60", "120", "144", "165", "Sin límite"};
 #ifdef __linux__
@@ -978,7 +1187,15 @@ static void tab_graphics() {
     launcher_theme::combo(T("Velocidad de navegación en menús"), &g.menu_navigation_speed, TL(navigation_ui, 2).p, 2);
     ImGui::SetItemTooltip("%s", T("Controla las direcciones mantenidas en los menús y la selección de artes.\n"
                           "Rápida repite al doble de velocidad. La velocidad del juego y las animaciones de los menús no cambian."));
+#ifdef __linux__
+    // [XCDE] LINUX-097: integrated FG uses FIFO at all selected base rates.
+    bool fsr_pacing = g.frame_gen || g.cut_fg;
+    launcher_theme::checkbox(fsr_pacing ? "V-Sync (FSR 3 frame generation)" : T("V-Sync (con 30 / 60 FPS)"), &g.vsync);
+    if (fsr_pacing) ImGui::SetItemTooltip("Synchronizes generated output to the display, including base rates above 60 FPS. Match display can cap real frames at half the refresh rate.");
+    else
+#else
     launcher_theme::checkbox(T("V-Sync (con 30 / 60 FPS)"), &g.vsync);
+#endif
     ImGui::SetItemTooltip("%s", T("Cada imagen se muestra exactamente una vez, sincronizada con la pantalla: movimiento\n"
                           "fluido (sin imágenes repetidas o saltadas). Con más de 60 FPS o sin límite no se aplica."));
     static const char *cut_ui[] = {"Como el resto del juego", "30 estables (como en Switch)"};
@@ -992,6 +1209,10 @@ static void tab_graphics() {
 }
 
 static void tab_controls() {
+#ifdef __linux__
+    launcher_theme::checkbox(g.ui_lang?"Controller vibration":"Vibración del mando",&g.input_rumble);
+    ImGui::TextDisabled("%s",g.ui_lang?"Optional. Requires a controller with SDL vibration support.":"Opcional. Requiere un mando compatible con vibración SDL.");
+#endif
     if (cap_dev >= 0) {
         int left = (int)((cap_until - SDL_GetTicks()) / 1000) + 1;
         if (SDL_GetTicks() > cap_until) cap_dev = -1;
@@ -1187,23 +1408,12 @@ static void make_report() {
     g_status = std::string(T("Reporte creado: ")) + zip + T(" (adjúntalo al reportar el problema)");
     ShellExecuteA(NULL, "open", path("reports").c_str(), NULL, NULL, SW_SHOWNORMAL);
 #elif defined(__linux__)
-    std::vector<std::string> files;
-    for (const char *name : {"logs/monado.log", "logs/monado.prev.log", "logs/launcher-game.log", "logs/launcher.log", "xcde.ini"}) {
-        struct stat st;
-        if (!lstat(path(name).c_str(), &st) && S_ISREG(st.st_mode)) files.emplace_back(name);
+    std::string archive, error;
+    if (!monado_report::create(g_root, archive, error)) {
+        g_status = "Could not create local report: " + error; return;
     }
-    if (files.empty()) { g_status = "No local logs or settings to collect."; return; }
-    if (mkdir(path("reports").c_str(), 0700) && errno != EEXIST) { g_status = strerror(errno); return; }
-    std::string folder = path("reports/monado-report-XXXXXX");
-    if (!mkdtemp(folder.data())) { g_status = "Could not create report: " + std::string(strerror(errno)); return; }
-    for (const auto &name : files) {
-        std::string filename = name.substr(name.rfind('/') == std::string::npos ? 0 : name.rfind('/') + 1);
-        if (!launcher_linux::copy_file(path(name.c_str()), folder + "/" + filename)) {
-            g_status = "Report incomplete: " + folder + " (" + strerror(errno) + ")"; return;
-        }
-    }
-    g_status = "Local report created: " + folder;
-    SDL_SetClipboardText(folder.c_str());
+    g_status = "Report ZIP created: " + archive + " (review before sharing)";
+    SDL_SetClipboardText(archive.c_str());
 #endif
 }
 
@@ -1384,8 +1594,9 @@ static void linux_update_popup() {
 int main(int argc, char **argv) {
     int result = 0;
 #ifdef __linux__
+    if (argc > 1 && !strcmp(argv[1], "--locate-game-files")) return launcher_input_recovery::run(argc, argv);
     const char *project = nullptr, *game_project = nullptr, *input = nullptr, *game = nullptr, *state = nullptr, *shot = nullptr, *script = nullptr;
-    int update_channel = -1;
+    int update_channel = -1, game_channel = -1;
     int shot_tab = 0, shot_frame = 5, frame_no = 0;
     bool shot_pc = false, exit_after_child = false, child_started = false;
     for (int i = 1; i < argc; ++i) {
@@ -1398,12 +1609,24 @@ int main(int argc, char **argv) {
         else if (!strcmp(arg, "--input-root")) input = value;
         else if (!strcmp(arg, "--game-executable")) game = value;
         else if (!strcmp(arg, "--state-root")) state = value;
+        else if (!strcmp(arg,"--fsr3-available")) {
+            if(!linux_component_hint(value,&g_fsr3_available)){fprintf(stderr,"Invalid FSR3 availability flag\n");return 2;}
+        } else if (!strcmp(arg,"--fsr4-available")) {
+            if(!linux_component_hint(value,&g_fsr4_available)){fprintf(stderr,"Invalid FSR4 availability flag\n");return 2;}
+        } else if (!strcmp(arg,"--fsr4-unavailable-reason")) {
+            if(strlen(value)>512){fprintf(stderr,"FSR4 reason too long\n");return 2;}g_fsr4_unavailable_reason=value;
+        }
+        else if (!strcmp(arg, "--smooth-motion-layer-available")) {
+            if (!launcher_linux::smooth_motion_hint(value)) { fprintf(stderr, "Invalid Smooth Motion component flag\n"); return 2; }
+        }
         else if (!strcmp(arg, "--shot")) { shot = value; if (i + 1 < argc && argv[i + 1][0] != '-') shot_tab = atoi(argv[++i]); }
         else if (!strcmp(arg, "--shot-frame")) shot_frame = atoi(value);
         else if (!strcmp(arg, "--shot-tab")) shot_tab = atoi(value);
         else if (!strcmp(arg, "--ui-script")) script = value;
         else if (!strcmp(arg, "--lock-fd")) { char *end = nullptr; long fd = strtol(value, &end, 10);
             if (!end || *end || fd < 3 || fd > INT_MAX || fcntl((int)fd, F_GETFD) < 0) { fprintf(stderr, "Invalid lock descriptor\n"); return 2; } }
+        else if (!strcmp(arg, "--game-fd")) {char *end=nullptr;long fd=strtol(value,&end,10);
+            if(!end||*end||fd<3||fd>INT_MAX||game_channel>=0){fprintf(stderr,"Invalid host game descriptor\n");return 2;}game_channel=(int)fd;}
         else if (!strcmp(arg, "--update-fd")) { char *end = nullptr; long fd = strtol(value, &end, 10);
             if (!end || *end || fd < 3 || fd > INT_MAX || update_channel >= 0) { fprintf(stderr, "Invalid update descriptor\n"); return 2; }
             update_channel = (int)fd; }
@@ -1425,6 +1648,8 @@ int main(int argc, char **argv) {
     if (update_channel >= 0 && (shot || script || !launcher_linux::update_adopt_fd(update_channel))) {
         fprintf(stderr, "Update IPC requires a valid host channel and an ordinary unscripted launcher\n"); return 2;
     }
+    if(game_channel>=0&&(shot||script||!launcher_linux::game_adopt_fd(game_channel))){
+        fprintf(stderr,"Host Play IPC requires a valid host channel and an ordinary unscripted launcher\n");return 2;}
     char error[1024]; umask(0077);
     if (!rt_paths_init_linux(input, state, error, sizeof error) || !rt_linux_state_guard(rt_data_root(), error, sizeof error)) {
         fprintf(stderr, "Launcher state initialization failed: %s\n", error); return 1;
@@ -1510,8 +1735,8 @@ int main(int argc, char **argv) {
     ImGui_ImplSDLRenderer3_Init(ren);
     load();
 #ifdef __linux__
-    if (g.upscaler == 2 || (g.upscaler == 3 && !linux_dlss_packaged()) ||
-        ((g.frame_gen || g.cut_fg) && (g.upscaler != 3 || !linux_framegen_packaged())))
+    if ((g.upscaler == 2 && !g_fsr3_available) || (g.upscaler==4&&!linux_fsr4_available()) || (g.upscaler == 3 && !linux_dlss_packaged()) ||
+        ((g.frame_gen || g.cut_fg) && ((g.upscaler != 2 && g.upscaler != 3 && g.upscaler!=4) || !linux_framegen_packaged())))
         g_status = "Unavailable graphics options replaced with supported Linux settings.";
     linux_graphics_normalize();
     bool have_game = access((launcher_linux::input + "/exefs/main").c_str(), R_OK) == 0;
@@ -1551,7 +1776,7 @@ int main(int argc, char **argv) {
             ImGui_ImplSDL3_ProcessEvent(&e);
             if (e.type == SDL_EVENT_QUIT) {
 #ifdef __linux__
-                if (launcher_linux::game_pid) g_status = "Close the game window before quitting the launcher.";
+                if (launcher_linux::game_pid && !launcher_linux::game_broker_configured) g_status = "Close the game window before quitting the launcher.";
                 else if (pc_running()) { g_pc_quit = true; pc_stop(); }
                 else if (launcher_linux::update_applying()) launcher_linux::update_cancel();
                 else run = false;
@@ -1695,7 +1920,7 @@ int main(int argc, char **argv) {
         launcher_theme::footer_button(layout, 4);
         if (ImGui::Button(T("Salir"), layout.button_sizes[4])) {
 #ifdef __linux__
-            if (launcher_linux::game_pid) g_status = "Close the game window before quitting the launcher.";
+            if (launcher_linux::game_pid && !launcher_linux::game_broker_configured) g_status = "Close the game window before quitting the launcher.";
             else if (pc_running()) { g_pc_quit = true; pc_stop(); }
             else if (launcher_linux::update_applying()) launcher_linux::update_cancel();
             else run = false;

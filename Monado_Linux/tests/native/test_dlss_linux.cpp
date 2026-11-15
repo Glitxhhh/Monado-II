@@ -210,14 +210,14 @@ static uint16_t half(float value) {
 struct Metrics { std::array<double, 4> mean{}; uint64_t hash{}; size_t changed{}; };
 
 struct Scene {
-    Image color, motion, depth, output;
-    const size_t pixels, output_bytes, motion_offset, depth_offset, read_offset;
+    Image color, motion, depth, reactive, output;
+    const size_t pixels, output_bytes, motion_offset, depth_offset, reactive_offset, read_offset;
     Buffer staging;
     Scene(uint32_t width, uint32_t height, uint32_t ow, uint32_t oh)
         : color(VK_FORMAT_R8G8B8A8_UNORM, width, height), motion(VK_FORMAT_R16G16_SFLOAT, width, height),
-          depth(VK_FORMAT_R32_SFLOAT, width, height), output(VK_FORMAT_R8G8B8A8_UNORM, ow, oh),
+          depth(VK_FORMAT_R32_SFLOAT, width, height), reactive(VK_FORMAT_R8_UNORM, width, height), output(VK_FORMAT_R8G8B8A8_UNORM, ow, oh),
           pixels(static_cast<size_t>(width) * height), output_bytes(static_cast<size_t>(ow) * oh * 4),
-          motion_offset(pixels * 4), depth_offset(pixels * 8), read_offset(pixels * 12), staging(read_offset + output_bytes) {}
+          motion_offset(pixels * 4), depth_offset(pixels * 8), reactive_offset(pixels * 12), read_offset((pixels * 13 + 255) & ~size_t(255)), staging(read_offset + output_bytes) {}
     void pattern(unsigned frame, unsigned variant) {
         auto *mv = reinterpret_cast<uint16_t *>(staging.host + motion_offset);
         auto *z = reinterpret_cast<float *>(staging.host + depth_offset);
@@ -233,16 +233,17 @@ struct Scene {
             mv[p * 2] = half(rectangle && frame ? -1.0f / color.desc.width : 0.0f);
             mv[p * 2 + 1] = 0;
             z[p] = rectangle ? 0.3f : 0.8f;
+            staging.host[reactive_offset+p] = rectangle ? 128 : 0;
         }
         staging.sync(false);
     }
     void upload() {
-        color.general(); motion.general(); depth.general(); output.general();
+        color.general(); motion.general(); depth.general(); reactive.general(); output.general();
         barrier(VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT,
                 VK_PIPELINE_STAGE_TRANSFER_BIT, VK_ACCESS_TRANSFER_READ_BIT | VK_ACCESS_TRANSFER_WRITE_BIT);
-        Image *images[] = {&color, &motion, &depth};
-        size_t offsets[] = {0, motion_offset, depth_offset};
-        for (unsigned i = 0; i < 3; ++i) {
+        Image *images[] = {&color, &motion, &depth, &reactive};
+        size_t offsets[] = {0, motion_offset, depth_offset, reactive_offset};
+        for (unsigned i = 0; i < 4; ++i) {
             VkBufferImageCopy copy{}; copy.bufferOffset = offsets[i];
             copy.imageSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
             copy.imageExtent = {color.desc.width, color.desc.height, 1};
@@ -256,7 +257,7 @@ struct Scene {
     }
     void evaluate(int quality, unsigned frame, bool reset) {
         DlssFrame input{};
-        input.color = color.desc; input.motion = motion.desc; input.depth = depth.desc; input.output = output.desc;
+        input.color = color.desc; input.motion = motion.desc; input.depth = depth.desc; input.output = output.desc; input.reactive = reactive.desc;
         // Authored small alternating subpixel jitter in render-pixel units.
         input.jitter[0] = frame & 1 ? 0.25f : -0.25f;
         input.jitter[1] = frame & 2 ? 0.25f : -0.25f;
@@ -266,7 +267,7 @@ struct Scene {
     }
     void reject_contracts(int quality) {
         DlssFrame input{};
-        input.color = color.desc; input.motion = motion.desc; input.depth = depth.desc; input.output = output.desc;
+        input.color = color.desc; input.motion = motion.desc; input.depth = depth.desc; input.output = output.desc; input.reactive = reactive.desc;
         input.quality = quality;
         input.recording_seq = recording_seq; input.completed_seq = completed_seq;
         auto bad = input; bad.color.format = VK_FORMAT_R32_SFLOAT; CHECK(!ngx_linux_evaluate(command, &bad));
@@ -277,6 +278,9 @@ struct Scene {
         bad = input; bad.recording_seq = 0; CHECK(!ngx_linux_evaluate(command, &bad));
         bad = input; bad.completed_seq = bad.recording_seq; CHECK(!ngx_linux_evaluate(command, &bad));
         bad = input; bad.jitter[0] = NAN; CHECK(!ngx_linux_evaluate(command, &bad));
+        bad = input; bad.reactive.width++; CHECK(!ngx_linux_evaluate(command, &bad));
+        bad = input; bad.reactive.format = VK_FORMAT_R32_SFLOAT; CHECK(!ngx_linux_evaluate(command, &bad));
+        bad = input; bad.reactive.view = VK_NULL_HANDLE; CHECK(!ngx_linux_evaluate(command, &bad));
         printf("NEGATIVE format,dimensions,view,quality,sequence,nonfinite-jitter safely rejected\n");
     }
     void copy_output() {

@@ -55,8 +55,28 @@ int main(void) {
     g_settings.upscale_quality = UQ_QUALITY; g_settings.upscaler = UPSCALE_FSR3;
     assert(prepare(&c, 11, &have, m) && !have); cases++;
     g_settings.upscaler = UPSCALE_DLSS;
-    moved.view[3] = 2;
+    moved.view[3] = 9;
     assert(prepare(&moved, 11, &have, m) && !have); zero_matrix(m); cases++;
+    // [XCDE] LINUX-103: a small turn far from the world origin must not cut history.
+    // All values are authored rigid cameras; no game constants or fixtures.
+    TmpCamera far = c, turn = c;
+    const double position[3] = {10000.0, 2000.0, -6000.0};
+    for (int k = 0; k < 3; k++) far.view[k * 4 + 3] = (float)-position[k];
+    const double angle = 0.0017453292519943296; // 0.1 degree
+    turn.view[0] = turn.view[10] = (float)cos(angle);
+    turn.view[2] = (float)sin(angle); turn.view[8] = (float)-sin(angle);
+    for (int row = 0; row < 3; row++) {
+        double t = 0; for (int k = 0; k < 3; k++) t -= turn.view[row * 4 + k] * position[k];
+        turn.view[row * 4 + 3] = (float)t;
+    }
+    seed(&far, 20);
+    assert(prepare(&turn, 21, &have, m) && have); cases++;
+    TmpCamera teleport = turn; teleport.view[3] -= 9.0f;
+    assert(prepare(&teleport, 21, &have, m) && !have); cases++;
+    TmpCamera rotate = far; rotate.view[0] = rotate.view[10] = 0; rotate.view[2] = 1; rotate.view[8] = -1;
+    rotate.view[3] = (float)-position[2]; rotate.view[11] = (float)position[0];
+    assert(prepare(&rotate, 21, &have, m) && !have); cases++;
+    seed(&c, 10);
     history_commit(NULL, 0,0,0,0,0,0,false);
     assert(!previous.ok && prepare(&c, 11, &have, m) && !have); cases++;
     assert(!prepare(NULL, 11, &have, m) && !have); cases++;

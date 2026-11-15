@@ -194,7 +194,8 @@ class RuntimeChecks(unittest.TestCase):
         builder = build.Builder.__new__(build.Builder)
         builder.output, builder.cxx, builder.sysroot, builder.runtime_policy = output, self.cc, self.sysroot, self.policy
         builder.libs = [str(self.child), '-Xlinker', '-rpath', '-Xlinker', str(self.libdir)]
-        builder.receipt = {'objects': {'authored': {'path': str(obj)}}, 'runtime_resources': {}}
+        builder.receipt = {'generated': {}, 'objects': {'authored': {'path': str(obj),
+            'source_sha256': build.digest(source), 'object_sha256': build.digest(obj)}}, 'runtime_resources': {}}
         builder.save = lambda: None
         def linked(_name, argv, **_kwargs):
             result = subprocess.run(list(map(str, argv)), capture_output=True, text=True, timeout=60, env=check.clean_environment())

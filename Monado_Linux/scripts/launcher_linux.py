@@ -17,6 +17,8 @@ import stat
 import subprocess
 import sys
 import hashlib
+import importlib.util
+import selectors
 
 import run_linux
 
@@ -185,7 +187,7 @@ def prepare(args):
     game_receipt = json.loads((Path(game['argv'][0]).parent / 'receipt.json').read_text())
     if gui_receipt.get('artifact_kind') != 'linux-launcher':
         raise ValueError('launcher executable must have a linux-launcher build receipt')
-    if game_receipt.get('artifact_kind') == 'linux-launcher' or not game_receipt.get('generated'):
+    if game_receipt.get('artifact_kind') == 'linux-launcher' or not (game_receipt.get('generated') or game_receipt.get('split_game') and game_receipt.get('game_library')):
         raise ValueError('game executable must have a complete generated-game build receipt')
     if launcher['input'] != game['input']:
         raise ValueError('launcher and game must select the same immutable input')
@@ -198,6 +200,22 @@ def prepare(args):
     game_port = run_linux.install_layout.build_port(ROOT, Path(game['argv'][0]))
     argv = [launcher['argv'][0], '--project-root', str(ROOT), '--game-project-root', str(game_port), '--input-root', game['input'],
             '--game-executable', game['argv'][0], '--state-root', str(state)]
+    # [XCDE] LINUX-097: component-only hint, never a GUI driver-enable variable.
+    # An older receipted GUI may legitimately be paired with the current host
+    # supervisor; do not send a new argument to that native command-line parser.
+    # Exact same-source identity proves this build accepts the optional hint.
+    gui_source = ROOT / 'tools/launcher/launcher.cpp'
+    expected_gui_source = gui_receipt.get('sources_before', {}).get('tools/launcher/launcher.cpp')
+    try:
+        with gui_source.open('rb') as stream:
+            current_gui_source = hashlib.file_digest(stream, 'sha256').hexdigest()
+    except OSError:
+        current_gui_source = None
+    if expected_gui_source and expected_gui_source == current_gui_source:
+        argv += ['--smooth-motion-layer-available', '1' if run_linux.smooth_motion_component() else '0']
+        argv += ['--fsr3-available', '1' if game_receipt.get('fsr3_enabled', False) else '0']
+        argv += ['--fsr4-available', '1' if game.get('fsr4_assets') else '0']
+        argv += ['--fsr4-unavailable-reason', game.get('fsr4_unavailable_reason', 'Prepare the optional local FSR4 models to enable this option.')[:512]]
     packaged = getattr(args, 'packaged_launcher', None)
     if packaged is not None:
         copied_gui = verified_packaged_launcher(packaged, launcher['binary_sha256'])
@@ -217,6 +235,7 @@ def prepare(args):
     for key, value in controls.items():
         argv += ['--test-child-env', key + '=' + value]
     launch = {'argv': argv, 'cwd': str(ROOT), 'state': str(state), 'input': game['input'],
+            'host_game_broker_capable': bool(expected_gui_source and expected_gui_source == current_gui_source and not args.shot and not args.ui_script),
             'launcher_sha256': launcher['binary_sha256'], 'game_sha256': game['binary_sha256'],
             'library_path': launcher['library_path'], 'game_library_path': game['library_path'],
             'test_controls': controls}
@@ -243,6 +262,120 @@ def check_input(source):
     if check.returncode:
         raise ValueError('selected game input check failed: ' + check.stdout + check.stderr)
     return check.stdout.strip()
+
+
+def input_location_module():
+    path = ROOT / 'scripts/input_location.py'
+    ordinary_path(path)
+    if not path.is_file():
+        raise ValueError('missing ordinary input-location helper')
+    spec = importlib.util.spec_from_file_location('_monado_launcher_input_location', path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def input_independent_runtime(executable, *, launcher=False):
+    """Check the same native identity/closure before a locator can execute.
+
+    run_linux.plan also requires available game input and prepares game-specific
+    namespace arguments. Recovery needs neither, and never creates a profile.
+    """
+    port = run_linux.install_layout.build_port(ROOT, executable)
+    binary = run_linux.checked_path(executable, [port / name for name in ('build', 'runs', 'accepted')], exists=True)
+    receipt = json.loads((binary.parent / 'receipt.json').read_text())
+    if launcher:
+        if receipt.get('artifact_kind') != 'linux-launcher':
+            raise ValueError('input locator requires a linux-launcher build receipt')
+    elif receipt.get('artifact_kind') == 'linux-launcher' or not (receipt.get('generated') or receipt.get('split_game') and receipt.get('game_library')):
+        raise ValueError('game executable must have a complete generated-game build receipt')
+    if receipt.get('status') != 'passed' or receipt.get('executable', {}).get('path') != str(binary):
+        raise ValueError('executable does not match a successful build receipt')
+    run_linux.runtime_check.native_file(binary)
+    with binary.open('rb') as stream:
+        identity = hashlib.file_digest(stream, 'sha256').hexdigest()
+    if not os.access(binary, os.X_OK) or identity != receipt.get('executable', {}).get('sha256'):
+        raise ValueError('executable does not match a successful build receipt')
+    run_linux.verify_runtime_resources(binary, receipt)
+    sysroot = Path(receipt.get('dependencies', {}).get('sysroot', ''))
+    if not sysroot.is_absolute() or sysroot.resolve() != sysroot or not sysroot.is_relative_to(port / '.deps/graphics/sysroots'):
+        raise ValueError('build receipt has no valid local graphics sysroot')
+    marker = json.loads((sysroot / '.monado-deps.json').read_text())
+    expected_lock = receipt.get('sources_before', {}).get('graphics-deps-linux.lock.json')
+    if not expected_lock or marker.get('lock_sha256') != expected_lock or not (sysroot / 'usr/lib/x86_64-linux-gnu').is_dir():
+        raise ValueError('graphics sysroot identity differs from the build receipt')
+    run_linux.runtime_check.require_receipt_validation(receipt, marker)
+    policy, _ = run_linux.runtime_check.load_policy(port, sysroot, expected_lock=expected_lock,
+        expected_policy=receipt.get('runtime_validation', {}).get('runtime_policy_sha256'))
+    library_path = run_linux.runtime_check.library_path(sysroot, policy)
+    run_linux.runtime_check.check_receipted(binary, port)
+    return binary, receipt['executable']['sha256'], library_path
+
+
+def locate_game_files(binary, library_path, previous):
+    """Run only the checked settings GUI's standalone picker, with bounded IPC."""
+    command = [str(binary), '--locate-game-files', '--missing-input', previous]
+    child = subprocess.Popen(command, cwd=str(ROOT), env=clean_environment(library_path),
+                             stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             close_fds=True)
+    output, errors = bytearray(), bytearray()
+    try:
+        with selectors.DefaultSelector() as selector:
+            selector.register(child.stdout, selectors.EVENT_READ, output)
+            selector.register(child.stderr, selectors.EVENT_READ, errors)
+            while selector.get_map():
+                for key, _ in selector.select(.2):
+                    data = os.read(key.fileobj.fileno(), 4097)
+                    if not data:
+                        selector.unregister(key.fileobj)
+                        continue
+                    key.data.extend(data)
+                    if len(output) > 4096 or len(errors) > 16384:
+                        raise ValueError('input locator returned excessive output')
+        code = child.wait()
+        if code:
+            raise ValueError('input locator failed: ' + errors.decode('utf-8', errors='replace').strip())
+        if not output:
+            return None
+        if output[-1:] != b'\0' or b'\0' in output[:-1]:
+            raise ValueError('input locator returned an invalid folder selection')
+        selected = output[:-1].decode('utf-8', errors='strict')
+        if not selected or not Path(selected).is_absolute() or any(ord(c) < 32 for c in selected):
+            raise ValueError('input locator returned an invalid folder selection')
+        return selected
+    finally:
+        if child.poll() is None:
+            child.terminate()
+            try:
+                child.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                child.kill(); child.wait()
+        child.stdout.close(); child.stderr.close()
+
+
+def recover_input(args):
+    # Scripted validation/capture/precompile routes stay noninteractive. Their
+    # existing missing-input failure remains useful to callers and update jobs.
+    if (args.dry_run or args.shot or args.shot_tab is not None or args.shot_frame is not None or
+            args.ui_script or args.test_child_env or args.test_exit_after_child):
+        return True
+    helper = input_location_module()
+    location = helper.inspect(ROOT, args.game_executable)
+    if not location['missing']:
+        return True
+    binary, identity, library_path = input_independent_runtime(args.launcher_executable, launcher=True)
+    input_independent_runtime(args.game_executable)
+    if args.packaged_launcher is not None:
+        # Still validate the AppImage copy, but use the receipted workspace GUI
+        # outside the game's private DLSS /tmp namespace for this early mode.
+        verified_packaged_launcher(args.packaged_launcher, identity)
+    helper.require_idle(ROOT)
+    replacement = locate_game_files(binary, library_path, location['previous'])
+    if replacement is None:
+        return False
+    helper.relocate(ROOT, args.game_executable, replacement, checker=check_input)
+    return True
 
 
 def mkdir_private(path):
@@ -291,7 +424,7 @@ def acquire_lock(state):
         os.close(state_fd)
 
 
-def wait_session(argv, environment, lock_fd, log_fd, updates=None, runtime_fd=None):
+def wait_session(argv, environment, lock_fd, log_fd, updates=None, runtime_fd=None, metadata_mirror=None, games=None):
     """Keep the lock until the GUI and adopted descendants exit naturally.
 
     The GUI retains an inherited lock as protection if this wrapper dies. The
@@ -316,32 +449,51 @@ def wait_session(argv, environment, lock_fd, log_fd, updates=None, runtime_fd=No
     handlers = {number: signal.signal(number, keep_game) for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
     child = None
     updates_finished = False
+    games_finished = False
     try:
         command = [*argv, '--lock-fd', str(lock_fd)]
         descriptors = (lock_fd,) + ((runtime_fd,) if runtime_fd is not None else ())
         if updates is not None:
             command += ['--update-fd', str(updates.child_fd())]
             descriptors += (updates.child_fd(),)
+        if games is not None:
+            command += ['--game-fd', str(games.child_fd())]
+            descriptors += (games.child_fd(),)
+        # [XCDE] LINUX-089: refresh only the fixed private metadata export on
+        # the host. Keep it alive through worker joins and adopted-game reaping;
+        # existing update cancellation, signals, leases and waits stay unchanged.
+        if metadata_mirror is not None:
+            metadata_mirror.start(log_fd=log_fd)
         child = subprocess.Popen(command, cwd=ROOT, env=environment,
                                  stdin=subprocess.DEVNULL, stdout=log_fd, stderr=log_fd,
                                  start_new_session=True, pass_fds=descriptors)
-        if updates is None:
+        if games is not None:
+            games.child_started()
+        if updates is None and games is None:
             code = child.wait()
         else:
             import time
-            updates.child_started()
+            if updates is not None:
+                updates.child_started()
             while child.poll() is None:
-                try:
-                    updates.poll(child.pid)
-                except Exception as error:
-                    os.write(log_fd, ('[updates] disabled: ' + str(error) + '\n').encode('utf-8', errors='replace'))
-                    updates.disconnect()
+                if games is not None:
+                    games.poll(child.pid)
+                if updates is not None:
+                    try:
+                        updates.poll(child.pid)
+                    except Exception as error:
+                        os.write(log_fd, ('[updates] disabled: ' + str(error) + '\n').encode('utf-8', errors='replace'))
+                        updates.disconnect()
                 time.sleep(0.03)
             code = child.returncode
-            # A worker owns and reaps its own subprocesses. Join it before the
-            # generic adopted-child loop, which must never steal those statuses.
-            updates.activation_ready = updates.finish(code)
-            updates_finished = True
+            # Each service reaps its own worker before the generic adopted-child
+            # loop. GUI closure or crash never signals a running host-owned game.
+            if updates is not None:
+                updates.activation_ready = updates.finish(code)
+                updates_finished = True
+            if games is not None:
+                games.finish()
+                games_finished = True
         while True:
             try:
                 os.waitpid(-1, 0)
@@ -354,9 +506,13 @@ def wait_session(argv, environment, lock_fd, log_fd, updates=None, runtime_fd=No
         # There is deliberately no kill/terminate path. The child inherits the
         # lock if this wrapper is forcibly terminated or cannot continue.
         try:
+            if games is not None and not games_finished:
+                games.finish()
             if updates is not None and not updates_finished:
                 updates.finish(1)
         finally:
+            if metadata_mirror is not None:
+                metadata_mirror.stop()
             for number, handler in handlers.items():
                 signal.signal(number, handler)
             if libc.prctl(36, previous.value, 0, 0, 0):
@@ -385,9 +541,13 @@ def main(argv=None):
     parser, args = arguments(argv)
     lock_fd = log_fd = runtime_fd = None
     updates = None
+    games = None
     restart = None
+    metadata_mirror = None
     result = 1
     try:
+        if not recover_input(args):
+            return 0
         launch = prepare(args)
         launch['input_check'] = check_input(launch['input'])
         if args.dry_run:
@@ -403,7 +563,6 @@ def main(argv=None):
             # Managed versions mirror their active version at the original root.
             # The checked helper also holds the install lease; dry runs returned
             # above without changing source metadata or touching a user profile.
-            import importlib.util
             path = ROOT.parent / 'tools/update_linux.py'
             if path.resolve() != path or not path.is_file():
                 raise ValueError('missing ordinary installed-version helper')
@@ -431,10 +590,9 @@ def main(argv=None):
         with os.fdopen(os.dup(log_fd), 'a', encoding='utf-8') as log:
             log.write('[launcher-selection] ' + json.dumps(selection, sort_keys=True) + '\n')
         if 'namespace' in launch:
-            run_linux.prepare_namespace_state(launch)
+            metadata_mirror = run_linux.prepare_namespace_state(launch, controller_refresh=True)
         if not args.no_updates and not args.shot and not args.ui_script and (ROOT.parent / 'update-version.json').exists():
             # Load only the local authored updater, on the host side of bwrap.
-            import importlib.util
             path = ROOT / 'scripts/launcher_updates.py'
             try:
                 spec = importlib.util.spec_from_file_location('_monado_launcher_updates', path)
@@ -447,9 +605,22 @@ def main(argv=None):
                     updates.session.profile_lock_fd = lock_fd
             except Exception as error:
                 os.write(log_fd, ('[updates] unavailable: ' + str(error) + '\n').encode('utf-8', errors='replace'))
+        if launch.get('host_game_broker_capable'):
+            # This service stays on the host side of the GUI's namespace and
+            # Landlock guard. The GUI only receives a fixed-selection capability.
+            path = ordinary_path(ROOT / 'scripts/launcher_game_broker.py')
+            spec = importlib.util.spec_from_file_location('_monado_host_game_broker', path)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            games = module.GameBroker(state=state, launcher=Path(launch['argv'][0]),
+                executable=Path(selection['game_executable']), executable_sha256=launch['game_sha256'],
+                policy=run_linux, environment=clean_environment(launch['game_library_path']),
+                profile_lock_fd=lock_fd, runtime_fd=runtime_fd, log_fd=log_fd,
+                activity=lambda: updates is not None and (updates.kind == 'install' or updates.prepared is not None))
         params = (launch.get('execution_argv', launch['argv']),
                   launch.get('runtime_environment', clean_environment(launch['library_path'])), lock_fd, log_fd)
-        result = wait_session(*params, updates=updates, runtime_fd=runtime_fd)
+        result = wait_session(*params, updates=updates, runtime_fd=runtime_fd,
+                              metadata_mirror=metadata_mirror, games=games)
         # Every owned child is reaped. Drop SH before the updater requests EX;
         # separate descriptors avoid flock conversion/upgrade deadlocks.
         install_lease.release(runtime_fd)
@@ -461,6 +632,10 @@ def main(argv=None):
     except (ValueError, OSError, RuntimeError, subprocess.SubprocessError) as error:
         parser.exit(1, str(error) + '\n')
     finally:
+        if games is not None:
+            games.finish()
+        if metadata_mirror is not None:
+            metadata_mirror.close()
         if updates is not None and restart is None:
             updates._close_staging()
         if log_fd is not None:

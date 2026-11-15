@@ -45,44 +45,61 @@ static int by_name_file(const void *a, const void *b) { return strcmp((*(File *c
 // (tmaa), FXAA-style AntiAliasing, motion blur (blur2) and fur blur - made for the Switch's 720p, they soften a 4K
 // image (the same edit as the community "AA/Blur Removal" mod). XCDE_LIBNX="key=value,key=value": test edits.
 #include "../settings.h"
-static void edit_ini(File *f, const char *edits) {
-    FILE *in = fopen(f->path, "rb");
-    if (!in) return;
-    char *src = malloc(f->size + 1);
-    size_t n = fread(src, 1, f->size, in);
-    fclose(in);
-    src[n] = 0;
-    size_t cap = n + strlen(edits) + 64, len = 0;
-    char *out = malloc(cap);
-    int changed = 0;
-    for (char *line = src; *line;) {
-        char *eol = strchr(line, '\n');
-        size_t ll = eol ? (size_t)(eol - line + 1) : strlen(line);
-        char key[64] = {0};
-        size_t k = 0;
-        while (k < ll && k < 63 && line[k] != '=' && line[k] != ' ' && line[k] != '\r' && line[k] != '\n') key[k] = line[k], k++;
-        const char *v = NULL;
-        size_t vl = 0;
-        if (k && k < ll && (line[k] == '=' || line[k] == ' '))
-            for (const char *e = edits; *e;) {  // "key=value,key=value"
-                const char *eq = strchr(e, '='), *end = strchr(e, ',');
-                if (!end) end = e + strlen(e);
-                if (eq && eq < end && (size_t)(eq - e) == k && !memcmp(e, key, k)) { v = eq + 1; vl = (size_t)(end - eq - 1); }
-                e = *end ? end + 1 : end;
-            }
-        if (v) {
-            len += (size_t)snprintf(out + len, cap - len, "%s=%.*s\r\n", key, (int)vl, v);
-            changed++;
-        } else {
-            memcpy(out + len, line, ll);
-            len += ll;
-        }
-        line += ll;
+#include "../host/xcde_aspect.h" // [XCDE] LINUX-103: opt-in native aspect owns scene dimensions.
+// [XCDE] LINUX-103: grow per replacement; repeated keys in modded INIs must
+// not overrun a buffer sized for only one occurrence of each requested edit.
+static bool ini_append(char **out,size_t *len,size_t *cap,const char *text,size_t count) {
+    if(count>SIZE_MAX-*len-1)return false;
+    size_t need=*len+count+1;
+    if(need>*cap) {
+        size_t grown=*cap<=SIZE_MAX/2 ? *cap*2 : need;
+        if(grown<need)grown=need;
+        char *more=realloc(*out,grown);if(!more)return false;
+        *out=more;*cap=grown;
     }
-    free(src);
-    f->mem = (uint8_t *)out;
-    f->size = len;
-    fprintf(stderr, "[romfs] %s: %d settings edited (%s)\n", f->path, changed, edits);
+    memcpy(*out+*len,text,count);*len+=count;(*out)[*len]=0;return true;
+}
+static void edit_ini(File *f, const char *edits) {
+    if(f->size>=SIZE_MAX)return;
+    FILE *in=fopen(f->path,"rb");if(!in)return;
+    char *src=malloc((size_t)f->size+1);
+    if(!src){fclose(in);return;}
+    size_t n=fread(src,1,(size_t)f->size,in);
+    bool read_failed=ferror(in)!=0;fclose(in);
+    if(read_failed){free(src);return;}src[n]=0;
+    size_t cap=n+1,len=0;char *out=malloc(cap);
+    if(!out){free(src);return;}out[0]=0;
+    int changed=0;bool saw_guest_dynres=false;
+    for(char *line=src;*line;) {
+        char *eol=strchr(line,'\n');size_t ll=eol?(size_t)(eol-line+1):strlen(line);
+        char key[64]={0};size_t k=0;
+        while(k<ll && k<63 && line[k]!='=' && line[k]!=' ' && line[k]!='\t' && line[k]!='\r' && line[k]!='\n')key[k]=line[k],k++;
+        const char *v=NULL;size_t vl=0;
+        if(k && k<ll && (line[k]=='=' || line[k]==' ' || line[k]=='\t'))
+            for(const char *e=edits;*e;) {
+                const char *eq=strchr(e,'='),*end=strchr(e,',');if(!end)end=e+strlen(e);
+                if(eq && eq<end && (size_t)(eq-e)==k && !memcmp(e,key,k)){v=eq+1;vl=(size_t)(end-eq-1);}
+                e=*end?end+1:end;
+            }
+        if(v) {
+            if(!ini_append(&out,&len,&cap,key,k) || !ini_append(&out,&len,&cap,"=",1) ||
+               !ini_append(&out,&len,&cap,v,vl) || !ini_append(&out,&len,&cap,"\r\n",2))goto failed;
+            if(!strcmp(key,"red_Auto"))saw_guest_dynres=true;
+            changed++;
+        } else if(!ini_append(&out,&len,&cap,line,ll))goto failed;
+        line+=ll;
+    }
+    // A mod may omit (or contain a malformed copy of) the native DRS key.
+    if(xcde_aspect_disable_guest_dynres() && !saw_guest_dynres) {
+        if(len && out[len-1]!='\n' && !ini_append(&out,&len,&cap,"\n",1))goto failed;
+        const char forced[]="red_Auto=off\r\n";
+        if(!ini_append(&out,&len,&cap,forced,sizeof forced-1))goto failed;
+        changed++;
+    }
+    free(src);f->mem=(uint8_t *)out;f->size=len;
+    fprintf(stderr,"[romfs] %s: %d settings edited (%s)\n",f->path,changed,edits);return;
+failed:
+    free(src);free(out);fprintf(stderr,"[romfs] could not allocate virtual graphics settings\n");
 }
 static void maybe_edit(File *f) {
     extern bool kbicons_wanted(const char *path), kbicons_init(void), settings_mod_enabled(const char *name);
@@ -104,8 +121,16 @@ static void maybe_edit(File *f) {
     if (!g_settings.game_blur) strcat(edits, "AntiAliasing=off,tmaa=off,blur2=off,furBlur=off");
     // [XCDE] FSR 3 / DLSS replace the game's own anti-aliasing (its temporal AA would blur their jittered input)
     else if (g_settings.upscaler == UPSCALE_FSR3 || g_settings.upscaler == UPSCALE_DLSS) strcat(edits, "AntiAliasing=off,tmaa=off");
+    if (g_settings.taa_off) { if (*edits) strcat(edits,","); strcat(edits,"tmaa=off"); }
+    if (g_settings.graphics.value[GFX_SHADOW_MASK]==1) { if (*edits) strcat(edits,","); strcat(edits,"shadowHalf=off"); }
     const char *e = getenv("XCDE_LIBNX");
-    if (e && *e) { if (*edits) strcat(edits, ","); strncat(edits, e, sizeof edits - strlen(edits) - 1); }
+    if (e && *e) { if (*edits) strcat(edits, ","); strncat(edits, e, sizeof edits - strlen(edits) - 64); }
+    // [XCDE] LINUX-103/#12: apply after user/mod diagnostic edits so a competing
+    // native red_Auto cannot reshape the scene behind the PC camera/viewport.
+    if (xcde_aspect_disable_guest_dynres()) {
+        if (*edits) strcat(edits,","); strcat(edits,"red_Auto=off");
+        fprintf(stderr,"[aspect] game dynamic resolution disabled; PC output resolution controls scene size, mode=%d\n",g_settings.aspect);
+    }
     if (*edits) edit_ini(f, edits);
 }
 

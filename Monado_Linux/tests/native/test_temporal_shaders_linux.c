@@ -6,9 +6,9 @@
 // builtin_src also has an unrelated SMAA branch. This fixture never requests it.
 const char smaa_hlsl_src[] = "";
 
-int main(void) {
-    const char *names[] = {"post.vert", "tmp_prep.frag", "tmp_hud.frag"};
-    const int counts[] = {0, 4, 3};
+int main(int argc,char **argv) {
+    const char *names[] = {"post.vert", "tmp_prep.frag", "tmp_hud.frag", "tmp_srgb.frag"};
+    const int counts[] = {0, 4, 3, 1};
     shaderc_compiler_t comp = shaderc_compiler_initialize();
     assert(comp);
     unsigned cases = 0;
@@ -30,6 +30,10 @@ int main(void) {
             size_t bytes = shaderc_result_get_length(r);
             const uint32_t *spv = (const uint32_t *)shaderc_result_get_bytes(r);
             assert(bytes >= 5 * sizeof *spv && bytes % sizeof *spv == 0 && spv[0] == 0x07230203);
+            if (optimized && argc==2) {
+                char path[4096]; assert(snprintf(path,sizeof path,"%s/%s.spv",argv[1],names[i])<(int)sizeof path);
+                FILE *file=fopen(path,"wb"); assert(file); assert(fwrite(spv,1,bytes,file)==bytes); assert(fclose(file)==0);
+            }
             VkBindingInfo b[8];
             int n = vk_reflect(spv, bytes / sizeof *spv, b, 8);
             assert(n == counts[i]);

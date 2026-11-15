@@ -90,6 +90,22 @@ static bool ordinary_repeat(void){
 }
 int main(void){
  unsigned cases=0;
+ reset();g_settings.upscaler=UPSCALE_FSR3;
+#ifdef XCDE_LINUX_FSR3
+ assert(tmp_frame_gen_wanted());prepare();assert(!record()&&provider.history);
+ real_frame++;prepare();assert(record()&&calls==2);cases++;
+#else
+ assert(!tmp_frame_gen_wanted());prepare();assert(!record()&&!calls);cases++;
+#endif
+
+ reset();g_settings.upscaler=UPSCALE_FSR4_LITE;
+#ifdef XCDE_LINUX_FSR4
+ assert(tmp_frame_gen_wanted());prepare();assert(!record()&&provider.history);
+ real_frame++;prepare();assert(record()&&calls==2);cases++;
+#else
+ assert(!tmp_frame_gen_wanted());prepare();assert(!record()&&!calls);cases++;
+#endif
+
  reset();assert(!repeat_suppressed());prepare();assert(!repeat_suppressed());assert(!record()&&provider.history&&!tmp_fg_active());
  bool repeated=ordinary_repeat();real_frame++;prepare();bool generated=record();
  if(repeated||!generated)fprintf(stderr,"warmup/repeat regression: ordinary_repeat=%d second_generated=%d SDK_calls=%u\n",repeated,generated,calls);

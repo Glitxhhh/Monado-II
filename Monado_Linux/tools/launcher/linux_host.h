@@ -23,10 +23,23 @@ extern "C" {
 }
 namespace launcher_linux {
 static std::string project, game_project, input, game;
+static bool smooth_motion_layer_available; // [XCDE] LINUX-097: host component probe, not a GPU compatibility claim
+static bool smooth_motion_hint(const char *value) {
+    // Production argument-value parser; no SDL/driver initialization.
+    if (!value || (strcmp(value, "0") && strcmp(value, "1"))) return false;
+    smooth_motion_layer_available = !strcmp(value, "1");
+    return true;
+}
 static std::vector<std::string> test_environment;
 static pid_t game_pid;
 static pid_t precompile_pid;  // [XCDE] LINUX-018: one owned activity at a time
-static bool activity_busy() { return game_pid != 0 || precompile_pid != 0 || update_applying(); }
+static bool fsr4_active, fsr4_models_ready;
+static unsigned fsr4_request;
+static std::string fsr4_message,fsr4_phase_value;
+static bool fsr4_preparing(){return fsr4_active;}
+static const char*fsr4_status(){return fsr4_message.c_str();}
+static const char*fsr4_phase(){return fsr4_phase_value.c_str();}
+static bool activity_busy() { return game_pid != 0 || precompile_pid != 0 || fsr4_active || update_applying(); }
 static bool game_seen;
 static int last_result;
 static std::string error;
@@ -110,13 +123,111 @@ static pid_t spawn(const std::vector<std::string> &args, const std::string &log_
     }
     return pid;
 }
-static bool start_game(const std::string &state) {
-    if (activity_busy()) { error = "A game or shader precompiler is already running"; return false; }
+// [XCDE] LINUX-099: a host-owned, fixed-selection Play capability. A positive
+// legacy game_pid is an owned child; -1 is a host-owned pending/running game.
+static int game_fd = -1, game_last_activity = -1;
+static bool game_broker_configured, game_broker_ready;
+static unsigned game_request;
+static std::string game_message;
+static void game_disconnect(const char *reason) {
+    if (game_fd >= 0) close(game_fd);
+    game_fd = -1; game_broker_ready = false;
+    game_message = reason;
+    // An uncertain active game remains busy. Never launch a replacement blindly.
+}
+static bool game_send(const std::string &text) {
+    if (game_fd < 0 || text.empty() || text.size() > 2048) return false;
+    ssize_t n; do { n = send(game_fd, text.data(), text.size(), MSG_DONTWAIT | MSG_NOSIGNAL); } while (n < 0 && errno == EINTR);
+    if (n == (ssize_t)text.size()) return true;
+    game_disconnect("Host game launch connection unavailable. Reopen the launcher after closing the game.");
+    return false;
+}
+static bool game_adopt_fd(int fd) {
+    int type=0; socklen_t length=sizeof type; sockaddr_storage address{};socklen_t address_length=sizeof address;
+    int flags=fcntl(fd,F_GETFD),status=fcntl(fd,F_GETFL);
+    if(fd<3||flags<0||status<0||game_broker_configured||getsockopt(fd,SOL_SOCKET,SO_TYPE,&type,&length)||
+        type!=SOCK_SEQPACKET||getsockname(fd,(sockaddr*)&address,&address_length)||address.ss_family!=AF_UNIX||
+        fcntl(fd,F_SETFD,flags|FD_CLOEXEC)||fcntl(fd,F_SETFL,status|O_NONBLOCK))return false;
+    game_fd=fd;game_broker_configured=true;
+    return game_send("1\thello\t"+std::to_string(getpid()));
+}
+static bool game_number(const std::string &text,unsigned &out) {
+    if(text.empty()||text.size()>10||text[0]=='0')return false;
+    for(unsigned char c:text)if(c<'0'||c>'9')return false;
+    char *end=nullptr;errno=0;unsigned long value=strtoul(text.c_str(),&end,10);
+    if(errno||!end||*end||value>INT_MAX)return false;out=(unsigned)value;return true;
+}
+static bool game_receive(const std::string &text) {
+    if(text.empty()||text.size()>2048)return false;
+    for(unsigned char c:text)if((c<32&&c!='\t')||c==127)return false;
+    std::vector<std::string> fields;
+    for(size_t at=0;;){size_t end=text.find('\t',at);fields.push_back(text.substr(at,end==std::string::npos?end:end-at));if(fields.size()>5)return false;if(end==std::string::npos)break;at=end+1;}
+    if(fields.size()<3||fields[0]!="1"||fields.back().size()>1024)return false;
+    if(fields[1]=="ready"&&fields.size()==3&&!game_broker_ready){game_broker_ready=true;return true;}
+    unsigned request=0;
+    if(fields[1]=="fsr4"){
+        if(fields.size()!=5||!game_number(fields[2],request)||request!=fsr4_request||fields[4].size()>512)return false;
+        const auto &phase=fields[3];
+        if(phase!="pending"&&phase!="running"&&phase!="ready"&&phase!="error"&&phase!="cancelled")return false;
+        fsr4_active=phase=="pending"||phase=="running";
+        if(phase=="ready")fsr4_models_ready=true;
+        fsr4_phase_value=phase;fsr4_message=fields[4];return true;
+    }
+    if(!game_number(fields[2],request)||request!=game_request||game_pid!=-1)return false;
+    if((fields[1]=="pending"||fields[1]=="running"||fields[1]=="error")&&fields.size()==4){
+        if(fields[1]=="running")game_seen=true;
+        if(fields[1]=="error"){game_pid=0;last_result=1;}
+        game_message=fields[3];return true;
+    }
+    if(fields[1]=="exit"&&fields.size()==5){
+        char *end=nullptr;errno=0;long code=strtol(fields[3].c_str(),&end,10);
+        if(errno||!end||end==fields[3].c_str()||*end||code<0||code>255)return false;
+        last_result=(int)code;if(!last_result&&!game_seen)last_result=1;
+        game_pid=0;game_message=fields[4];return true;
+    }
+    return false;
+}
+static void game_broker_poll(void) {
+    if(game_fd<0)return;
+    int activity=precompile_pid!=0||fsr4_active||update_applying();
+    if(game_last_activity!=activity){if(!game_send(std::string("1\tactivity\t")+(activity?"busy":"idle")))return;game_last_activity=activity;}
+    for(unsigned i=0;i<16;i++){
+        char bytes[2049];ssize_t n=recv(game_fd,bytes,sizeof bytes,MSG_DONTWAIT);
+        if(n<0&&errno==EINTR){--i;continue;}
+        if(n<0&&(errno==EAGAIN||errno==EWOULDBLOCK))break;
+        if(n<=0||n>2048||!game_receive(std::string(bytes,(size_t)n))){game_disconnect("Host game status connection closed. A running game is not stopped; close it before reopening the launcher.");return;}
+    }
+}
+static bool request_fsr4_prepare(){
+    if(activity_busy()){error="Finish the current game, update or preparation first.";return false;}
+    if(!game_broker_ready||game_fd<0){error="Reopen the current launcher to prepare FSR4 Lite.";return false;}
+    if(game_request>=INT_MAX){error="Launcher request limit reached. Reopen the launcher.";return false;}
+    fsr4_request=++game_request;fsr4_active=true;fsr4_phase_value="pending";
+    fsr4_message="Checking installed Proton and FSR4 preparation requirements...";
+    if(!game_send("1\tprepare-fsr4\t"+std::to_string(fsr4_request))){fsr4_active=false;error=game_message;return false;}
+    return true;
+}
+static bool cancel_fsr4_prepare(){
+    if(!fsr4_active||game_fd<0){error="No FSR4 preparation is running.";return false;}
+    if(!game_send("1\tcancel-fsr4\t"+std::to_string(fsr4_request))){error=game_message;return false;}
+    fsr4_message="Cancelling FSR4 preparation and closing its private Proton process...";
+    return true;
+}
+static bool start_game(const std::string &state, bool smooth_required=false) {
+    if(activity_busy()){error="A game, shader precompiler or update is already running";return false;}
+    if(game_broker_configured){
+        if(game_fd<0||!game_broker_ready){error="Host game launch is unavailable. Reopen the AppImage or Play script.";return false;}
+        if(game_request>=INT_MAX){error="Host game request limit reached. Reopen the launcher.";return false;}
+        ++game_request;game_pid=-1;game_seen=false;last_result=1;
+        if(!game_send("1\tplay\t"+std::to_string(game_request))){game_pid=0;error=game_message;return false;}
+        return true;
+    }
+    if(smooth_required){error="NVIDIA Smooth Motion requires the host game launcher. Reopen the AppImage or Play script.";return false;}
     std::vector<std::string> args = {"/usr/bin/python3", "-B", (game_project.empty() ? project : game_project) + "/scripts/run_linux.py", "--executable", game,
         "--state-root", state, "--env", "XCDE_STRICT=1", "--env", "XCDE_NO_ERROR_DIALOG=1", "--env", "XCDE_INI=" + state + "/xcde.ini"};
-    for (const auto &entry : test_environment) { args.push_back("--env"); args.push_back(entry); }
-    game_pid = spawn(args, state + "/logs/launcher-game.log"); game_seen = false; last_result = 1;
-    return game_pid != 0;
+    for(const auto &entry:test_environment){args.push_back("--env");args.push_back(entry);}
+    game_pid=spawn(args,state+"/logs/launcher-game.log");game_seen=false;last_result=1;
+    return game_pid!=0;
 }
 
 // [XCDE] LINUX-017: bwrap retains monitor/init processes while its game runs.
@@ -184,6 +295,7 @@ static bool process_tree_has_game(pid_t root, const std::string &expected) {
     return false;
 }
 static std::string poll_game() {
+    if(game_broker_configured){game_broker_poll();std::string result=game_message;game_message.clear();return result;}
     if (!game_pid) return {};
     int status = 0; pid_t done = waitpid(game_pid, &status, WNOHANG);
     if (done < 0 && errno == EINTR) return {};

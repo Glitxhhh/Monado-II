@@ -1,5 +1,151 @@
 # Changelog
 
+## Unreleased (Linux development build)
+
+- Add native temporal FSR3 upscaling on Linux, with compatible inputs for the
+  existing experimental 2× frame generator. Preserve native NVIDIA DLSS/DLAA.
+- Add optional experimental FSR4 Lite with local model preparation, capability
+  checks and fallback handling. Models are prepared only on request; existing
+  upscaling preferences are preserved.
+- Add graphics quality controls shared by the launcher and F1 menu, including
+  anti-aliasing/blur, filtering, foliage distance, shadows and effects. Original
+  settings remain the default; settings that need a restart say so.
+- Add optional controller vibration, off by default, GPU selection/diagnostics,
+  and a local support ZIP that can be reviewed before sharing.
+- Address issue #12's competing resolution controllers in non-original aspect
+  modes. Correct fractional high-FPS frame-count thresholds and temporal history
+  resets; preserve the Original aspect and native save formats.
+- Correct renderer feedback visibility, scaled texture gathers and zero-sharpness
+  handling. Add optional bloom stability modes with Original still selected.
+- Expand the portable build path to an older glibc baseline with source-built
+  SDL/media/Python components. Separate the authored runtime from locally built
+  game code, retaining content/ABI checks and full source-build fallbacks.
+- Fix FSR **Match display refresh** in the actual Linux game build. The game
+  limiter now uses the shared frame-generation feature flag, retaining fractional
+  refresh targets and restoring the normal cap when interpolation is unavailable.
+- Record measured Game and Output FPS samples in the run log while generation is
+  selected, including with the on-screen counter hidden. Preserve warmup and
+  unavailable states, actual NVIDIA accepted/failed counters, and FSR readiness.
+- Keep experimental frame generation off by default. Add a launcher method
+  selector for FSR 3 interpolation (2×) and, when its installed driver components
+  are detected, NVIDIA Smooth Motion (2×, RTX 40-series or newer). Methods are
+  exclusive; NVIDIA's driver controls its own hardware support and fallback.
+- Add an optional **Match display refresh** limit for FSR generation. A 180 Hz
+  display can request 90 real frames plus 90 interpolated frames per second,
+  subject to the chosen game FPS ceiling and actual performance. This does not
+  implement 3× generation from 60 FPS or 120-to-180 arbitrary-phase interpolation.
+- Pace FSR's generated/real pairs on a persistent output timeline, prepare the
+  second image ahead when safely available, and retain a serial fallback.
+  Recover from missed deadlines and swapchain changes without catch-up bursts.
+  Use FIFO presentation when FSR generation and VSync are both enabled.
+- The on-screen counter shows **Game** FPS and successful **Output** presentation
+  requests for integrated FSR, plus classified **Generated** FPS. An optional local Vulkan observer measures NVIDIA
+  downstream output submissions while Smooth Motion is selected. Neither
+  number measures physical scanout. Generated-only NVIDIA identity is unavailable;
+  unavailable measurements remain labelled rather than estimated as Game × 2.
+- Move completed FSR pairs to a bounded presentation worker so output waits can
+  overlap production of the next real frame. Keep explicit GPU/image/queue
+  ownership, limited-capacity fallbacks, error validation and reset drainage.
+- Add private per-run requested-settings snapshots and bounded native effective
+  settings/display/limiter logs. Retain up to 16 unmodified owned run records.
+- Fix NVIDIA CUDA initialization blocked by read-only process metadata. A verified
+  host supervisor starts the selected game outside the GUI's inherited guard;
+  only the opted-in game admits writes to its own thread metadata. The GUI,
+  unrelated files and other processes remain confined. No driver/system changes.
+- Preserve existing save formats, settings and the frame-generation-off path.
+  Authored component/GPU tests do not establish smoothness, input latency or
+  full-game compatibility. Gameplay testing is requested for this dev build;
+  Windows is unchanged. See [frame generation](docs/FRAME_GENERATION.md).
+
+## 0.1.20 — November 14, 2026
+
+- Add **Show FPS on screen** in Graphics, off by default, with a matching F1
+  setting. The input-transparent counter stays visible in fullscreen and reports
+  real game/render FPS, excluding generated and repeated presentations. Preserve
+  the separate title-bar FPS preference and keep text outside frame generation.
+- Keep reduced-resolution scene composites at the selected aspect ratio when
+  they sample multiple inputs. Preserve the centered proportional HUD and
+  portrait rendering, with bounded aspect diagnostics for further reports.
+- Derive the checked renderer camera's aspect from its logical camera rather
+  than independently rounded render dimensions. Original 16:9 stays the default.
+  These are candidate corrections for reported ultrawide framing changes;
+  reporter hardware gameplay validation remains pending.
+- The maintainer accepted desktop/NVIDIA gameplay and the on-screen counter.
+  Physical ultrawide validation is still requested; these checks are not full-game
+  or all-hardware qualification.
+- Updating requires a full local game rebuild and retains existing saves, settings
+  and game input. Original 16:9 remains the default; Quick Step, cheats, the new
+  FPS counter and experimental frame generation remain off by default. Windows
+  stays the original implementation with a version-free download name.
+
+## 0.1.19 — November 13, 2026
+
+- Recover missed controller connection/removal events and retry failed opens on
+  focus return or bounded idle checks. Preserve healthy controller selection and
+  release cached held input after an overlay/disconnection, in the game and launcher.
+- Keep Steam controller metadata live across atomic file replacements through a
+  validated, session-scoped private read-only snapshot; preserve filesystem and
+  save confinement. Actual Steam Deck/ROG Ally overlay-return testing is pending.
+- Add Match the display and explicit 16:10, 21:9 and 32:9 aspect choices alongside
+  Original 16:9, plus handheld/ultrawide window presets. Fixed ratios fit inside
+  any screen/window with centered bars instead of stretching; choices are not
+  hidden based on the monitor. Checked camera, culling and HUD-marker adapters support 16:10,
+  21:9 and 32:9; menus/HUD retain a centered, proportional 16:9 canvas. Original
+  16:9 remains the default. Gameplay, cutscene/effect and resize validation is
+  pending; see [aspect-ratio notes](docs/ASPECT_RATIOS.md). No save conversion.
+- Publish all five aspect choices on every monitor, independent of the window-size
+  presets. Use the selected ratio for the first camera and subsequent render
+  targets; retain native DLAA/SR content-extent agreement and centered bars.
+- Updating requires a full local game rebuild and preserves the original saves,
+  settings and shared input. Quick Step, cheats and frame generation remain off
+  by default; frame generation remains experimental. Windows stays the unchanged
+  original implementation with a version-free download name.
+
+## 0.1.18 — November 13, 2026
+
+- Fix Linux updates that fail during `package-appimage` with
+  `source already contains generated release-only files`, after the game and
+  native launcher have already compiled successfully. This affects full
+  AppImage packaging from a downloaded source kit, including long-standing
+  installations migrated to the persistent private Python environment.
+- Verify the source kit and its generated distribution metadata before creating
+  a normalized temporary source export for packaging. Keep the strict
+  clean-source packaging checks; installed source, input, saves and settings
+  are not rewritten as part of that normalization.
+- Fresh graphical setup uses a separate initial-build path and did not exercise
+  the failing update packaging step. No game feature or native save format
+  changes are included. Windows remains the unchanged original implementation.
+
+## 0.1.17 — November 13, 2026
+
+- Add a graphical Linux builder AppImage. Select your own extracted DE 2.0.0
+  `exefs`/`romfs` folder and a final installation folder, choose optional NVIDIA
+  DLSS support and shader preparation, and follow real local build progress.
+  The image bundles setup code, Python and the reviewed source template; it does
+  not contain a game, game-derived code/assets or vendor SDK.
+- Reopen the same AppImage to use the checked installation's settings launcher.
+  Adopt an existing installation in place without importing or converting saves.
+  Existing source scripts and updater-compatible source archives remain available.
+- Add **Locate game files** when an installation's remembered input is missing.
+  Validate the supported version and exact executable inventory before reconnecting
+  known input links. Preserve saves, settings and immutable build receipts; no
+  immediate game rebuild is needed. A later update can rebuild once at the new path.
+  Busy installations, cancellation and mismatched input preserve the old selection.
+- Keep private setup Python outside the AppImage's temporary mount and prevent
+  generated bytecode from invalidating its checked runtime cache after building.
+- Fetch and verify the pinned AppImage runtime before first-time standalone
+  packaging. Check the staged candidate instead of an older active launcher,
+  and preserve native-wrapper sibling imports during inherited-image startup.
+- The maintainer completed graphical fresh setup/build and accepted normal reopen.
+  A local existing installation was updated and manually confirmed to open and
+  play normally, with saves/settings and input preserved. Automated recovery and
+  hidden-UI tests pass. The local migration needed manually resumed packaging
+  fixes; a clean uninterrupted older-version update and a real moved-folder picker
+  test remain unqualified. This is not full-game or all-distro coverage.
+- Updating requires a full local rebuild while retaining the original profile.
+  Quick Step and cheats remain off by default; frame generation stays experimental
+  and off by default. Windows remains the unchanged original implementation.
+
 ## 0.1.16 — November 13, 2026
 
 - Preserve validated Steam/SDL controller context through the launcher and game,

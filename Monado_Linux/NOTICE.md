@@ -78,3 +78,13 @@ the Windows SDK presenter, Windows DLLs or game-derived shader data. No release 
 | NVIDIA Streamline 2.14.16 + DLSS DLLs | DLSS |
 | NVIDIA NGX / DLSS SDK 310.9.1, commit `374959484e79a640feaba44c93ac8cfb0a03f5b5` | Native Linux Vulkan Super Resolution / DLAA; separate NVIDIA proprietary [license](https://github.com/NVIDIA/DLSS/blob/374959484e79a640feaba44c93ac8cfb0a03f5b5/LICENSE.txt), retained with ignored local SDK and development build. No SDK headers, archive, SR binary or models are tracked. `dlss-linux.lock.json` pins the official files; the authored bridge loads only after offline policy. This is local development, not an approved redistribution bundle. |
 | Button icon packs from GameBanana (CompC: "Xbox control layout", "PS5 DualSense control layout", CC BY-NC-ND) | controller prompts; installed by the user into `mods/` |
+
+
+LINUX-103 graphics helpers and bloom/scaled-gather GLSL adaptations preserve
+MIT copyright for 2026 Peiikai and Monado contributors, pinned provenance and
+local changes in docs/UPSTREAM.md. The optional third_party/fsr4_native and
+third_party/fsr4cap components keep GPL-2.0-or-later terms plus their complete
+upstream notices; vendor SDK/model terms are separate. See
+docs/adr/0013-native-fsr4-linux.md before any binary distribution. Corresponding
+source/build scripts accompany the optional component. No game-derived asset,
+model capture or shader translation output is in this source tree.

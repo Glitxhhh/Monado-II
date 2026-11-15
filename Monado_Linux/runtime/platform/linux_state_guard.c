@@ -16,6 +16,8 @@
 #include <string.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
+#include <sys/statfs.h>
+#include <linux/magic.h>
 #include <sys/syscall.h>
 #include <unistd.h>
 
@@ -133,6 +135,32 @@ static int hidraw_devices(int ruleset) {
     return result;
 }
 
+
+// [XCDE] LINUX-099: CUDA names newly created threads through procfs.
+// Pin this actual process task directory before any worker starts. The rule
+// grants only write/truncate of own thread metadata, never create/remove/REFER.
+// Parent GUI confinement cannot be widened by a child; use the host game broker.
+static int own_task_metadata(int ruleset) {
+    char expected[128], resolved[PATH_MAX], self[64];
+    int n = snprintf(expected, sizeof expected, "/proc/%ld/task", (long)getpid());
+    if (n < 0 || n >= (int)sizeof expected || !realpath("/proc/self/task", resolved) || strcmp(expected, resolved)) { errno = EINVAL; return -1; }
+    ssize_t length = readlink("/proc/self", self, sizeof self - 1);
+    if (length <= 0 || length >= (ssize_t)sizeof self) { errno = EINVAL; return -1; }
+    self[length] = 0;
+    char pid[64]; snprintf(pid, sizeof pid, "%ld", (long)getpid());
+    if (strcmp(self, pid)) { errno = EINVAL; return -1; }
+    int fd = open(expected, O_PATH | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC);
+    if (fd < 0) return -1;
+    struct stat st, alias; struct statfs fs;
+    int rc = fstat(fd, &st) || stat("/proc/self/task", &alias) || fstatfs(fd, &fs);
+    if (!rc && (!S_ISDIR(st.st_mode) || st.st_uid != getuid() || st.st_dev != alias.st_dev || st.st_ino != alias.st_ino || fs.f_type != PROC_SUPER_MAGIC)) { errno = EINVAL; rc = -1; }
+    if (!rc) {
+        struct landlock_path_beneath_attr rule = {.allowed_access = LANDLOCK_ACCESS_FS_WRITE_FILE | LANDLOCK_ACCESS_FS_TRUNCATE, .parent_fd = fd};
+        rc = (int)syscall(SYS_landlock_add_rule, ruleset, LANDLOCK_RULE_PATH_BENEATH, &rule, 0);
+    }
+    int saved = errno; close(fd); errno = saved; return rc;
+}
+
 bool rt_linux_state_guard(const char *state, char *error, size_t size) {
     char canonical[PATH_MAX];
     struct stat st;
@@ -162,11 +190,16 @@ bool rt_linux_state_guard(const char *state, char *error, size_t size) {
     const char *directories[] = {"/dev/dri", "/dev/nvidia-caps", "/dev/snd", "/dev/input"};
     for (size_t i = 0; !rc && i < sizeof directories / sizeof directories[0]; ++i)
         rc = devices_in(fd, directories[i], NULL);
+    const char *cuda_names = getenv("MONADO_CUDA_TASK_METADATA");
+    const char *smooth = getenv("NVPRESENT_ENABLE_SMOOTH_MOTION");
+    bool own_tasks = cuda_names && !strcmp(cuda_names, "1") && smooth && !strcmp(smooth, "1");
+    if (!rc && own_tasks) rc = own_task_metadata(fd);
     if (!rc) rc = prctl(PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
     if (!rc) rc = (int)syscall(SYS_landlock_restrict_self, fd, 0);
     int saved = errno; close(fd);
     if (rc) return fail(error, size, "cannot enforce state guard: %s", strerror(saved));
     if (error && size) error[0] = 0;
     fprintf(stderr, "[paths] state write guard active (Landlock ABI %d)\n", abi);
+    if (own_tasks) fprintf(stderr, "[paths] CUDA own-thread procfs metadata enabled (write/truncate only)\n");
     return true;
 }

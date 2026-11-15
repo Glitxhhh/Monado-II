@@ -72,6 +72,3 @@ xcde.ini
 # Local immutable update workspaces, downloads, journals and activation records.
 updates/
 installation.json
-
-# Private agent current-state memory; never part of reviewed public source.
-/PROJECT_MEMORY.md

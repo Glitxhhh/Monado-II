@@ -110,7 +110,7 @@ def prepare(executable, state, entries=(), *, cancellation=None):
         launch['execution_argv'].insert(1, '--die-with-parent')
         launch['namespace'] = {**launch['namespace'], 'compiler_parent_death': True}
     receipt = json.loads((Path(launch['argv'][0]).parent / 'receipt.json').read_text())
-    if receipt.get('artifact_kind') == 'linux-launcher' or not receipt.get('generated'):
+    if receipt.get('artifact_kind') == 'linux-launcher' or not (receipt.get('generated') or receipt.get('split_game') and receipt.get('game_library')):
         raise ValueError('precompile requires a complete receipted game build')
     if type(receipt.get('precompile_protocol')) is not int or receipt['precompile_protocol'] != PROTOCOL:
         raise ValueError('selected build does not support the Linux precompile protocol')
@@ -134,8 +134,8 @@ def prepare(executable, state, entries=(), *, cancellation=None):
     # Match the checked normal CLI's desktop environment policy, without leaked
     # runtime controls or loader injection. Do not mutate process-global getenv.
     environment = {key: value for key, value in os.environ.items()
-                   if not key.startswith(('XCDE_', 'LARECOMP_', 'LASRECOMP_', 'MONADO_'))
-                   and not key.startswith('LD_') and key != 'GLIBC_TUNABLES'}
+                   if not key.startswith(('XCDE_', 'LARECOMP_', 'LASRECOMP_', 'MONADO_', 'NVPRESENT_'))
+                   and not key.startswith('LD_') and key not in ('GLIBC_TUNABLES', 'DISABLE_LAYER_NV_PRESENT_1')}
     environment.update(launch['controls'])
     environment.update(LD_LIBRARY_PATH=launch['library_path'], SDL_APP_ID='monado-linux-port',
                        XCDE_STRICT='1', XCDE_NO_ERROR_DIALOG='1',

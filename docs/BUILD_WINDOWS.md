@@ -1,10 +1,23 @@
+# Current Windows development target
+
+**Preparation only: implement the accepted Linux dev104 R5 feature set natively
+on Windows.** Read [AGENTS](../AGENTS.md) and the complete
+[Windows handoff](WINDOWS_PORT_HANDOFF.md) before executing inherited setup/build
+scripts. The first updated Windows release must include the portable graphical
+.exe builder/launcher and all applicable current Linux functionality. Root
+Build_Monado_II.bat and Play_Monado_II.bat are fallback requirements to implement;
+they are not supplied or validated by this preparation. No installer is required.
+
+Use Monado_Windows as the implementation target, retain native Win32/provider
+behavior, validate owned extracted DE2.0.0 input, generate game code locally and
+keep all Windows state/output separate. Audit and fix compiler-failure propagation,
+process-name-wide taskkill, hardcoded/unquoted paths and broad system setup before
+running the historical recipe below. Source CI does not establish a native build.
+Existing original-Windows release instructions remain historical; they do not
+describe a completed parity build. No Linux distro/sysroot/glibc prerequisites apply
+to Windows. The detailed handoff supplies phased implementation and acceptance gates.
+
 # Local Windows build
-
-> **Windows parity branch:** read [WINDOWS_PORT_HANDOFF.md](WINDOWS_PORT_HANDOFF.md)
-> for the approved implementation plan based on Linux0.1.16. The inherited recipe
-> below describes the original implementation; the proposed root Windows Build/Play
-> scripts do not exist yet. This preparation is not a new Windows release.
-
 
 Download **`monado-ii-windows-original-implementation-setup.zip`** from the GitHub
 Release. **This is the original Windows implementation, without the Linux
@@ -18,8 +31,7 @@ not independently built or validated Windows.
 
 The new Linux launcher, high-refresh corrections, expanded saves, dedicated Quick
 Step slot, Cheats tab, updater, controller/RADV corrections and other Linux work
-have **not** been backported. [TODO](../TODO.md) tracks the approved Windows development plan; implementation
-is pending.
+have **not** been backported. [TODO](../TODO.md) records deferred parity references.
 The containing source snapshot is recorded separately as provenance, not as a new
 Windows implementation version. Windows has no updater in this kit.
 

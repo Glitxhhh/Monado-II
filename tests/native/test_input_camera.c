@@ -48,6 +48,12 @@ static SDL_JoystickID primary_id, other_id;
 static SDL_Joystick *primary, *other;
 static SDL_Gamepad *other_pad;
 static unsigned other_button_down;
+static unsigned rumble_calls, rumble_device;
+static Uint16 rumble_low_test, rumble_high_test;
+static bool SDLCALL virtual_rumble(void *user, Uint16 low, Uint16 high) {
+    ++rumble_calls; rumble_device = (unsigned)(uintptr_t)user;
+    rumble_low_test = low; rumble_high_test = high; return true;
+}
 
 #define CHECK(condition) do { if (!(condition)) { \
     fprintf(stderr, "FAIL %s:%d: %s (SDL: %s)\n", __FILE__, __LINE__, #condition, SDL_GetError()); \
@@ -89,6 +95,8 @@ static bool attach(SDL_JoystickID *id, SDL_Joystick **joystick, const char *name
     description.axis_mask = (1u << SDL_GAMEPAD_AXIS_COUNT) - 1u;
     description.button_mask = (1u << SDL_GAMEPAD_BUTTON_COUNT) - 1u;
     description.name = name;
+    description.userdata = (void *)(uintptr_t)(id == &primary_id ? 1 : 2);
+    description.Rumble = virtual_rumble;
     *id = SDL_AttachVirtualJoystick(&description);
     CHECK(*id != 0);
     *joystick = SDL_OpenJoystick(*id);
@@ -419,6 +427,36 @@ static bool concurrent_cancellation(void) {
     return true;
 }
 
+static bool rumble_lifecycle(void) {
+    const float value[4] = {.4f,160,.7f,320};
+    input_rumble_offer(0x03000001,value,NULL);input_rumble_pump();
+    CHECK(rumble_calls == 0); // default OFF and never a physical controller
+    g_settings.input_rumble = true;
+    input_rumble_offer(0x03000001,value,NULL);input_rumble_pump();
+    CHECK(rumble_calls && rumble_device==1 && rumble_low_test==26214 && rumble_high_test==45875);
+    CHECK(attach(&other_id,&other,"Monado authored other rumble target"));pump();
+    input_rumble_shutdown();CHECK(!rumble_low_test&&!rumble_high_test&&rumble_device==1);
+    input_rumble_offer(0x03000101,value,NULL);input_rumble_pump();
+    CHECK(!rumble_low_test&&!rumble_high_test); // another guest player rejected
+    input_rumble_offer(0x03000001,value,NULL);input_rumble_pump();
+    SDL_Event e={.type=SDL_EVENT_WINDOW_FOCUS_LOST};input_handle_event(&e);
+    CHECK(!rumble_low_test&&!rumble_high_test);
+    e.type=SDL_EVENT_WINDOW_FOCUS_GAINED;input_handle_event(&e);input_rumble_pump();
+    CHECK(!rumble_low_test&&!rumble_high_test);
+    input_rumble_offer(0x03000001,value,NULL);input_rumble_pump();
+    captured=true;input_reset();input_rumble_pump();CHECK(!rumble_low_test&&!rumble_high_test);
+    captured=false;input_rumble_offer(0x03000001,value,NULL);input_rumble_pump();
+    g_settings.input_rumble=false;input_rumble_pump();CHECK(!rumble_low_test&&!rumble_high_test);
+    g_settings.input_rumble=true;input_rumble_pump();CHECK(!rumble_low_test&&!rumble_high_test);
+    input_rumble_offer(0x03000001,value,NULL);input_rumble_pump();
+    input_rumble_permit(false);input_rumble_pump();CHECK(!rumble_low_test&&!rumble_high_test);
+    input_rumble_permit(true);input_rumble_offer(0x03000001,value,NULL);input_rumble_pump();
+    SDL_Delay(110);input_rumble_pump();CHECK(!rumble_low_test&&!rumble_high_test);
+    input_rumble_offer(0x03000001,value,NULL);input_rumble_pump();
+    input_rumble_shutdown();CHECK(!rumble_low_test&&!rumble_high_test);
+    return true;
+}
+
 int main(int argc, char **argv) {
     if (argc != 2 || !setup()) return 2;
     const char *name = argv[1]; bool ok = false;
@@ -444,6 +482,7 @@ int main(int argc, char **argv) {
     else if (!strcmp(name, "wrong-device")) ok = wrong_device();
     else if (!strcmp(name, "disconnect")) ok = disconnect();
     else if (!strcmp(name, "concurrent-cancellation")) ok = concurrent_cancellation();
+    else if (!strcmp(name, "rumble-lifecycle")) ok = rumble_lifecycle();
     if (pad) { SDL_CloseGamepad(pad); pad = NULL; }
     if (primary) SDL_CloseJoystick(primary);
     if (other_pad) SDL_CloseGamepad(other_pad);

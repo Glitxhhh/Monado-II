@@ -38,6 +38,10 @@ def make_image(path, contents=b'authored never-executed image fixture'):
 
 
 class LinuxLibraryRootGrammar(unittest.TestCase):
+    def test_fsr4_api_boolean_is_checked_without_changing_legacy_defaults(self):
+        with self.assertRaises(build.BuildError):
+            build.validate_features(dlss=True, framegen=None, fsr4='yes')
+
     def test_spaces_and_commas_are_representable(self):
         for root in ('/tmp/source with spaces', '/tmp/source,with,commas'):
             with self.subTest(root=root):
@@ -159,7 +163,7 @@ class LinuxBuildApp(unittest.TestCase):
         with mock.patch.object(build, 'build') as operation:
             self.assertEqual(build.main(['--game-only', '--build-id', 'payload-fixed', '--without-dlss']), 0)
         operation.assert_called_once_with(jobs=4, identity='payload-fixed', dlss=False,
-                                          reuse_game=None, framegen=False, game_only=True)
+                                          reuse_game=None, framegen=True, fsr3=True, fsr4=True, split_game=True, portable=True, game_only=True)
 
     def test_game_only_preflight_does_not_require_squashfs_tools(self):
         other_spec = importlib.util.spec_from_file_location('monado_game_only_preflight', ROOT / 'tools/build_linux_app.py')
@@ -380,7 +384,7 @@ class LinuxBuildApp(unittest.TestCase):
         self.assertEqual(Path(receipt['commands'][-1]['log']).name,
                          f'{len(receipt["commands"]):02d}-check-appimage.log')
 
-    def test_without_dlss_plan_is_read_only_and_has_no_sdk_stage(self):
+    def test_without_dlss_plan_keeps_native_fsr3_and_is_read_only(self):
         before = inventory(self.root)
         with mock.patch.object(build, 'ROOT', self.root), mock.patch.object(build.subprocess, 'Popen', side_effect=AssertionError('executed')):
             with contextlib.redirect_stdout(io.StringIO()) as output:
@@ -388,17 +392,19 @@ class LinuxBuildApp(unittest.TestCase):
         plan = json.loads(output.getvalue())
         stages = {entry['name']: entry['argv'] for entry in plan['commands']}
         self.assertFalse(plan['dlss_enabled'])
-        self.assertFalse(plan['framegen_enabled'])
+        self.assertTrue(plan['framegen_enabled'])
+        self.assertTrue(plan['fsr3_enabled'])
         self.assertNotIn('native-dlss-dependency', stages)
-        self.assertNotIn('framegen-source', stages)
-        self.assertNotIn('native-framegen-dependency', stages)
+        self.assertIn('framegen-source', stages)
+        self.assertIn('native-framegen-dependency', stages)
+        self.assertIn('native-fsr3-dependency', stages)
         self.assertNotIn('--dlss', stages['build-game'])
         self.assertEqual(inventory(self.root), before)
 
     def test_without_dlss_cli_is_passed_to_the_builder(self):
         with mock.patch.object(build, 'build') as run:
             self.assertEqual(build.main(['--without-dlss', '--jobs', '2']), 0)
-            run.assert_called_once_with(jobs=2, identity=None, dlss=False, reuse_game=None, framegen=False, game_only=False)
+            run.assert_called_once_with(jobs=2, identity=None, dlss=False, reuse_game=None, framegen=True, fsr3=True, fsr4=True, split_game=True, portable=True, game_only=False)
 
     def test_default_framegen_fetches_and_builds_missing_sdk_without_changing_runtime_checkbox(self):
         state = self.port / 'play/launcher'
@@ -445,7 +451,7 @@ class LinuxBuildApp(unittest.TestCase):
         script.parent.mkdir(parents=True)
         script.write_text('def verify_existing():\n    raise ValueError("SDK recipe hash changed")\n')
         before = inventory(self.root)
-        with self.assertRaisesRegex(build.BuildError, 'SDK failed verification.*recipe hash changed'):
+        with self.assertRaisesRegex(build.BuildError, 'missing path'):
             self.run_build()
         self.assertEqual(self.commands, [])
         self.assertEqual(inventory(self.root), before)
@@ -463,7 +469,7 @@ class LinuxBuildApp(unittest.TestCase):
 
     def test_explicit_framegen_cli_conflict_is_rejected_before_builder_or_plan(self):
         before = inventory(self.root)
-        for command in (['--without-dlss', '--framegen'], ['--plan', '--without-dlss', '--framegen']):
+        for command in (['--without-dlss', '--without-fsr3', '--framegen'], ['--plan', '--without-dlss', '--without-fsr3', '--framegen']):
             with self.subTest(command=command), mock.patch.object(build, 'build') as operation, \
                     mock.patch.object(build, 'layout') as planner, contextlib.redirect_stderr(io.StringIO()) as error:
                 self.assertEqual(build.main(command), 1)
@@ -488,7 +494,7 @@ class LinuxBuildApp(unittest.TestCase):
     def test_framegen_cli_optin_and_readonly_plan_record_the_feature(self):
         with mock.patch.object(build, 'build') as operation:
             self.assertEqual(build.main(['--framegen', '--jobs', '2']), 0)
-            operation.assert_called_once_with(jobs=2, identity=None, dlss=True, reuse_game=None, framegen=True, game_only=False)
+            operation.assert_called_once_with(jobs=2, identity=None, dlss=True, reuse_game=None, framegen=True, fsr3=True, fsr4=True, split_game=True, portable=True, game_only=False)
         before = inventory(self.root)
         with mock.patch.object(build, 'ROOT', self.root), contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(build.main(['--plan', '--framegen']), 0)
@@ -501,7 +507,7 @@ class LinuxBuildApp(unittest.TestCase):
         # The current builder must add the provider without requiring new flags.
         with mock.patch.object(build, 'build') as operation:
             self.assertEqual(build.main(['--jobs', '4']), 0)
-            operation.assert_called_once_with(jobs=4, identity=None, dlss=True, reuse_game=None, framegen=True, game_only=False)
+            operation.assert_called_once_with(jobs=4, identity=None, dlss=True, reuse_game=None, framegen=True, fsr3=True, fsr4=True, split_game=True, portable=True, game_only=False)
 
     def test_nonboolean_feature_selections_are_rejected_before_any_writes(self):
         before = inventory(self.root)

@@ -6,6 +6,7 @@ enabled-feature chain rather than a second implementation of that policy.
 """
 from pathlib import Path
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -29,6 +30,35 @@ def vulkan_include():
     return include if (include / 'vulkan/vulkan.h').is_file() else None
 
 
+def block_end(source, start):
+    opening = source.index('{', start)
+    depth = 1
+    end = opening + 1
+    while depth:
+        depth += (source[end] == '{') - (source[end] == '}')
+        end += 1
+    return end
+
+
+def guarded_heap_features(source):
+    marker = source.index('    // [XCDE] LINUX-070: map the complete')
+    start = source.rfind('#ifdef __linux__\n', 0, marker)
+    if start < 0 or source[start:marker].strip() != '#ifdef __linux__':
+        raise AssertionError('heap feature block no longer has its expected Linux guard')
+    depth = 0
+    end = start
+    for line in source[start:].splitlines(keepends=True):
+        directive = line.strip().split(maxsplit=1)[0] if line.strip() else ''
+        if directive in ('#if', '#ifdef', '#ifndef'):
+            depth += 1
+        elif directive == '#endif':
+            depth -= 1
+        end += len(line)
+        if depth == 0:
+            return source[start:end], end
+    raise AssertionError('unterminated production heap feature guard')
+
+
 @unittest.skipUnless(sys.platform == 'linux', 'Linux-only RADV device policy')
 class RadvHeapDevice(unittest.TestCase):
     @classmethod
@@ -44,14 +74,27 @@ class RadvHeapDevice(unittest.TestCase):
         start = source.index('    // [XCDE] LINUX-070: LASRecomp')
         end = source.index('    bool fault =', start)
         policy = source[start:end]
-        start = source.index('    // [XCDE] LINUX-070: map the complete')
-        end = source.index('    LOG("[vk] robustBuffer', start)
-        feature = source[start:end].removesuffix('#endif\n')
+        feature, feature_end = guarded_heap_features(source)
+        # Query and compose the adjacent optional feature from bounded real C
+        # blocks, not a range ending at a later log line. Its availability must
+        # neither erase the RADV heap feature nor leave an unmatched #endif.
+        feedback_start = source.index('    VkPhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT feedback =')
+        feedback_if = re.search(r'(?m)^    if\s*\(g_vk\.feedback_loop\)\s*\{', source[feedback_start:])
+        if feedback_if is None:
+            raise AssertionError('missing production feedback feature query')
+        feedback_query = source[feedback_start:block_end(source, feedback_start + feedback_if.start())]
+        feedback_if = re.search(r'(?m)^    if\s*\(g_vk\.feedback_loop\)\s*\{', source[feature_end:])
+        if feedback_if is None:
+            raise AssertionError('missing production feedback feature composition')
+        feedback_start = feature_end + feedback_if.start()
+        feedback_chain = source[feedback_start:block_end(source, feedback_start)]
         cls.temporary = tempfile.TemporaryDirectory(prefix='monado-radv-device-')
         cls.addClassCleanup(cls.temporary.cleanup)
         temporary = Path(cls.temporary.name)
         (temporary / 'radv_capability.inc').write_text(policy)
         (temporary / 'radv_features.inc').write_text(feature)
+        (temporary / 'feedback_capability.inc').write_text(feedback_query)
+        (temporary / 'feedback_chain.inc').write_text(feedback_chain)
         cls.binary = temporary / 'radv-device'
         command = [compiler, '-std=gnu11', '-O1', '-UNDEBUG', '-Wall', '-Wextra', '-Werror',
                    '-ffp-contract=off', '-fno-strict-aliasing', '-I', str(include),
@@ -86,6 +129,10 @@ class RadvHeapDevice(unittest.TestCase):
     def test_zero_placed_alignment_is_refused(self): self.scenario('zero-alignment')
     def test_non_power_of_two_placed_alignment_is_refused(self): self.scenario('bad-alignment')
     def test_radv_without_extensions_retains_fallback(self): self.scenario('no-extensions')
+    def test_feedback_and_radv_features_compose(self): self.scenario('radv-feedback')
+    def test_feedback_query_failure_preserves_radv_features(self): self.scenario('radv-feedback-unavailable')
+    def test_nvidia_feedback_does_not_enable_radv_heap_features(self): self.scenario('nvidia-feedback')
+    def test_feedback_preserves_dma_only_fallback(self): self.scenario('dma-feedback')
 
 
 if __name__ == '__main__':

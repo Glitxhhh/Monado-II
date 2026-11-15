@@ -3,6 +3,46 @@
 
 # Linux change ledger for inherited source
 
+## November 14, 2026: LINUX-101 refresh cap and measured output logs
+
+- Correct the two Linux frame-pacing feature guards using the actual shared
+  `XCDE_LINUX_FRAMEGEN` build flag. Add production per-translation-unit flag and
+  fractional-cap/restoration fixtures; retain headless and ordinary cap behavior.
+- Share validated native/accepted-output measurements between the FPS display
+  and throttled run diagnostics. Request the optional NVIDIA observer for the
+  selected game method independently of display visibility; retain startup
+  namespace, own-thread guard, provider and ABI boundaries.
+- No video interpolation implementation, game assets, new dependencies, timing
+  architecture, vendor-driver installation or system configuration changes.
+
+## November 14, 2026: LINUX-094 optional fullscreen FPS counter
+
+- `runtime/settings.h`, `runtime/host/settings_ini.c`, launcher and F1 UI:
+  independent OFF-default `show_fps_overlay`; preserve title-bar FPS settings.
+- New `runtime/ui/fps_meter.h`, `fps_overlay_draw.h`, `menu_vk.cpp` and menu API:
+  monotonic real-frame sampling and separate input-transparent ImGui context,
+  readable physical-output layout, warmup/resume/reset handling.
+- `runtime/nvn/vulkan/device.c`: sample once per real acquired game frame; draw
+  FPS after generation on each output without entering retained/interpolated
+  images. Enabled window captures include it. Reset after render drain on reboot.
+- Extend authored native presentation fixtures with overlay ordering, image
+  layouts, captures and both FG outputs; add meter/config/launcher/UI fixtures.
+  No game data, runtime CPU fallback, new dependencies or global overlay service.
+
+## November 14, 2026: LINUX-093 aspect stability candidate
+
+- `runtime/nvn/vulkan/exec.c`, new `runtime/nvn/aspect_composite.h`: preserve
+  existing scene/HUD rules and recognize a conservative fullscreen scene-source
+  contract for reduced-resolution, multi-input composites. Keep portrait/atlas/
+  minimap/instanced UI handling and proportional HUD. Add bounded decision logs.
+- `runtime/host/xcde_aspect.[ch]`, `games/xcde/patches.py`: use the same checked
+  logical camera for renderer projection/FOV qualification, independent of
+  rounded render dimensions. Preserve Original identity and nonreference cameras.
+- `runtime/nvn/vulkan/device.c`: bounded selected-aspect/output-placement logs.
+- Authored native fixtures reproduce old classifier/camera rounding failures;
+  actual reporter ultrawide gameplay remains to be confirmed. No game data,
+  translated shaders or external renderer implementation added to source.
+
 The supplied archive did not contain `docs/UPSTREAM.md`, despite references to it in its contribution guide and notices. This file begins the Linux ledger; it does not reconstruct or certify the author's missing historical ledger.
 
 Source provenance: the user-selected 547-file snapshot is recorded in project-root `docs/linux_port/source_snapshot_20261104.json`. Its notices attribute the generator/runtime base to LASRecomp commit `136f679` under MIT. No upstream checkout or Git history is bundled or assumed.
@@ -701,3 +741,119 @@ fixtures exercise these paths without game data. No third-party controller
 implementation, game-derived mapping, renderer policy or native save format is
 changed. Actual Steam Deck/ROG Ally X testing remains pending; see repository-root
 docs/HANDHELD_CONTROLLERS.md.
+
+
+## LINUX-089 — controller lifecycle and XCDE native aspect adapters
+
+Authored input.c recovery and the Linux copy of upstream MIT ImGui's
+imgui_impl_sdl3.cpp gain bounded missed-event/disconnected-handle recovery,
+healthy automatic-selection preservation and neutral input release. SDL handle
+ownership remains on its event thread. No Windows-reference files changed.
+
+Controller metadata now uses a validated, marker-owned private snapshot directory
+with atomic live refresh through the outer Python supervisor; safe external paths
+remain direct. The directory is read-only at both namespace aliases. The Landlock
+write policy, updater cancellation, save/profile confinement and session leases
+are unchanged. Existing startup hidraw-inode restrictions remain; this does not
+claim universal physical hotplug/suspend support. Synthetic recovery/namespace
+checks do not establish actual Steam Deck/ROG Ally compatibility.
+
+New authored xcde_aspect.c plus build-ID/instruction/context-checked scalar
+adapters update XCDE logical cameras/culling, renderer projection and HUD markers.
+The existing output-scale/presented-UI fitting foundation is retained; native
+aspect is opt-in and original mode is identity. UI canvas math is component-tested.
+No upstream widescreen implementation or third-party mod was copied; no game code
+or generated data is included. Real gameplay/effect/resize coverage is manual.
+
+LINUX-090 extends the authored settings, launcher and output policy with explicit
+16:10/21:9/32:9 selections independent of the drawable. Chosen cameras and render
+targets use the same shape from startup; existing Vulkan upscaler/present and FG
+rectangles fit the chosen content inside the screen with bars. Original/native
+configuration values and defaults remain compatible. No upstream camera or
+presentation code was imported for these choices; real gameplay remains manual.
+
+## LINUX-097 — frame-generation presentation and measurement
+
+Authored Linux code adds a persistent two-output presentation clock, bounded
+prepare-ahead with serial fallback, qualified atomic refresh caps and separate
+game/output counters. Existing MIT FidelityFX midpoint interpolation remains
+the image provider; no vendor SDK source is modified. The SDK receives measured
+frame deltas while the output clock uses the effective real-frame ceiling.
+Generated/real images retain explicit acquisition, GPU completion, semaphore and
+swapchain ownership. Host counter text is drawn after interpolation.
+
+Authored launcher and Python adapters optionally request the already-installed
+NVIDIA Smooth Motion layer for the game alone. Driver components are inspected,
+not installed or copied. Driver output is external to the application counter.
+Methods are exclusive, ordinary defaults remain off, and native save formats
+are unchanged. This is separate from NVIDIA DLSS Frame Generation.
+
+Longshot's GPL implementation was an architecture reference only; no code was
+copied. An independently authored MIT variable-phase GPU prototype failed its
+moving-edge/disocclusion/translucent-HUD quality gate, so arbitrary-phase and
+multi-frame generation are not shipped. Component, mock-presentation and GPU
+tests are narrower than real gameplay, display scanout and latency coverage.
+
+
+## LINUX-099 — asynchronous presentation, run diagnostics and driver observation
+
+Authored MIT code moves completed FSR output pairs to one bounded presentation
+worker, with immutable handles, separate queue ownership where supported, a
+shared-queue lock fallback and renderer-only UI callbacks. Vulkan acquisition
+budgets, independent acquire semaphores, captured swapchain lifetimes and drain
+validation protect reset/recreation. Native game/input/audio timing is unchanged.
+
+Private requested-setting snapshots and bounded effective runtime diagnostics
+join each launch by run ID. Optional NVIDIA output observation uses an authored
+local Vulkan layer below NVIDIA's implicit layer; no proprietary driver code is
+copied or modified. Counters describe accepted downstream requests, not physical
+scanout; a generated-only count is not inferred by subtracting real FPS.
+
+The opted-in NVIDIA game can write its own existing/future thread metadata via
+a pinned procfs task-directory exception. No create/remove/refer rights are added;
+other process and filesystem paths remain denied. A verified host game broker
+starts the fixed selected game outside the GUI's inherited restriction so the
+native child can install its own scoped guard. The GUI's original policy stays
+in place. NVIDIA/OpenShell issue reports were diagnostic references only; no
+third-party implementation was copied. Native/namespace/GPU component evidence
+is narrower than manual gameplay, image quality, physical cadence and latency.
+
+
+## LINUX-103 — qualified Linux graphics and build improvements
+
+MIT graphics control/guest-overlay/foliage helpers and bloom/scaled-gather GLSL
+were adapted from Monado-Reborn commit
+`3cc9eeb46dc879fe36929d13758754c429b8377b` (2026 Peiikai and Monado contributors).
+The complete inherited MIT permission/copyright remains in LICENSE. Local
+adaptations add typed/bounded settings, reversible writes, guarded DE2.0.0 hooks,
+bounded pools/sampler caches and failure-first tests. Scaled gather uses native
+gather scalar taps to preserve base-level behavior with nonzero sampler minLod.
+Framebuffer-feedback design was a reference; the local implementation requires
+legal read-only attachments, whole-instance clear visibility and versioned copy
+fallbacks. No whole renderer replacement or game-derived seed was imported.
+
+Native FSR3 upscaling and the existing frame interpolation build from the locked
+official MIT AMD FidelityFX SDK 1.1.4. A narrow backend memory-type selector change
+requires every requested property bit, prefers non-host-visible device memory and
+permits a valid UMA fallback. Original SDK notices and complete recipe remain.
+Temporal history, reactive inputs, native-frame thresholds, controller rumble IPC,
+local diagnostic ZIPs, GPU selection, runtime/GameLib identity split and portable
+dependency orchestration are authored integration work. Tests do not establish
+full gameplay, every driver, physical scanout, or performance superiority.
+
+Optional FSR4 Lite is a separate GPL-2.0-or-later component, with original source,
+license and corresponding build scripts alongside it. See ADR0013 and the
+component README for exact origins, AMD SDK terms, local model preparation,
+capability gates and distribution obligations. Core MIT notices are preserved;
+this does not claim that dynamic loading avoids applicable copyleft. Models,
+SDK DLLs and translated assets remain untracked local preparation outputs.
+
+The portable setup/runtime work uses signed-index/hash-pinned Noble development
+packages as privately extracted build inputs, source-built SDL3 (zlib licence),
+FFmpeg (component/configuration-dependent LGPL/GPL terms), and a source-built
+CPython packaging runtime (PSF and its bundled notices). No package maintainer
+scripts run and no host driver, system compiler or system Python is replaced.
+Project-local CMake (BSD-3-Clause) and Ninja (Apache-2.0) bootstrap wheels preserve
+their included licences. This record is not a blanket public binary redistribution
+approval: exact companions, notices and corresponding source must be reviewed
+for each distributable. Source kits contain authored source and locks only.

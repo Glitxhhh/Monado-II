@@ -11,6 +11,8 @@
 #include "vk.h"
 #include "shaders.h"
 #include "temporal.h"  // [XCDE] LINUX-017: borrowed velocity lifetime
+#include "sampler_filter_policy.h" // [XCDE] LINUX-103
+#include "../../graphics_options.h"
 void vk_watch(VkImage dst, const char *site);  // [XCDE] debugging: log writes to a watched image
 #include "../astc.h"
 #include "../renderer.h"
@@ -366,6 +368,7 @@ void vk_collect_dead(void) {
 }
 
 static void tex_bytes_add(TexBackend *b, int sign);
+static uint64_t image_identity; // render-thread creation serial, retained across resets
 static void create_image(NvnTexture *t, TexBackend *b) {
     VkFmt mf = fmt_of(t->format);
     target_scale(b, &b->sx, &b->sy);
@@ -420,6 +423,8 @@ static void create_image(NvnTexture *t, TexBackend *b) {
     VkImageUsageFlags usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     if (depthfmt) usage |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     else if (format_supports(vf, VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)) usage |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if (g_vk.feedback_loop && (usage & VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT))
+        usage |= VK_IMAGE_USAGE_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
     // [XCDE] raw surface loads/stores (SULD/SUST): 32-bit-per-channel formats also get STORAGE usage; the shader sees them
     // through an unsigned-integer view of the same texel size (vk_storage_view)
     if (!depthfmt && storage_class(vf) && format_supports(vf, VK_FORMAT_FEATURE_STORAGE_IMAGE_BIT)) usage |= VK_IMAGE_USAGE_STORAGE_BIT;
@@ -474,6 +479,9 @@ static void create_image(NvnTexture *t, TexBackend *b) {
         VK_CHECK(vmaCreateImage(g_vk.vma, &ci, &ai, &b->image, &b->mem, NULL));
         depthfmt = false;
     }
+    if(++image_identity==0)++image_identity;
+    b->image_identity=image_identity;
+    b->feedback_usage=(ci.usage & VK_IMAGE_USAGE_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT)!=0;
     b->format = vf;
     tex_bytes_add(b, 1);
     b->width = tw; b->height = th; b->depth = depth; b->layers = layers; b->levels = levels; b->samples = samples;
@@ -587,6 +595,7 @@ static TexBackend *tex_backend(NvnTexture *t) {
 }
 
 void backend_texture_destroyed(NvnTexture *t) {
+    vk_feedback_texture_gone(t);
     // [XCDE] LINUX-017: borrowed temporal pointers cannot outlive their owner.
     extern void vk_exec_forget_texture(NvnTexture *t);
     vk_exec_forget_texture(t);
@@ -615,6 +624,8 @@ void backend_texture_destroyed(NvnTexture *t) {
 
 // Reboot (device.c backend_reset; GPU idle): every game texture and its views go.
 void vk_textures_reset(void) {
+    extern void vk_sampler_variants_reset(void);
+    vk_sampler_variants_reset(); // GPU idle; descriptors no longer use these immutable variants
     int n = g_nlive;
     extern void vk_alias_reset(void);
     vk_alias_reset();
@@ -660,6 +671,7 @@ static void upload_pending(TexBackend *b) {
     b->pending_rgba = NULL;
     pthread_mutex_unlock(&pending_lock);
     if (!px) return;
+    vk_feedback_boundary();
     if (w > b->width) w = b->width;
     if (h > b->height) h = b->height;
     VkSpan s = vk_transient_copy(px, (uint64_t)stride * h, 16);
@@ -913,6 +925,7 @@ static void upload_texture_(NvnTexture *t, TexBackend *b) {
     if (b->tp > 0) b->tp_gen = texpatch_generation();
     b->data_hash = h;
     b->uploaded = true;
+    vk_feedback_boundary();
     if (b->format != mf.vf && !b->astc_bw) return;  // unsupported format: nothing sensible to copy
     uint64_t cq = SDL_GetTicksNS();
     VkCommandBuffer cb = vk_upload_cmd();
@@ -1389,6 +1402,37 @@ VkSampler vk_sampler(NvnSamplerDesc *d) {
     VK_CHECK(vkCreateSampler(g_vk.dev, &si, NULL, &s));
     d->backend = (void *)s;
     return s;
+}
+
+// [XCDE] LINUX-103: intern semantic copies, never replace a sampler referenced
+// by an in-flight descriptor and never allocate a wrapper tied to guest lifetime.
+// A bounded device-wide budget preserves room for the game's own samplers.
+static struct { NvnSamplerDesc key; VkSampler sampler; } filter_variants[256];
+static unsigned filter_count;
+static VkDevice filter_device;
+void vk_sampler_variants_reset(void) {
+    if(filter_device==g_vk.dev)
+        for(unsigned i=0;i<filter_count;i++)vkDestroySampler(g_vk.dev,filter_variants[i].sampler,NULL);
+    filter_count=0;filter_device=g_vk.dev;
+}
+VkSampler vk_sampler_filtered(NvnSamplerDesc *d, bool color, bool integer, bool shadow, unsigned levels) {
+    unsigned choice=(unsigned)xcde_graphics_option(GFX_FILTERING);
+    float aniso=rt_sampler_anisotropy(choice,d->min_filter,d->mag_filter,d->compare_mode,d->reduction,
+                                     color,integer,shadow,levels,g_vk.sampler_anisotropy ? g_vk.props.limits.maxSamplerAnisotropy : 0.f);
+    if(!aniso)return vk_sampler(d);
+    if(filter_device!=g_vk.dev){filter_count=0;filter_device=g_vk.dev;}
+    NvnSamplerDesc key={0};memcpy(&key,d,offsetof(NvnSamplerDesc,backend));key.max_aniso=aniso;
+    for(unsigned i=0;i<filter_count;i++)
+        if(!memcmp(&key,&filter_variants[i].key,sizeof key))return filter_variants[i].sampler;
+    unsigned limit=g_vk.props.limits.maxSamplerAllocationCount/8;
+    if(limit>256)limit=256;
+    if(filter_count>=limit){
+        static bool warned;if(!warned){warned=true;LOG("[graphics] filtering variant budget reached; retaining native sampler\n");}
+        return vk_sampler(d);
+    }
+    VkSampler sampler=vk_sampler(&key);key.backend=NULL;
+    filter_variants[filter_count].key=key;filter_variants[filter_count++].sampler=sampler;
+    return sampler;
 }
 
 VkSampler vk_default_sampler(bool linear) {

@@ -23,6 +23,7 @@
 #include "../paths.h"
 #include "../platform/linux_state_guard.h"
 #include "../platform/linux_activity.h"  // [XCDE] LINUX-018
+#include "run_diagnostics_linux.h"  // [XCDE] LINUX-099
 #ifdef XCDE_GFX
 #include "../nvn/vulkan/radv_dcc_compat.h"  // [XCDE] LINUX-075
 #endif
@@ -136,10 +137,15 @@ int main(int argc, char **argv) {
         if (argc <= arg + 1) { fprintf(stderr, "--state-root requires a directory\n"); return 2; }
         state = argv[arg + 1]; arg += 2;
     }
+    const char *fsr4_assets = NULL;
+    if (argc > arg && !strcmp(argv[arg], "--fsr4-assets")) {
+        if (argc <= arg + 1 || !*argv[arg + 1]) { fprintf(stderr, "--fsr4-assets requires a verified directory\n"); return 2; }
+        fsr4_assets = argv[arg + 1]; arg += 2;
+    }
     bool precompile = argc > arg && !strcmp(argv[arg], "--precompile");
     if (precompile) arg++;
     if (argc <= arg || !strcmp(argv[arg], "--help")) {
-        fprintf(stderr, "usage: xcde_boot --state-root <Linux state dir> [--precompile] <dump dir with exefs/ and romfs/> [seconds]\n");
+        fprintf(stderr, "usage: xcde_boot --state-root <Linux state dir> [--fsr4-assets <verified model dir>] [--precompile] <dump dir with exefs/ and romfs/> [seconds]\n");
         return 2;
     }
     char error[1024];
@@ -162,6 +168,14 @@ int main(int argc, char **argv) {
 #endif
     plat_init();
     setvbuf(stderr, NULL, _IONBF, 0);
+    run_diag_begin(precompile);
+#ifdef XCDE_GFX
+    if (fsr4_assets) {
+        extern bool tmp_fsr4_set_asset_dir(const char *path);
+        if (!tmp_fsr4_set_asset_dir(fsr4_assets))
+            LOG("[fsr4] model directory rejected or optional provider unavailable; existing fallback remains available\n");
+    }
+#endif
     if (precompile) {
 #ifdef XCDE_GFX
         extern int vk_precompile_main(const char *root);
@@ -195,6 +209,15 @@ int main(int argc, char **argv) {
     }
     g_romfs_dir = strdup(romfs);
     if (!g_romfs_dir) { fprintf(stderr, "FATAL: cannot retain RomFS path\n"); return 1; }
+
+    // [XCDE] LINUX-103: split builds populate the dispatch tables only after
+    // loading the matching companion. Refuse a missing/incompatible library
+    // before module loading or runtime workers; the static shim succeeds here.
+    char game_error[1024];
+    if (!gamelib_load(root, game_error, sizeof game_error)) {
+        fprintf(stderr, "FATAL: cannot load game code: %s\n", game_error);
+        return 1;
+    }
 
     diag_watchdog_start();
     if (getenv("XCDE_WATCHDOG")) {

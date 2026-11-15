@@ -15,6 +15,8 @@
 #include "../../kernel.h"
 #include "shaders.h"
 #include "vk.h"
+#include "../aspect_canvas.h" // [XCDE] LINUX-089: do not stretch native UI.
+#include "../aspect_composite.h" // [XCDE] LINUX-093: reduced scene inputs are not HUD.
 #include "../program_binding.h"
 #include "host_import.h"  // [XCDE] LINUX-005: shared checked host-memory import
 #ifdef __linux__
@@ -25,6 +27,9 @@ void vk_watch(VkImage dst, const char *site);  // [XCDE] debugging: log writes t
 static VkImage g_watch_img;
 #include "../renderer.h"
 #include "../../settings.h"
+#include "../../graphics_options.h"
+#include "bloom_policy.h"
+#include "../../quality_policy.h" // [XCDE] LINUX-103: shared sharpening semantics
 #include "../../env_cache.h"  // (last: cached getenv)
 
 static void fb_stats_flush(void);  // (T161, below)
@@ -96,6 +101,14 @@ static void ss_forget(void);
 static void dyn_defaults(VkCommandBuffer cb);
 static uint64_t submit_seq;  // last submitted
 static pthread_mutex_t seq_lock = PTHREAD_MUTEX_INITIALIZER;
+// [XCDE] LINUX-099: the bounded FG output worker may present while the
+// renderer submits. A single shared VkQueue requires external synchronization.
+#if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
+static pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
+void vk_queue_lock(void) { pthread_mutex_lock(&queue_lock); }
+void vk_queue_unlock(void) { pthread_mutex_unlock(&queue_lock); }
+#endif
+
 static bool in_pass;
 static uint64_t tmp_scene_frame = ~0ull;  // [XCDE] T213: the last frame with a scene draw (jittered)
 static TexBackend *pass_dbg_rt;  // [XCDE] colour 0 of the open pass (the debug dump must save the pass's own target, not st.rt's)
@@ -577,7 +590,13 @@ void vk_submit_extra(VkSemaphore wait, VkSemaphore signal, VkCommandBuffer extra
     {
         PROF_T0();
         dl_note("submit %llu", (unsigned long long)submit_seq + 1);
+#if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
+        vk_queue_lock();
+#endif
         VkResult sr = vkQueueSubmit2(g_vk.queue, 1, &si, VK_NULL_HANDLE);
+#if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
+        vk_queue_unlock();
+#endif
         if (sr == VK_ERROR_DEVICE_LOST) vk_devlost_dump();
         VK_CHECK(sr);
         PROF_ADD(prof_submit);
@@ -1282,6 +1301,32 @@ static void nan_scan(TexBackend *b, VkFormat f, int slot) {
             100.0 * bad / ((double)w * h), (unsigned long long)(first % w), (unsigned long long)(first / w));
 }
 
+// LINUX-103 feedback-loop layout bookkeeping. Adapted design from MIT
+// Monado-Reborn 3cc9eeb; unlike the reference, simultaneous color self-writes
+// always use a visibility snapshot. No extension means a real copy fallback.
+static TexBackend *pass_feedback[8];
+static unsigned pass_nfeedback, draw_feedback_mask;
+static bool pass_feedback_clear_only;
+static void feedback_layout(bool enter) {
+    VkImageMemoryBarrier2 barriers[8];
+    for(unsigned i=0;i<pass_nfeedback;i++) barriers[i]=(VkImageMemoryBarrier2){
+        .sType=VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+        .srcStageMask=VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,.srcAccessMask=VK_ACCESS_2_MEMORY_READ_BIT|VK_ACCESS_2_MEMORY_WRITE_BIT,
+        .dstStageMask=VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT,.dstAccessMask=VK_ACCESS_2_MEMORY_READ_BIT|VK_ACCESS_2_MEMORY_WRITE_BIT,
+        .oldLayout=enter?VK_IMAGE_LAYOUT_GENERAL:VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT,
+        .newLayout=enter?VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT:VK_IMAGE_LAYOUT_GENERAL,
+        .srcQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,.dstQueueFamilyIndex=VK_QUEUE_FAMILY_IGNORED,
+        .image=pass_feedback[i]->image,.subresourceRange={VK_IMAGE_ASPECT_COLOR_BIT,0,VK_REMAINING_MIP_LEVELS,0,VK_REMAINING_ARRAY_LAYERS}};
+    if(pass_nfeedback) {
+        VkDependencyInfo dependency={.sType=VK_STRUCTURE_TYPE_DEPENDENCY_INFO,.imageMemoryBarrierCount=pass_nfeedback,.pImageMemoryBarriers=barriers};
+        vkCmdPipelineBarrier2(vk_cmd(),&dependency);
+    }
+}
+static VkImageLayout feedback_sample_layout(const TexBackend *image) {
+    for(unsigned i=0;i<pass_nfeedback;i++)if(pass_feedback[i]==image)return VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT;
+    return VK_IMAGE_LAYOUT_GENERAL;
+}
+
 static void vk_end_pass_at(int line);
 void vk_end_pass(void) { vk_end_pass_at(0); }
 #define vk_end_pass() vk_end_pass_at(__LINE__)
@@ -1293,10 +1338,12 @@ static void vk_end_pass_at(int line) {
     oq_end(vk_cmd());  // [XCDE] T139
     vkCmdEndRendering(vk_cmd());
     in_pass = false;
+    feedback_layout(false);
+    pass_nfeedback=0;
     // [XCDE] T213: the first pass this frame that drew into the presented image (the scene composite: the HUD follows)
     // (only once this frame's scene was drawn: the game writes the window image earlier in the frame too - a snapshot
     // there turned the jitter off for the whole scene and DLSS / FSR got no sub-pixel detail: jagged edges)
-    if (pass_dbg_rt && pass_dbg_rt->presented && tmp_enabled() && tmp_scene_frame == renderer_present_count())
+    if (!pass_feedback_clear_only && pass_dbg_rt && pass_dbg_rt->presented && tmp_enabled() && tmp_scene_frame == renderer_present_count())
         tmp_hud_snapshot(vk_cmd(), pass_dbg_rt);
     if (renderer_present_count() != pass_frame_seen) { pass_frame_seen = renderer_present_count(); pass_no_in_frame = 0; }
     pass_no_in_frame++;
@@ -1478,6 +1525,16 @@ static void pass_mark_attachments(void) {
 static bool split_pending;  // (split_submit: submit at the next pass boundary)
 static uint32_t split_since;
 static uint64_t pass_seq_no;  // [XCDE] T220: counts begun passes
+static bool feedback_load_clear_ready(VkCommandBuffer cb,bool cleared) {
+    (void)cb;
+    if(!cleared)return true;
+    // Texture coordinates may refer to any pixel. Finish the load clear before
+    // sampling; a framebuffer-local BY_REGION dependency is not sufficient to
+    // establish general cross-pixel visibility for arbitrary guest shaders.
+    pass_feedback_clear_only=true;vk_end_pass();pass_feedback_clear_only=false;st.rt_dirty=true;
+    return false;
+}
+
 static void begin_pass(void) {
     if (in_pass && !st.rt_dirty) return;
     pass_seq_no++;
@@ -1505,6 +1562,8 @@ static void begin_pass(void) {
                 t0 ? t0->format : 0, st.rt.depth ? "yes" : "no");
     }
     VkRenderingAttachmentInfo ca[8], da = {0}, sa = {0};
+    pass_nfeedback=0;
+    bool feedback_clear=false;
     uint32_t w = 0, minw = UINT32_MAX, minh = UINT32_MAX;  // w: first attachment seen
     pass_ncolor = (uint32_t)st.rt.ncolor;
     pass_samples = 1;
@@ -1522,6 +1581,11 @@ static void begin_pass(void) {
         if (!v) continue;
         ca[i].imageView = v;
         ca[i].imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+        if((draw_feedback_mask&(1u<<i)) && b->feedback_usage) {
+            ca[i].imageLayout=VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT;
+            bool have=false;for(unsigned k=0;k<pass_nfeedback;k++)have|=pass_feedback[k]==b;
+            if(!have)pass_feedback[pass_nfeedback++]=b;
+        }
         ca[i].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
         ca[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
         bool fresh = (int)renderer_texture_level_fresh(t) | (int)renderer_texture_frame_fresh(t);  // both: each marks its state
@@ -1529,6 +1593,7 @@ static void begin_pass(void) {
             ca[i].loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
             ca[i].clearValue.color.float32[3] = fresh ? 0.0f : 1.0f;
         }
+        if(ca[i].imageLayout==VK_IMAGE_LAYOUT_ATTACHMENT_FEEDBACK_LOOP_OPTIMAL_EXT && ca[i].loadOp==VK_ATTACHMENT_LOAD_OP_CLEAR)feedback_clear=true;
         pass_color[i] = st.rt.has_cview[i] && (st.rt.cview[i].setmask & 4) && vk_format(t->format) == b->format
                       ? vk_format(st.rt.cview[i].format) : b->format;
         uint32_t lv = st.rt.has_cview[i] && (st.rt.cview[i].setmask & 1) ? st.rt.cview[i].base_level : 0;
@@ -1582,9 +1647,12 @@ static void begin_pass(void) {
     if (g_watch_img && has_d && st.rt.depth && ((TexBackend *)st.rt.depth->backend)->image == g_watch_img) vk_watch(g_watch_img, "begin_pass (depth attachment)");
     for (uint32_t i = 0; i < pass_ncolor; i++) if (g_watch_img && st.rt.color[i] && st.rt.color[i]->backend && ((TexBackend *)st.rt.color[i]->backend)->image == g_watch_img) vk_watch(g_watch_img, "begin_pass (COLOR attachment)");
     pass_mark_attachments();  // [XCDE] T162
+    feedback_layout(true);
     vkCmdBeginRendering(cb, &ri);
     ss_forget();  // (whatever ran between the passes may have set its own state)
     in_pass = true;
+    pass_dbg_rt = st.rt.ncolor && st.rt.color[0] ? (TexBackend *)st.rt.color[0]->backend : NULL;
+    if(!feedback_load_clear_ready(cb,feedback_clear)){begin_pass();return;}
     if (oq_counting) oq_begin(cb);  // [XCDE] T139: this pass's samples count toward the open counter
     pass_dbg_rt = st.rt.ncolor && st.rt.color[0] ? (TexBackend *)st.rt.color[0]->backend : NULL;
     vp_sx = pass_sx; vp_sy = pass_sy; vp_ox = 0; vp_oy = 0;
@@ -1810,6 +1878,7 @@ typedef struct {
     // compile ended (ns), the SPIR-V the disk cache didn't have, whether prewarm asked for it
     uint64_t t_new, t_x0, t_xl, t_x1, t_c1;
     uint8_t spv_new, prewarmed;
+    uint8_t bloom_kind,bloom_mode; // immutable compiler choice, part of program identity
 } Prog;
 
 static VkPipelineLayout make_layout(Prog *p, int nsets, VkShaderStageFlags s0, VkShaderStageFlags s1) {
@@ -1835,7 +1904,7 @@ static void save_glsl(const char *src, uint64_t addr, const char *suffix) {
 static void compile_program(void *arg) {
     Prog *p = arg;
     size_t nv = 0, nf = 0;
-    const char *fs_src = p->fi->msl;
+    const char *fs_src = bloom_source(p->bloom_kind,p->bloom_mode,p->fi->msl);
     char *fs_over = NULL;
     if (getenv("XCDE_GLSL_DIR")) {  // [XCDE] debugging: a hand-edited fragment shader (<dir>/<code addr>_fs.glsl) replaces the translated one
         char path[512];
@@ -2004,7 +2073,7 @@ static uint32_t stencil_unit_mask(int stage) {
 static uint8_t g_draw_gs_in = 1;  // [XCDE] input primitive class of the draw being set up (geometry shaders): 1 points, 2 lines, 3 triangles
 static uint32_t prog_tab_gen;  // (bumped when prog_tab is cleared: get_program's last-call memo)
 static bool g_prewarming;      // [XCDE] (build-wait log) prewarm_drain is asking for programs / pipelines
-static Prog *get_program_(NvnProgram *np, ShaderKey *vkey, ShaderKey *fkey);
+static Prog *get_program_(NvnProgram *np, ShaderKey *vkey, ShaderKey *fkey,unsigned bloom_requested);
 
 // [XCDE] T191: NVN alpha test as a fragment shader variant. XCDE_ALPHA_TEST=0: ignored (the old behaviour).
 static bool alpha_test_on(void) {
@@ -2037,9 +2106,11 @@ static Prog *get_program(NvnProgram *np, ShaderKey *vkey, ShaderKey *fkey) {
     static uint64_t l_code[3], l_hash[3], l_source[3], l_source_size[3];
     static uint32_t l_const_offset[3], l_const_size[3];
     static uint8_t l_gs_in, l_mask;
+    static unsigned l_bloom_mode;
     static uint32_t l_gen = ~0u;
     static Prog *l_p;
-    if (l_p && np == l_np && l_gen == prog_tab_gen && l_gs_in == g_draw_gs_in && l_mask == np->stage_mask &&
+    unsigned mode=(unsigned)xcde_graphics_option(GFX_BLOOM_STABILITY);
+    if (l_p && mode==l_bloom_mode && np == l_np && l_gen == prog_tab_gen && l_gs_in == g_draw_gs_in && l_mask == np->stage_mask &&
         l_code[0] == np->stages[0].code_addr && l_code[1] == np->stages[1].code_addr && l_code[2] == np->stages[2].code_addr &&
         l_hash[0] == np->stages[0].code_hash && l_hash[1] == np->stages[1].code_hash && l_hash[2] == np->stages[2].code_hash &&
         l_source[0] == nvn_stage_code(&np->stages[0]) && l_source[1] == nvn_stage_code(&np->stages[1]) && l_source[2] == nvn_stage_code(&np->stages[2]) &&
@@ -2048,7 +2119,8 @@ static Prog *get_program(NvnProgram *np, ShaderKey *vkey, ShaderKey *fkey) {
         l_const_size[0] == np->stages[0].const_size && l_const_size[1] == np->stages[1].const_size && l_const_size[2] == np->stages[2].const_size &&
         !memcmp(vkey, &l_v, sizeof l_v) && !memcmp(fkey, &l_f, sizeof l_f))
         return l_p;
-    Prog *p = get_program_(np, vkey, fkey);
+    Prog *p = get_program_(np, vkey, fkey,mode);
+    l_bloom_mode=mode;
     l_np = np; l_v = *vkey; l_f = *fkey; l_gs_in = g_draw_gs_in; l_mask = np->stage_mask; l_gen = prog_tab_gen; l_p = p;
     for (int i = 0; i < 3; i++) {
         l_code[i] = np->stages[i].code_addr; l_hash[i] = np->stages[i].code_hash;
@@ -2057,12 +2129,15 @@ static Prog *get_program(NvnProgram *np, ShaderKey *vkey, ShaderKey *fkey) {
     }
     return p;
 }
-static Prog *get_program_(NvnProgram *np, ShaderKey *vkey, ShaderKey *fkey) {
+static Prog *get_program_(NvnProgram *np, ShaderKey *vkey, ShaderKey *fkey,unsigned bloom_requested) {
     if (!(np->stage_mask & 1)) return NULL;  // [XCDE] a program without a fragment stage gets an empty one (no_fs)
     // [XCDE] T185: keyed by content only (T125 hashes), not by guest address - the same shaders streamed in again at
     // another address made new programs and pipelines (~10,000 program builds in 69 min of soak play, private memory
     // +0.8 GB/h). Translation reads only the code and the key, so equal content gives the same program.
+    unsigned effect=bloom_kind(np->stages[1].code_copy,np->stages[1].code_copy_size);
+    unsigned effect_mode=bloom_mode(effect,(int)bloom_requested);
     uint64_t h = 0xcbf29ce484222325ull;
+    h=bloom_cache_identity(h,effect_mode);
     for (int i = 0; i < 2; i++) { h ^= (uint64_t)(np->stages[i].code_addr != 0); h *= 0x100000001B3ull; }
     for (int i = 0; i < 3; i++) { h ^= np->stages[i].code_hash; h *= 0x100000001B3ull; }
     // The same blob bytes can have a different instruction/constant boundary.
@@ -2098,6 +2173,8 @@ static Prog *get_program_(NvnProgram *np, ShaderKey *vkey, ShaderKey *fkey) {
     slot->val = p;
     prog_tab.n++;
     memcpy(p->stages, np->stages, sizeof p->stages);
+    p->bloom_kind=(uint8_t)effect;
+    p->bloom_mode=(uint8_t)effect_mode;
     for (int i = 0; i < 2; i++) {
         p->code[i] = np->stages[i].code_addr;
         p->src[i] = nvn_stage_code(&np->stages[i]);
@@ -2503,6 +2580,7 @@ static VkResult gpl_make(const VkGraphicsPipelineCreateInfo *base, VkGraphicsPip
     // ~180 KB (one area's ~3,500 libraries: +630 MB of process memory, never freed). XCDE_GPL_RETAIN=1: keep it.
     static int retain = -1;
     if (retain < 0) retain = getenv("XCDE_GPL_RETAIN") && atoi(getenv("XCDE_GPL_RETAIN")) != 0;
+    if(g_vk.feedback_loop)pi.flags|=VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
     pi.flags |= VK_PIPELINE_CREATE_LIBRARY_BIT_KHR | (retain ? VK_PIPELINE_CREATE_RETAIN_LINK_TIME_OPTIMIZATION_INFO_BIT_EXT : 0);
     return vkCreateGraphicsPipelines(g_vk.dev, g_vk.pcache, 1, &pi, NULL, out);
 }
@@ -2711,6 +2789,7 @@ static VkResult gpl_link(const PipeKey *k, VkPipeline *out, void *ents[4]) {
     if (libs[0] && libs[1] && libs[2] && libs[3]) {
         VkPipelineLibraryCreateInfoKHR li = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LIBRARY_CREATE_INFO_KHR, .libraryCount = 4, .pLibraries = libs};
         VkGraphicsPipelineCreateInfo pi = {.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO, .pNext = &li, .layout = k->prog->layout};
+        if(g_vk.feedback_loop)pi.flags|=VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
         r = vkCreateGraphicsPipelines(g_vk.dev, g_vk.pcache, 1, &pi, NULL, out);
         if (r == VK_SUCCESS)  // (counted before the shared lock goes: eviction only takes unreferenced libraries)
             for (int i = 0; i < 4; i++) { atomic_fetch_add(&e[i]->refs, 1); ents[i] = e[i]; }
@@ -3008,6 +3087,7 @@ static VkResult pipeline_whole(const PipeKey *k, VkPipelineCreateFlags flags, Vk
                                        .pStages = stages, .pVertexInputState = &vi, .pInputAssemblyState = &ia, .pViewportState = &vs,
                                        .pRasterizationState = &rs, .pMultisampleState = &ms, .pDepthStencilState = &ds,
                                        .pColorBlendState = &cb, .pDynamicState = &dy, .layout = k->prog->layout, .flags = flags};
+    if(g_vk.feedback_loop)pi.flags|=VK_PIPELINE_CREATE_COLOR_ATTACHMENT_FEEDBACK_LOOP_BIT_EXT;
     return vkCreateGraphicsPipelines(g_vk.dev, g_vk.pcache, 1, &pi, NULL, out);
 }
 
@@ -3316,6 +3396,8 @@ void vk_prewarm_hold(uint64_t frame_draws) {
 int vk_precompile_program(const NvnProgram *np, const ShaderKey *vkey, const ShaderKey *fkey, uint32_t *vs_attr) {
     Prog *p = calloc(1, sizeof *p);
     memcpy(p->stages, np->stages, sizeof p->stages);
+    p->bloom_kind=bloom_kind(np->stages[1].code_copy,np->stages[1].code_copy_size);
+    p->bloom_mode=bloom_mode(p->bloom_kind,xcde_graphics_option(GFX_BLOOM_STABILITY));
     for (int i = 0; i < 2; i++) {
         p->code[i] = np->stages[i].code_addr;
         p->src[i] = nvn_stage_code(&np->stages[i]);
@@ -3362,6 +3444,8 @@ int vk_precompile_variant(const NvnProgram *np, const void *rec, size_t rec_size
     if (v.has_gs) return 0;
     Prog *p = calloc(1, sizeof *p);
     memcpy(p->stages, np->stages, sizeof p->stages);
+    p->bloom_kind=bloom_kind(np->stages[1].code_copy,np->stages[1].code_copy_size);
+    p->bloom_mode=bloom_mode(p->bloom_kind,xcde_graphics_option(GFX_BLOOM_STABILITY));
     for (int i = 0; i < 2; i++) {
         p->code[i] = np->stages[i].code_addr;
         p->src[i] = nvn_stage_code(&np->stages[i]);
@@ -3411,21 +3495,33 @@ int vk_precompile_variant(const NvnProgram *np, const void *rec, size_t rec_size
 }
 
 // ================================================================== feedback snapshots (renderer.m resolve_feedback)
-static NvnTexture *feedback_tex[4];
-static VkImageView feedback_view[4];
+static NvnTexture *feedback_tex[9];
+static TexBackend *feedback_copy[9];
 static int nfeedback;
 static uint64_t g_cur_fs_hash;
 static NvnTexture *snap_tex[8];
 static bool snap_ok[8];
 static const char *snap_why[8];
 static const char *snap_reason = "?";
+static void feedback_written(NvnTexture *t);
+static uint64_t feedback_visibility=1;
+void vk_feedback_boundary(void) { if(++feedback_visibility==0)feedback_visibility=1; }
 static void snapshots_invalidate(NvnTexture *t) {
+    if(!t)vk_feedback_boundary();else feedback_written(t);
     for (int i = 0; i < 8; i++) if ((!t || snap_tex[i] == t) && snap_ok[i]) { snap_ok[i] = false; snap_why[i] = snap_reason; }
 }
 
-typedef struct { NvnTexture *key; TexBackend copy; } Snap;
+typedef struct { NvnTexture *key; TexBackend copy; VkImage source; uint64_t source_identity,visibility,frame; bool read_only_valid; } Snap;
 static Snap snaps[16];
 static int nsnaps;
+static void feedback_written(NvnTexture *t) {
+    for(int i=0;i<nsnaps;i++)if(snaps[i].key==t || (t && t->backend && snaps[i].key && snaps[i].key->backend==t->backend))snaps[i].read_only_valid=false;
+}
+void vk_feedback_texture_gone(NvnTexture *t) {
+    for(int i=0;i<nsnaps;i++)if(snaps[i].key==t)snaps[i].key=NULL,snaps[i].visibility=0;
+    for(int i=0;i<8;i++)if(snap_tex[i]==t)snap_tex[i]=NULL,snap_ok[i]=false;
+    vk_feedback_boundary();
+}
 
 static NvnTexture *shader_texture_object(int stage, ShaderTexture *st_) {
     int slot = ((int)st_->handle_offset - 0x20) / 8;
@@ -3438,37 +3534,37 @@ static NvnTexture *shader_texture_object(int stage, ShaderTexture *st_) {
 
 static bool is_attachment(NvnTexture *t) {
     if (!t) return false;
-    if (t == st.rt.depth) return true;
-    for (int i = 0; i < st.rt.ncolor; i++) if (t == st.rt.color[i]) return true;
+    if (t == st.rt.depth || (t->backend && st.rt.depth && t->backend==st.rt.depth->backend)) return true;
+    for (int i = 0; i < st.rt.ncolor; i++) if (t == st.rt.color[i] || (t->backend && st.rt.color[i] && t->backend==st.rt.color[i]->backend)) return true;
     return false;
 }
 
-static TexBackend *snapshot_image(NvnTexture *t, TexBackend *src) {
-    Snap *s = NULL;
-    for (int i = 0; i < nsnaps; i++) if (snaps[i].key == t) s = &snaps[i];
-    if (!s) {
-        if (nsnaps == 16) { static int rr; s = &snaps[rr++ & 15]; } else s = &snaps[nsnaps++];
-        s->key = t;
+static Snap *snapshot_image(NvnTexture *t, TexBackend *src) {
+    Snap *s=NULL;
+    for(int i=0;i<nsnaps;i++)if(snaps[i].key==t)s=&snaps[i];
+    if(!s) { static unsigned rr; s=nsnaps<16?&snaps[nsnaps++]:&snaps[rr++%16];s->key=t;s->visibility=0; }
+    TexBackend *d=&s->copy;
+    if(d->image && (d->width!=src->width || d->height!=src->height || d->depth!=src->depth || d->layers!=src->layers ||
+        d->levels!=src->levels || d->format!=src->format || d->samples!=src->samples || d->base_type!=src->base_type)) {
+        vk_views_forget(d);vk_defer_image(d->image,d->mem);d->image=VK_NULL_HANDLE;d->mem=VK_NULL_HANDLE;s->visibility=0;
     }
-    TexBackend *d = &s->copy;
-    if (d->image && (d->width != src->width || d->height != src->height || d->format != src->format)) {
-        vk_views_forget(d);  // (resolution change)
-        vk_defer_image(d->image, d->mem);
-        d->image = VK_NULL_HANDLE;
-        d->mem = VK_NULL_HANDLE;
+    if(!d->image) {
+        VkImageType type=src->base_type==VK_IMAGE_VIEW_TYPE_3D?VK_IMAGE_TYPE_3D:
+            (src->base_type==VK_IMAGE_VIEW_TYPE_1D||src->base_type==VK_IMAGE_VIEW_TYPE_1D_ARRAY)?VK_IMAGE_TYPE_1D:VK_IMAGE_TYPE_2D;
+        VkImageCreateInfo ci={.sType=VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,.imageType=type,.format=src->format,
+            .extent={src->width,src->height,src->depth},.mipLevels=src->levels,.arrayLayers=src->layers,
+            .samples=(VkSampleCountFlagBits)src->samples,.tiling=VK_IMAGE_TILING_OPTIMAL,
+            .usage=VK_IMAGE_USAGE_SAMPLED_BIT|VK_IMAGE_USAGE_TRANSFER_DST_BIT,
+            .flags=src->aspect==VK_IMAGE_ASPECT_COLOR_BIT?VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT:0};
+        if(src->base_type==VK_IMAGE_VIEW_TYPE_CUBE || src->base_type==VK_IMAGE_VIEW_TYPE_CUBE_ARRAY)ci.flags|=VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
+        VmaAllocationCreateInfo ai={.usage=VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
+        VK_CHECK(vmaCreateImage(g_vk.vma,&ci,&ai,&d->image,&d->mem,NULL));
+        d->format=src->format;d->width=src->width;d->height=src->height;d->depth=src->depth;d->layers=src->layers;
+        d->levels=src->levels;d->samples=src->samples;d->aspect=src->aspect;d->base_type=src->base_type;d->gpu_owned=true;
+        vk_image_init_layout(vk_cmd(),d->image,d->aspect);
     }
-    if (!d->image) {
-        VkImageCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO, .imageType = VK_IMAGE_TYPE_2D, .format = src->format,
-                                .extent = {src->width, src->height, 1}, .mipLevels = 1, .arrayLayers = 1,
-                                .samples = (VkSampleCountFlagBits)src->samples, .tiling = VK_IMAGE_TILING_OPTIMAL,
-                                .usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT};
-        VmaAllocationCreateInfo ai = {.usage = VMA_MEMORY_USAGE_AUTO_PREFER_DEVICE};
-        VK_CHECK(vmaCreateImage(g_vk.vma, &ci, &ai, &d->image, &d->mem, NULL));
-        d->format = src->format; d->width = src->width; d->height = src->height; d->depth = 1; d->layers = 1; d->levels = 1;
-        d->samples = src->samples; d->aspect = src->aspect; d->base_type = VK_IMAGE_VIEW_TYPE_2D;
-        vk_image_init_layout(vk_cmd(), d->image, d->aspect);
-    }
-    return d;
+    d->nlean=src->nlean;memcpy(d->lean_fmt,src->lean_fmt,sizeof d->lean_fmt);
+    return s;
 }
 
 // (debug frames) a depth image's depth values as a greyscale PGM, stretched over its own min..max
@@ -3785,8 +3881,8 @@ static bool feedback_overlaps(int stage, ShaderTexture *st_, NvnTexture *t) {
     view_range(&e->view, e->has_view, t, &sl0, &sl1, &sy0, &sy1);
     const NvnTextureView *av = NULL;
     bool ahas = false;
-    if (t == st.rt.depth) av = &st.rt.dview, ahas = st.rt.has_dview;
-    for (int i = 0; !av && i < st.rt.ncolor; i++) if (st.rt.color[i] == t) av = &st.rt.cview[i], ahas = st.rt.has_cview[i];
+    if (t == st.rt.depth || (t->backend && st.rt.depth && t->backend==st.rt.depth->backend)) av = &st.rt.dview, ahas = st.rt.has_dview;
+    for (int i = 0; !av && i < st.rt.ncolor; i++) if (st.rt.color[i] == t || (t->backend && st.rt.color[i] && t->backend==st.rt.color[i]->backend)) av = &st.rt.cview[i], ahas = st.rt.has_cview[i];
     if (!av) return false;
     uint32_t al0, al1, ay0, ay1;
     view_range(av, ahas, t, &al0, &al1, &ay0, &ay1);
@@ -3794,83 +3890,86 @@ static bool feedback_overlaps(int stage, ShaderTexture *st_, NvnTexture *t) {
     return sl0 < al1 && al0 < sl1 && sy0 < ay1 && ay0 < sy1;
 }
 
+// Decide native eligibility using shader outputs as well as color masks. Binding
+// an attachment in a shader does not imply that this draw writes that attachment.
+static unsigned feedback_color_mask(NvnTexture *t) {
+    if(!t)return 0;
+    unsigned mask=0;for(int i=0;i<st.rt.ncolor;i++)if(st.rt.color[i]==t ||
+        (t->backend && st.rt.color[i] && st.rt.color[i]->backend==t->backend))mask|=1u<<i;
+    return mask;
+}
+static bool feedback_color_written(Prog *pr,unsigned mask) {
+    for(unsigned i=0;i<8;i++)if((mask&(1u<<i)) && ((pr->fi->out_mask>>(i*4))&15) && ((st.channel_mask>>(i*4))&15))return true;
+    return false;
+}
 static void resolve_feedback(Prog *pr) {
-    nfeedback = 0;
-    static int off = -1;
-    if (off < 0) off = getenv("LARECOMP_NO_FEEDBACK") != NULL;
-    if (off) return;
-    ShaderInfo *infos[2] = {pr->vi, pr->fi};
-    for (int sg = 0; sg < 2; sg++)
-        for (int i = 0; i < infos[sg]->ntex; i++) {
-            NvnTexture *t = shader_texture_object(sg, &infos[sg]->tex[i]);
-            if (!is_attachment(t) || !feedback_overlaps(sg, &infos[sg]->tex[i], t)) continue;
-            // [XCDE] T161: colour feedback samples the attachment itself (all images are in GENERAL layout), as the
-            // Maxwell texture unit reads render-target memory. The snapshot path (end the pass, full barrier, copy the
-            // whole image) ran ~1,700 times a frame in battle - the game's UI uber-shaders (13 texture slots) have the
-            // scene target bound in slots they read through uniform-selected branches. Measured: 5.57 M copies -> 0 on
-            // the prologue route, captures identical (max 2/255 on 0.2 % of one frame), battle 23.8 -> 27.7 fps
-            // (deterministic), validation layers quiet. LARECOMP_FEEDBACK_DIRECT=0: snapshots again. Depth: unchanged.
-            static int direct = -1;
-            if (direct < 0) { const char *e = getenv("LARECOMP_FEEDBACK_DIRECT"); direct = !e || atoi(e) != 0; }
-            if (direct && t != st.rt.depth) continue;
-            bool have = false;
-            for (int k = 0; k < nfeedback; k++) have |= feedback_tex[k] == t;
-            if (have || nfeedback == 4) continue;
-            static int nosnap = -1;
-            if (nosnap < 0) nosnap = getenv("LARECOMP_NO_SNAPSHOT_REUSE") != NULL;
-            int si = -1;
-            for (int k = 0; k < 8; k++) if (snap_tex[k] == t) si = k;
-            bool self_write = t == st.rt.depth && st.ds[0] && st.ds[1];
-            TexBackend *src = vk_tex(t, true);
-            Snap *existing = NULL;
-            for (int k = 0; k < nsnaps; k++) if (snaps[k].key == t && snaps[k].copy.image) existing = &snaps[k];
-            VkImageAspectFlags sa = src->aspect & VK_IMAGE_ASPECT_DEPTH_BIT ? VK_IMAGE_ASPECT_DEPTH_BIT : src->aspect;
-            static const VkComponentMapping id = {0};
-            if (!nosnap && si >= 0 && (snap_ok[si] || self_write) && existing) {
-                feedback_tex[nfeedback] = t;
-                feedback_view[nfeedback++] = vk_image_view(&existing->copy, VK_IMAGE_VIEW_TYPE_2D, src->format, 0, 1, 0, 1, id, sa);
-                continue;
+    nfeedback=0;
+    unsigned native_mask=0,storage_mask=0;bool storage_writes=false;
+    ShaderInfo *infos[3]={pr->vi,pr->fi,pr->gi};
+    for(int sg=0;sg<3;sg++)for(int i=0;infos[sg] && i<infos[sg]->ntex;i++) {
+        ShaderTexture *sample=&infos[sg]->tex[i];
+        if(sample->is_image){storage_mask|=feedback_color_mask(shader_texture_object(sg,sample));storage_writes|=sample->image_store||sample->image_atomic;}
+    }
+    static int direct=-1;
+    if(direct<0){const char *e=getenv("LARECOMP_FEEDBACK_DIRECT");direct=!e||atoi(e)!=0;}
+    for(int sg=0;sg<3;sg++)for(int i=0;infos[sg] && i<infos[sg]->ntex;i++) {
+        ShaderTexture *sample=&infos[sg]->tex[i];
+        if(sample->is_image)continue; // storage writes cannot be redirected to a read snapshot
+        NvnTexture *t=shader_texture_object(sg,sample);
+        if(!is_attachment(t) || !feedback_overlaps(sg,sample,t))continue;
+        TexBackend *src=vk_tex(t,true); // queued host uploads invalidate visibility before checking reuse
+        unsigned colors=feedback_color_mask(t);
+        bool writes=feedback_color_written(pr,colors);
+        bool simple=sample->type==TEXTYPE_2D && src->base_type==VK_IMAGE_VIEW_TYPE_2D &&
+            src->levels==1 && src->layers==1 && src->depth==1 && src->samples==1;
+        if(direct && g_vk.feedback_loop && src->feedback_usage && sg==1 && colors && !writes && !(colors&storage_mask) && simple) {
+            native_mask|=colors;continue;
+        }
+        bool have=false;for(int k=0;k<nfeedback;k++)have|=feedback_tex[k]==t || (feedback_tex[k]->backend==src);
+        if(have)continue;
+        if(nfeedback==9)FATAL("feedback exceeds the nine attachment limit\n");
+        // Finish native layouts before copies. Full source subresources are kept:
+        // sampling a mip/array/stencil view must not silently become level0/2D.
+        Snap *snapshot=NULL;for(int k=0;k<nsnaps;k++)if(snaps[k].key==t)snapshot=&snaps[k];
+        bool self_write=(colors && writes) || (t==st.rt.depth && st.ds[0] && st.ds[1]);
+        static int nosnap=-1;if(nosnap<0)nosnap=getenv("LARECOMP_NO_SNAPSHOT_REUSE")!=NULL;
+        bool reuse=!nosnap && snapshot && ((self_write && simple) || snapshot->read_only_valid) && snapshot->copy.image && snapshot->source==src->image && snapshot->source_identity==src->image_identity &&
+            snapshot->visibility==feedback_visibility && snapshot->frame==renderer_present_count();
+        if(!reuse) {
+            vk_end_pass();snapshot=snapshot_image(t,src);
+            VkCommandBuffer cb=vk_cmd();vk_full_barrier(cb);
+            static int fbs=-1;if(fbs<0)fbs=getenv("XCDE_FB_STATS")!=NULL;
+            if(fbs) {char key[128];snprintf(key,sizeof key,"%s %s %ux%u f%#x fs %llx vs %llx",
+                colors?"color":"depth",self_write?"rw":"ro",src->width,src->height,t->format,
+                (unsigned long long)pr->code[1],(unsigned long long)pr->code[0]);fb_stat_add(key);}
+            if(ct_on())LOG("[ct] feedback copy %p %ux%u levels %u layers %u visibility %llu\n",(void*)t,src->width,src->height,src->levels,src->layers,(unsigned long long)feedback_visibility);
+            vk_watch(snapshot->copy.image,"feedback snapshot");
+            for(uint32_t level=0;level<src->levels;level++) {
+                VkImageCopy copies[2];unsigned count=0;
+                for(unsigned aspect=1;aspect<=VK_IMAGE_ASPECT_STENCIL_BIT;aspect<<=1)if(src->aspect&aspect) {
+                    copies[count++]=(VkImageCopy){.srcSubresource={aspect,level,0,src->layers},.dstSubresource={aspect,level,0,src->layers},
+                        .extent={level_extent(src->width,level),level_extent(src->height,level),level_extent(src->depth,level)}};
+                }
+                vkCmdCopyImage(cb,src->image,VK_IMAGE_LAYOUT_GENERAL,snapshot->copy.image,VK_IMAGE_LAYOUT_GENERAL,count,copies);
+            }
+            vk_full_barrier(cb);
+            if(g_debug_frame && (src->aspect&VK_IMAGE_ASPECT_DEPTH_BIT)) {
+                static unsigned number;char path[128];
+                snprintf(path,sizeof path,"build/fbdepth_%03u_src.pgm",number);debug_save_depth(src,path);
+                snprintf(path,sizeof path,"build/fbdepth_%03u_snap.pgm",number++);debug_save_depth(&snapshot->copy,path);
             }
             stat_feedback_copies++;
-            {   // [XCDE] T161: XCDE_FB_STATS=1 - what the feedback snapshots are (depth/colour, written by this draw?, why
-                // the last copy was invalidated); logged with the per-2 s stats
-                static int fbs = -1;
-                if (fbs < 0) fbs = getenv("XCDE_FB_STATS") != NULL;
-                if (fbs) {
-                    bool depth = t == st.rt.depth;
-                    bool wr = depth ? (st.ds[0] && st.ds[1]) : false;
-                    for (int c2 = 0; !depth && c2 < st.rt.ncolor; c2++) if (st.rt.color[c2] == t) wr = ((st.channel_mask >> (c2 * 4)) & 0xF) != 0;
-                    char key[96];
-                    snprintf(key, sizeof key, "%s %s was=%s %ux%u f%#x fs %llx vs %llx", depth ? "depth" : "color", wr ? "rw" : "ro",
-                             si >= 0 && snap_why[si] ? snap_why[si] : "new", src->width, src->height, t->format,
-                             (unsigned long long)pr->code[1], (unsigned long long)pr->code[0]);
-                    fb_stat_add(key);
-                }
-            }
-            if (ct_on()) LOG("[ct] snapshot %p %ux%u (was %s, si %d)\n", (void *)t, src->width, src->height, si >= 0 ? snap_why[si] : "new", si);
-            vk_end_pass();
-            TexBackend *dst = snapshot_image(t, src);
-            VkCommandBuffer cb = vk_cmd();
-            vk_full_barrier(cb);
-            gp_mark(cb, "feedback snapshot %ux%u fmt %d", src->width, src->height, src->format);
-            VkImageCopy rg = {.srcSubresource = {src->aspect, 0, 0, 1}, .dstSubresource = {src->aspect, 0, 0, 1},
-                              .extent = {src->width, src->height, 1}};
-            vk_watch(dst->image, "exec.c:1954 vkCmdCopyImage"); vkCmdCopyImage(cb, src->image, VK_IMAGE_LAYOUT_GENERAL, dst->image, VK_IMAGE_LAYOUT_GENERAL, 1, &rg);
-            if (g_debug_frame && (src->aspect & VK_IMAGE_ASPECT_DEPTH_BIT)) {
-                static int nd;
-                char path[128];
-                snprintf(path, sizeof path, "build/fbdepth_%03d_src.pgm", nd);
-                debug_save_depth(src, path);
-                snprintf(path, sizeof path, "build/fbdepth_%03d_snap.pgm", nd++);
-                debug_save_depth(dst, path);
-                cb = vk_cmd();
-            }
-            feedback_tex[nfeedback] = t;
-            feedback_view[nfeedback++] = vk_image_view(dst, VK_IMAGE_VIEW_TYPE_2D, src->format, 0, 1, 0, 1, id, sa);
-            if (si < 0) { static int rr; si = rr++ & 7; snap_tex[si] = t; }
-            snap_ok[si] = true;
-            st.rt_dirty = true;
+            snapshot->source=src->image;snapshot->source_identity=src->image_identity;snapshot->visibility=feedback_visibility;snapshot->frame=renderer_present_count();snapshot->read_only_valid=true;
         }
+        feedback_tex[nfeedback]=t;feedback_copy[nfeedback++]=&snapshot->copy;
+        if(!reuse)st.rt_dirty=true;
+    }
+    for(int k=0;k<nfeedback;k++)native_mask&=~feedback_color_mask(feedback_tex[k]);
+    if(native_mask!=draw_feedback_mask){vk_end_pass();st.rt_dirty=true;draw_feedback_mask=native_mask;}
+    // An unchanged native mask is read-only for every contributing draw. Its
+    // previous writes were made visible before rendering; only a load clear
+    // needs the dependency in begin_pass. No per-draw restart/barrier is needed.
+    if(storage_writes)vk_feedback_boundary();
 }
 
 // ================================================================== resource binding
@@ -4714,13 +4813,19 @@ static void texture_info(int stage, ShaderInfo *si, int i, VkDescriptorImageInfo
             wh[0] = e->tex->width; wh[1] = e->tex->height;
             ti_d16 = e->tex->format == 0x32;
             for (int k = 0; k < nfeedback; k++)
-                if (e->tex == feedback_tex[k] && (st_->type == TEXTYPE_2D || st_->type == TEXTYPE_2D_ARRAY)) {
-                    view = feedback_view[k];
-                    if (st_->type == TEXTYPE_2D_ARRAY) view = vk_dummy_view(TEXTYPE_2D_ARRAY);  // (2D snapshot as array: rare)
+                if (e->tex == feedback_tex[k] || (e->tex->backend && e->tex->backend==feedback_tex[k]->backend)) {
+                    NvnTexture snapshot=*e->tex;snapshot.backend=feedback_copy[k];
+                    view=vk_view(&snapshot,&e->view,e->has_view,false,st_->type);
                 }
         }
     }
-    if (h && st.spool && tsc < (uint32_t)st.spool->count) smp = vk_sampler(&((NvnSamplerDesc *)st.spool->entries)[tsc]);
+    if (h && st.spool && tsc < (uint32_t)st.spool->count) {
+        NvnTexture *sampled = st.tpool && tic < (uint32_t)st.tpool->count ?
+            ((NvnTexEntry *)st.tpool->entries)[tic].tex : NULL;
+        smp = vk_sampler_filtered(&((NvnSamplerDesc *)st.spool->entries)[tsc],
+            sampled && !renderer_format_is_depth(sampled->format), st_->is_uint, st_->shadow,
+            sampled ? sampled->levels : 0);
+    }
     if (!view && h && st.tpool && tic < (uint32_t)st.tpool->count && ((NvnTexEntry *)st.tpool->entries)[tic].tex) {
         NvnTexture *t = ((NvnTexEntry *)st.tpool->entries)[tic].tex;
         audit("dummy texture view: stage %d unit %d shader type %d / texture target %u fmt %#x %ux%ux%u levels %u (vs %llx fs %llx)",
@@ -4741,7 +4846,13 @@ static void texture_info(int stage, ShaderInfo *si, int i, VkDescriptorImageInfo
     }
     if (!view) view = vk_dummy_view(st_->type);
     if (!smp) smp = vk_default_sampler(true);
-    *out = (VkDescriptorImageInfo){smp, view, VK_IMAGE_LAYOUT_GENERAL};
+    VkImageLayout layout=VK_IMAGE_LAYOUT_GENERAL;
+    if(h && st.tpool && tic<(uint32_t)st.tpool->count) {
+        NvnTexture *texture=((NvnTexEntry *)st.tpool->entries)[tic].tex;
+        bool copied=false;for(int k=0;k<nfeedback;k++)copied|=feedback_tex[k]==texture || (texture && texture->backend && texture->backend==feedback_tex[k]->backend);
+        if(texture && !copied)layout=feedback_sample_layout(texture->backend);
+    }
+    *out = (VkDescriptorImageInfo){smp, view, layout};
 }
 
 // [XCDE] The unsigned-integer storage view of shader texture slot i (SULD/SUST), or the dummy one.
@@ -5332,7 +5443,7 @@ static void draw_(CmdRec *r, bool indexed) {
     if (st.rt.depth && st.ds[0] && st.ds[1]) snapshots_invalidate(st.rt.depth);
     snap_reason = "draw-colorwrite";
     for (int i = 0; i < st.rt.ncolor; i++)
-        if (st.rt.color[i] && ((st.channel_mask >> (i * 4)) & 0xF)) snapshots_invalidate(st.rt.color[i]);
+        if (st.rt.color[i] && ((pr->fi->out_mask >> (i * 4)) & 0xF) && ((st.channel_mask >> (i * 4)) & 0xF)) snapshots_invalidate(st.rt.color[i]);
     // [XCDE] T136: a draw that writes memory (transform feedback capture, shader stores) starts a new pass, i.e. a full
     // barrier *before* it too (one after it was already there). The game refills one grass scratch buffer from offset
     // 0 per batch, right after the previous batch's draws read it as instance data: Maxwell runs draws in order, Vulkan
@@ -5630,15 +5741,63 @@ static void draw_(CmdRec *r, bool indexed) {
     if (prof) prof_tex += SDL_GetTicksNS() - prof_tx_;
     if (fabsf(pass_sx - pass_sy) > 0.01f * pass_sy && st.rt.ncolor && renderer_texture_presented(st.rt.color[0])) {
         // Draws into the swapchain image (see renderer.m): composites fill the window, UI goes in a centred 16:9 box.
-        bool reads_scene = false;
-        for (int i = 0; i < pr->fi->ntex && i < 64; i++)
-            if ((tex_sc[1][i][0] != 1 || tex_sc[1][i][1] != 1) && tex_wh[1][i][0] == st.rt.color[0]->width &&
-                tex_wh[1][i][1] == st.rt.color[0]->height)
-                reads_scene = true;
+        // [XCDE] LINUX-093: the final scene may read several inputs, and its
+        // dynamic-resolution source need not equal the window's native size.
+        // Only GPU scene allocations with the target's nonuniform scale extend
+        // the existing rule; portraits, atlases, square maps and partial UI do not.
+        size_t ninputs = pr->fi->ntex <= 0 ? 0 : pr->fi->ntex < 64 ? (size_t)pr->fi->ntex : 64;
+        AspectCompositeInput inputs[64];
+        TexBackend *target = st.rt.color[0]->backend;
+        for (size_t i = 0; i < ninputs; ++i) {
+            NvnTexture *texture = shader_texture_object(1, &pr->fi->tex[i]);
+            TexBackend *source = texture ? texture->backend : NULL;
+            inputs[i] = (AspectCompositeInput){
+                .width=tex_wh[1][i][0], .height=tex_wh[1][i][1],
+                .sx=tex_sc[1][i][0], .sy=tex_sc[1][i][1],
+                .scene_target=source && source->scalable == 1,
+                .gpu_written=source && source->gpu_owned,
+                .color_image=source && (source->aspect & VK_IMAGE_ASPECT_COLOR_BIT) && !pr->fi->tex[i].is_image,
+                .separate_image=source && target && source->image && source->image != target->image};
+        }
+        uint32_t instances = (uint32_t)r->x[indexed ? 6 : 4];
+        AspectCompositeDraw scene_draw = {
+            .width=st.rt.color[0]->width, .height=st.rt.color[0]->height,
+            .count=(uint32_t)r->x[2], .instances=instances ? instances : 1, .mode=(uint32_t)r->x[0],
+            .sx=pass_sx, .sy=pass_sy, .viewport={vp[0],vp[1],vp[2],vp[3]}};
+        AspectCompositeRole scene_role = aspect_composite_role(&scene_draw, inputs, ninputs);
+        bool reads_scene = scene_role != ASPECT_COMPOSITE_HUD;
         bool fullscreen_quad = r->x[2] <= 6 && st.viewport[0][0] == 0 && st.viewport[0][1] == 0 &&
                                st.viewport[0][2] >= st.rt.color[0]->width && st.viewport[0][3] >= st.rt.color[0]->height;
         bool fullscreen_fill = pr->fi->ntex == 0 && fullscreen_quad;
-        if (fullscreen_quad && !reads_scene && pr->fi->ntex == 1 && (tex_sc[1][0][0] != 1 || tex_sc[1][0][1] != 1)) reads_scene = true;
+        // Bounded ordinary-log evidence is available without environment flags
+        // (the launcher deliberately sanitizes unrecognized environment input).
+        // This records decisions, not a claim about a reporter's failing draw.
+        // [XCDE] LINUX-103/#12: log bounded candidate decisions as well as
+        // accepted scenes. A rejected reduced/UAV input was invisible in093's
+        // success-only rows. These are metadata diagnostics, never a wider rule.
+        if (scene_draw.count >= 3 && scene_draw.count <= 6 && scene_draw.instances == 1 &&
+            (scene_draw.mode == 4 || scene_draw.mode == 5) && ninputs) {
+            static uint64_t seen[48]; static unsigned nseen;
+            uint64_t hash = st.program->stages[1].code_hash;
+            size_t source_index = 0;
+            while (source_index < ninputs && !aspect_composite_scene_source(&scene_draw, &inputs[source_index])) source_index++;
+            if (source_index == ninputs) source_index = 0;
+            const AspectCompositeInput *input = &inputs[source_index];
+            uint32_t vp_words[4]; memcpy(vp_words, scene_draw.viewport, sizeof vp_words);
+            uint64_t key = hash ^ ((uint64_t)input->width << 32) ^ input->height ^ ((uint64_t)scene_role << 60) ^
+                           ((uint64_t)vp_words[2] << 16) ^ vp_words[3];
+            bool known = false;
+            for (unsigned i = 0; i < nseen; ++i) known |= seen[i] == key;
+            if (!known && nseen < 48) {
+                seen[nseen++] = key;
+                LOG("[aspect] composite role %u frame %llu draw %llu fs %016llx mode %d inputs %zu target %ux%u scale %.4f %.4f viewport %.1f %.1f %.1f %.1f source %zu %ux%u scale %.4f %.4f scene %u gpu %u color %u separate %u\n",
+                    (unsigned)scene_role, (unsigned long long)renderer_present_count(), (unsigned long long)g_draws_total,
+                    (unsigned long long)hash, g_settings.aspect, ninputs, scene_draw.width, scene_draw.height, pass_sx, pass_sy,
+                    scene_draw.viewport[0], scene_draw.viewport[1], scene_draw.viewport[2], scene_draw.viewport[3],
+                    source_index, input->width, input->height, input->sx, input->sy,
+                    (unsigned)input->scene_target, (unsigned)input->gpu_written, (unsigned)input->color_image, (unsigned)input->separate_image);
+            }
+        }
         static uint64_t wide_frame = ~0ull;
         if (reads_scene) wide_frame = renderer_present_count();
         bool fade_fill = false;
@@ -5652,10 +5811,12 @@ static void draw_(CmdRec *r, bool indexed) {
         if (!composite) {
             int pw, ph;
             pass_size(&pw, &ph);
-            float u = fminf(pass_sx, pass_sy);
-            vp_sx = vp_sy = u;
-            vp_ox = (pw - st.rt.color[0]->width * u) * 0.5f;
-            vp_oy = (ph - st.rt.color[0]->height * u) * 0.5f;
+            // [XCDE] LINUX-089: shared/tested canvas math; scene composites
+            // above retain the complete native-aspect target and are not fitted.
+            float uniform;
+            if (xcde_aspect_canvas(st.rt.color[0]->width, st.rt.color[0]->height,
+                                   pw, ph, pass_sx, pass_sy, &uniform, &vp_ox, &vp_oy))
+                vp_sx = vp_sy = uniform;
         }
     }
     float jx = 0, jy = 0;
@@ -6408,7 +6569,7 @@ static VkPipeline post_pipeline(const char *fs) {
 // Post image `i` at w x h (RGBA8, kept until the size changes). 0, 1: SMAA edges / weights, 2: SMAA output,
 // 3, 4: FSR EASU / RCAS.
 static TexBackend *post_image(int i, uint32_t w, uint32_t h) {
-    static TexBackend img[6];  // (5: T213 the upscaled scene with the HUD)
+    static TexBackend img[7];  // 5: HUD; 6: LINUX-103 native temporal linear->sRGB
     TexBackend *d = &img[i];
     if (d->image && (d->width != w || d->height != h)) {
         vk_views_forget(d);
@@ -6498,6 +6659,18 @@ static void post_pass(VkCommandBuffer cb, const char *fs, const VkImageView *src
 // size in the window (its crop is drawn into the viewport).
 static VkImageView fg_scene;  // [XCDE] this frame's upscaled scene before the HUD composite (frame generation's HUD-less copy)
 float vk_frame_clear[4];       // (device.c: the window image's clear colour this frame)
+// Slider zero is an actual off switch: reuse EASU output without allocating or
+// dispatching RCAS. The default .9 maps to the original exp2(-.2) constant.
+static VkImageView fsr1_sharpen(VkCommandBuffer cb,VkImageView input,uint32_t width,uint32_t height) {
+    float strength=xcde_sharpness(&g_settings);
+    if(strength<=0.f)return input;
+    TexBackend *output=post_image(4,width,height);
+    float parameters[8]={exp2f(-(2.f-2.f*strength)),0,0,0,(float)width,(float)height};
+    VkImageView inputs[3]={input};
+    post_pass(cb,"rcas.frag",inputs,1,output,parameters,false);
+    return post_view(output);
+}
+
 static VkImageView post_process(VkCommandBuffer cb, TexBackend *b, double ow_d, double oh_d) {
     VkImageView v = raw_view(b);
     fg_scene = VK_NULL_HANDLE;
@@ -6513,6 +6686,13 @@ static VkImageView post_process(VkCommandBuffer cb, TexBackend *b, double ow_d, 
         vk_frame_suspend();
         VkImageView t = tmp_upscale(cb, b, v, cam ? (TexBackend *)tmp_depth_tex->backend : NULL, cam ? &tmp_cam : NULL, tmp_jit,
                                     tmp_dm1, ow, oh);
+        if (t && tmp_linear_output()) { // [XCDE] LINUX-103: preserve existing gamma-space composition
+            TexBackend *encoded = post_image(6, ow, oh);
+            float pe[8] = {1.f / ow, 1.f / oh};
+            post_pass(cb, "tmp_srgb.frag", &t, 1, encoded, pe, false);
+            vk_full_barrier(cb);
+            t = post_view(encoded);
+        }
         VkImageView scene = t ? tmp_hud_scene_view(b->width, b->height) : VK_NULL_HANDLE;
         if (scene) {  // [XCDE] T213: the upscaled scene + what the HUD passes added (render size, bilinear)
             fg_scene = t;
@@ -6545,14 +6725,12 @@ static VkImageView post_process(VkCommandBuffer cb, TexBackend *b, double ow_d, 
     }
     if (fsr) {
         float iw = (float)b->width, ih = (float)b->height;
-        TexBackend *e = post_image(3, ow, oh), *r = post_image(4, ow, oh);
+        TexBackend *e = post_image(3, ow, oh);
         float pe[8] = {iw / ow, ih / oh, 0.5f * iw / ow - 0.5f, 0.5f * ih / oh - 0.5f, iw, ih};
         VkImageView ei[3] = {v};
         post_pass(cb, "easu.frag", ei, 1, e, pe, false);
-        float pr[8] = {exp2f(-0.2f), 0, 0, 0, (float)ow, (float)oh};  // (sharpness 0.2 stops: AMD's default)
-        VkImageView ri_[3] = {post_view(e)};
-        post_pass(cb, "rcas.frag", ri_, 1, r, pr, false);
-        v = post_view(r);
+        v=post_view(e);
+        v=fsr1_sharpen(cb,v,ow,oh);
     }
     vk_full_barrier(cb);
     vk_frame_resume();
@@ -6878,6 +7056,7 @@ static void exec_list(uint64_t handle, int depth) {
             }
             break;
         case CMD_BARRIER:
+            if((uint32_t)r->x[0])vk_feedback_boundary();
             // [XCDE] T133: nvnCommandBufferBarrier(bits). XCDE computes skinning palettes on the GPU (vertex shaders of
             // point draws storing to memory) into one scratch range that each mesh's writer refills from index 0;
             // the barrier keeps a mesh's draw after its writer and before the next writer. Dropped, the draws
@@ -7209,6 +7388,9 @@ void backend_drain(void) {
     uint64_t t = rq_tail;
     pthread_mutex_unlock(&rq_lock);
     backend_wait_ticket(t);
+#if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
+    vk_framegen_drain(); // Includes output owned by an already-finished render job.
+#endif
 }
 
 // the fences a list sets (CMD_FENCE_SYNC with a sync object), through its jumps and calls

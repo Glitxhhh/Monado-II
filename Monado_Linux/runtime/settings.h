@@ -1,12 +1,21 @@
 // User settings (larecomp.ini next to the executable's working directory), edited from the in-game menu.
 #pragma once
 #include <stdbool.h>
+#include <math.h>
+#include "graphics_options.h"
+#include "grass_lod.h"
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-enum { ASPECT_UNLOCKED = 0, ASPECT_ORIGINAL = 1 };
+// [XCDE] LINUX-089: preserve the existing native/original indices and add fixed
+// framing choices independent of the monitor or window's dimensions.
+enum { ASPECT_UNLOCKED = 0, ASPECT_ORIGINAL = 1, ASPECT_16_10 = 2, ASPECT_21_9 = 3, ASPECT_32_9 = 4, N_ASPECTS = 5 };
 enum { RES_MATCH = 0, /* 1..8 = 1x..8x */ RES_DYNAMIC = 9, RES_Q75 = 10, RES_Q25 = 11, RES_Q50 = 12 };
 // (11 was 67% of the display: larecomp.ini "67%" now loads as RES_Q75)
 enum { UPSCALE_BILINEAR = 0, UPSCALE_METALFX = 1 /* macOS */, UPSCALE_FSR1 = 2 /* Windows: AMD FSR 1 */,
-       UPSCALE_FSR3 = 3 /* [XCDE] AMD FSR 3.1 (temporal) */, UPSCALE_DLSS = 4 /* [XCDE] NVIDIA DLSS (temporal) */ };
+       UPSCALE_FSR3 = 3 /* [XCDE] AMD FSR 3.1 (temporal) */, UPSCALE_DLSS = 4 /* [XCDE] NVIDIA DLSS (temporal) */,
+       UPSCALE_FSR4_LITE = 5 /* [XCDE] optional locally prepared native FSR4 Lite */ };
 // [XCDE] temporal upscalers' quality mode: render size = output / ratio (1, 1.5, 1.7, 2, 3)
 enum { UQ_NATIVE = 0, UQ_QUALITY = 1, UQ_BALANCED = 2, UQ_PERFORMANCE = 3, UQ_ULTRA = 4 };
 #ifdef __APPLE__
@@ -27,7 +36,7 @@ extern const char *const g_language_codes[N_LANGUAGES];  // what the game is tol
 extern const char *const g_language_names[N_LANGUAGES];  // for the menu ("Auto", "Japanese", ..., "Spanish")
 
 typedef struct {
-    int aspect;          // ASPECT_*: unlocked = fill the window (wider/taller views), original = 16:9 with bars
+    int aspect;          // ASPECT_*: match display, original 16:9, or fixed ratio fitted with bars as needed
     bool fullscreen;
     int res_mode;        // RES_MATCH, 1..4 (N x the Switch's 1080p), RES_DYNAMIC, RES_Q75/50/25 (share of the display)
     int upscaler;        // UPSCALE_*: how a lower internal resolution reaches the window (MetalFX: macOS, FSR 1: Windows)
@@ -67,7 +76,9 @@ typedef struct {
     bool vsync;          // [XCDE] FIFO presentation at 30 / 60 fps (xcde.ini vsync = 0/1, default 1)
     bool game_blur;      // [XCDE] the game's own AA / temporal AA / motion blur (lib_nx.ini; xcde.ini game_blur = 0/1)
     int upscale_quality; // [XCDE] UQ_*: FSR 3 / DLSS render size (xcde.ini upscale_quality = native|quality|balanced|performance|ultra)
-    bool frame_gen;      // [XCDE] FSR 3 / DLSS frame generation (xcde.ini frame_gen = 0/1)
+    bool frame_gen;      // [XCDE] integrated FSR frame generation (legacy frame_gen = 0/1)
+    bool frame_gen_smooth_motion; // [XCDE] LINUX-097: external NVIDIA driver FG, mutually exclusive with FSR
+    bool frame_gen_match_display; // [XCDE] LINUX-097: opt-in 2x output target; never rewrites the saved real-FPS cap
     int ui_lang;         // [XCDE] launcher and F1-menu language: 0 Spanish, 1 English (xcde.ini launcher_lang = es | en)
     int stick_deadzone;  // [XCDE] % of the stick's travel read as centred (xcde.ini stick_deadzone = 0-30, default 0: raw)
     int cutscene_mode;   // [XCDE] T224: 0 cutscenes at the FPS setting, 1 at 30, 2 at 30 + FSR 3 frame generation (xcde.ini cutscenes = same|30|30fg)
@@ -80,6 +91,16 @@ typedef struct {
     int cheat_damage_dealt_percent, cheat_damage_received_percent;
     int cheat_exp_percent, cheat_ap_percent, cheat_sp_percent, cheat_gold_percent;
     bool cheat_no_fall_damage;
+    bool show_fps_overlay; // [XCDE] LINUX-094: opt-in rendered-game FPS on screen, including fullscreen
+    // [XCDE] LINUX-103: new preferences preserve prior rendering when absent.
+    int quality_preset; // metadata only on load; applying a preset is explicit
+    int dynamic_min_height, dynamic_max_height; // 0: existing automatic bounds
+    float upscale_sharpness; // -1: existing provider default; otherwise 0..1
+    bool taa_off; // remove only game TAA; temporal reconstruction still owns its input AA contract
+    bool input_rumble; // opt-in SDL vibration, false preserves the original Linux behavior
+    int grass_lod; // GRASS_*, latched on first foliage use; restart required
+    GraphicsOptions graphics; // every zero choice preserves the authored/mod setting
+    char gpu_uuid[33]; // [XCDE] LINUX-103: empty means automatic; stable device UUID on restart
 } Settings;
 
 enum { N_TUNIC_COLOURS = 13, N_HEART_COLOURS = 9 };
@@ -95,3 +116,14 @@ void settings_save(void);
 const char *settings_language(void);
 // That code's name for the menu ("Spanish")
 const char *settings_language_name(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+// [XCDE] LINUX-103: nonfinite settings never reach shader constants.
+static inline float xcde_sharpness(const Settings *s) {
+    float value=s->upscale_sharpness;
+    if (!isfinite(value) || value<0.f) return s->upscaler==UPSCALE_FSR1 ? .9f : .3f;
+    return value>1.f ? 1.f : value;
+}

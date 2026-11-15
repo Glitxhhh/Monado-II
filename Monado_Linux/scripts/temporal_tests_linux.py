@@ -15,13 +15,14 @@ import time
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCES = ('scripts/temporal_tests_linux.py', 'tests/native/test_temporal_history_linux.c',
-           'runtime/nvn/vulkan/temporal.c', 'runtime/nvn/vulkan/temporal.h', 'runtime/nvn/vulkan/dlss.h',
+           'runtime/nvn/vulkan/temporal.c', 'runtime/nvn/vulkan/temporal.h', 'runtime/nvn/vulkan/temporal_camera.h', 'runtime/nvn/vulkan/dlss.h',
            'tests/native/test_temporal_shaders_linux.c', 'runtime/nvn/vulkan/shaders.c', 'runtime/nvn/vulkan/shaders.h')
 def digest(p):
     return hashlib.sha256(Path(p).read_bytes()).hexdigest()
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--ubsan', action='store_true')
     args = parser.parse_args()
     if platform.system() != 'Linux' or platform.machine() != 'x86_64': parser.error('Linux x86-64 required')
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
@@ -60,6 +61,7 @@ def main():
         flags = shlex.split(run('pkg-cflags', [ROOT / '.deps/bin/pkg-config-graphics', '--cflags', 'sdl3', 'vulkan']))
         flags += ['-O1', '-UNDEBUG', '-march=x86_64_v2', '-ffp-contract=off', '-fno-strict-aliasing',
                   '-ffunction-sections', '-fdata-sections', '-I' + str(ROOT / 'runtime')]
+        if args.ubsan: flags += ['-fsanitize=undefined', '-fno-sanitize-recover=all']
         exe = out / 'test_temporal_history_linux'
         run('compile', [cc, *flags, ROOT / SOURCES[1], '-Wl,--gc-sections', '-lm', '-o', exe])
         print(run('test', [exe]), end='')

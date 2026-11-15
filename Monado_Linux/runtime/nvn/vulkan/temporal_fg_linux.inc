@@ -16,7 +16,18 @@ static bool linux_fg_on(void) {
     return g_settings.frame_gen || (g_settings.cutscene_mode == 2 && xcde_cutscene_30());
 }
 bool tmp_frame_gen_wanted(void) {
-    return (g_settings.frame_gen || g_settings.cutscene_mode == 2) && g_settings.upscaler == UPSCALE_DLSS &&
+    // [XCDE] LINUX-097: never combine integrated interpolation with an external
+    // driver layer, including a direct CLI's explicitly selected environment.
+    const char *external = getenv("NVPRESENT_ENABLE_SMOOTH_MOTION");
+    bool temporal_input = g_settings.upscaler == UPSCALE_DLSS;
+#ifdef XCDE_LINUX_FSR3
+    temporal_input |= g_settings.upscaler == UPSCALE_FSR3;
+#endif
+#ifdef XCDE_LINUX_FSR4
+    temporal_input |= g_settings.upscaler == UPSCALE_FSR4_LITE;
+#endif
+    return !g_settings.frame_gen_smooth_motion && !(external && !strcmp(external, "1")) &&
+        (g_settings.frame_gen || g_settings.cutscene_mode == 2) && temporal_input &&
         !diag_deterministic() && !env_int("XCDE_TMP_OFF") && !getenv("XCDE_PRECOMPILING");
 }
 static bool linux_fg_load(void) {

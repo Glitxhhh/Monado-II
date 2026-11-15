@@ -199,6 +199,34 @@ def emit_header(destination,name,options,rows):
     lines+=['static const '+name+'_PermutationInfo g_'+name+'_PermutationInfo[] = {'+','.join(values)+'};']
     destination.write_text('\n'.join(lines)+'\n')
 
+# [XCDE] LINUX-103: preserve discrete-VRAM preference without rejecting all
+# legal UMA heaps. Also require every requested memory-property bit.
+MEMORY_SELECTOR = r'''uint32_t findMemoryTypeIndex(VkPhysicalDevice physicalDevice, VkMemoryRequirements requirements,
+    VkMemoryPropertyFlags requested, VkMemoryPropertyFlags& properties) {
+    VkPhysicalDeviceMemoryProperties memory{};
+    vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memory);
+    uint32_t fallback=UINT32_MAX;
+    for(uint32_t i=0;i<memory.memoryTypeCount;i++) {
+        const auto flags=memory.memoryTypes[i].propertyFlags;
+        if(!(requirements.memoryTypeBits&(uint32_t(1)<<i)) || (flags&requested)!=requested)continue;
+        if(fallback==UINT32_MAX)fallback=i;
+        if(requested==VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT && !(flags&VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT)) {
+            properties=flags;return i;
+        }
+        if((requested&VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) && (flags&VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)) {
+            properties=flags;return i;
+        }
+    }
+    properties=fallback==UINT32_MAX?0:memory.memoryTypes[fallback].propertyFlags;
+    return fallback;
+}
+
+'''
+
+def patch_vulkan_memory_selector(data):
+    text=data.decode();a=text.index('uint32_t findMemoryTypeIndex(');b=text.index('VkBufferUsageFlags ffxGetVKBufferUsageFlagsFromResourceUsage',a)
+    return (text[:a]+MEMORY_SELECTOR+text[b:]).encode()
+
 ARENA_HELPERS = r'''// [XCDE] LINUX-020: typed scratch arenas need absolute alignment.
 // AMD's EffectContext is alignas(32); malloc and 4-byte-rounded preceding
 // array sizes do not guarantee that alignment. Keep the over-aligned type.
@@ -258,7 +286,7 @@ def patch_vulkan_arena(data):
             size_t(backendContext->numDeviceExtensions)*sizeof(VkExtensionProperties)<=backendInterface->scratchBufferSize-(arenaEnd-scratchStart), FFX_ERROR_INSUFFICIENT_MEMORY);
 '''
     if text.count(after)!=1:raise ValueError('SDK arena end mapping drifted')
-    return text.replace(after,after+guard).encode()
+    return patch_vulkan_memory_selector(text.replace(after,after+guard).encode())
 
 LAYOUT_TEST = r'''// [XCDE] LINUX-020: actual native SDK arena types/helpers, no GPU calls.
 #include <cassert>

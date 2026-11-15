@@ -547,9 +547,26 @@ def game_features(game):
     if not isinstance(receipt.get('dlss_enabled'), bool):
         raise ValueError('old game has no explicit feature receipt')
     framegen = receipt.get('framegen_enabled', False)
-    if type(framegen) is not bool or (framegen and not receipt['dlss_enabled']):
+    fsr3 = receipt.get('fsr3_enabled', False)
+    if type(receipt.get('fsr4_enabled', False)) is not bool or type(fsr3) is not bool or type(framegen) is not bool or (framegen and not (receipt['dlss_enabled'] or fsr3)):
         raise ValueError('old game has an invalid frame-generation feature receipt')
     return receipt
+
+
+def input_path_changed(receipt, current):
+    """Relocation keeps a playable binary, but a later reuse needs a fresh payload.
+
+    Immutable native build receipts are never rewritten to bless a new path.
+    Legacy receipts without this field retain their existing validation path;
+    the native builder's strict input identity checks remain authoritative.
+    """
+    recorded = receipt.get('input')
+    if recorded is None:
+        return False
+    if (not isinstance(recorded, dict) or not isinstance(recorded.get('path'), str)
+            or not Path(recorded['path']).is_absolute()):
+        raise ValueError('The selected game has invalid recorded input metadata')
+    return recorded['path'] != str(current)
 
 
 
@@ -586,13 +603,42 @@ def verify_runtime_selection(workspace, state):
             'scope': 'Current native dependency checks before update activation; no game/UI or profile writes'}
 
 
+def private_build_python():
+    """Reuse the standalone launcher's persistent interpreter, never its mount.
+
+    Ordinary installations keep the existing shell/doctor entry. The bundled
+    interpreter has a manifest-bound marker at its stable base prefix; a new
+    update workspace does not yet have a virtualenv and must not require a
+    separately installed system Python just to create it.
+    """
+    marker = Path(sys.base_prefix) / 'monado-private-python.json'
+    if not marker.exists() and not marker.is_symlink():
+        return None
+    prefix = ordinary(Path(sys.base_prefix))
+    value = json_read(ordinary(marker), 16384)
+    if (sys.version_info[:2] != (3, 14) or value.get('schema') != 1 or
+            value.get('project') != 'Monado II' or value.get('python') != [3, 14] or
+            value.get('runtime_kind') != 'standalone-builder'):
+        raise ValueError('Invalid standalone build interpreter identity')
+    executable = ordinary(Path(getattr(sys, '_base_executable', sys.executable)))
+    if not executable.is_relative_to(prefix) or not os.access(executable, os.X_OK):
+        raise ValueError('Standalone build interpreter escaped its persistent prefix')
+    return executable
+
+
 def build_command(workspace, game, rebuild):
-    command = [str(workspace / 'Build_Monado_II.sh')]
+    private_python = private_build_python()
+    command = ([str(private_python), '-I', '-B', str(workspace / 'tools/build_linux_app.py')]
+               if private_python is not None else [str(workspace / 'Build_Monado_II.sh')])
     receipt = game_features(game)
     framegen = receipt.get('framegen_enabled', False)
     if not receipt['dlss_enabled']:
         command.append('--without-dlss')
     if not rebuild:
+        if not receipt.get('fsr4_enabled', False):
+            command.append('--without-fsr4')
+        if not receipt.get('fsr3_enabled', False):
+            command.append('--without-fsr3')
         if receipt['dlss_enabled'] and not framegen:
             raise ValueError('The selected game lacks standard frame-generation support; a full rebuild is required.')
         if framegen:
@@ -600,6 +646,18 @@ def build_command(workspace, game, rebuild):
         command += ['--reuse-game', str(game)]
     elif receipt.get('foley_trace'):
         raise ValueError('This custom diagnostic game build requires a manual rebuild; the current version is preserved.')
+    elif receipt.get('split_game') and receipt.get('game_library'):
+        # A renderer/runtime update may retain exact local game code. The native
+        # builder independently verifies its module, ABI, input and content
+        # receipts again before copying it into the new atomic payload pair.
+        path = workspace / 'Monado_Linux/scripts/gamecode_identity.py'
+        if path.is_file() and not path.is_symlink():
+            import importlib.util
+            spec = importlib.util.spec_from_file_location('_monado_update_gamecode_abi', path)
+            module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module)
+            expected = module.identity(workspace / 'Monado_Linux', receipt.get('dependencies', {}).get('compiler_wrappers', {}))
+            if expected == receipt.get('gamecode_abi'):
+                command += ['--reuse-game-code', str(game)]
     return command
 
 
@@ -689,10 +747,26 @@ def run_build(command, workspace, log, emit, cancelled, *, lock_fd=None):
         raise ValueError('Update build failed; previous version remains selected. Log: ' + str(log))
 
 
+def checked_worker_command(workspace, command):
+    """Allow only the legacy entry or the exact persistent-Python entry."""
+    if (not isinstance(command, list) or not command or
+            any(not isinstance(arg, str) or '\x00' in arg for arg in command)):
+        raise ValueError('invalid build worker command')
+    if command[0] == str(workspace / 'Build_Monado_II.sh'):
+        return command
+    private_python = private_build_python()
+    prefix = ([str(private_python), '-I', '-B', str(workspace / 'tools/build_linux_app.py')]
+              if private_python is not None else None)
+    if prefix is None or command[:4] != prefix:
+        raise ValueError('build worker must use its fixed candidate build command')
+    return command
+
+
 def build_worker(workspace, log, command, lock_fd):
     """Trusted cleanup process, never the GUI's broad session reaper."""
     workspace, log = ordinary(workspace), ordinary(log, missing=True)
-    if not log.is_relative_to(workspace.parent) or command[0] != str(workspace / 'Build_Monado_II.sh'):
+    checked_worker_command(workspace, command)
+    if not log.is_relative_to(workspace.parent):
         raise ValueError('build worker must use its fixed candidate build command and log')
     import fcntl
     binding = json_read(workspace / 'installation.json', 8192)
@@ -853,6 +927,11 @@ class Session:
         if cancelled():
             raise update_release.UpdateCancelled('Update cancelled.')
         baseline = installed_sources(self.workspace)
+        try:
+            current_input = self.layout.shared_input(self.workspace / 'Monado_Linux')
+        except FileNotFoundError as error:
+            raise ValueError('Game files could not be found. Close the launcher and reopen Monado II '
+                             'to choose Locate game files, then retry this update. Saves stay in place.') from error
         directory = self._lock()
         active = directory / 'active.json'
         prior = json_read(active, 8192) if active.exists() else None
@@ -872,9 +951,12 @@ class Session:
             raise ValueError('downloaded version metadata differs from release')
         rebuild = update_release.classify(baseline, candidate_manifest) == 'game'
         features = game_features(self.game)
+        rebuild = rebuild or input_path_changed(features, current_input)
         # Native FG support is part of the normal DLSS build. A launcher-only
         # update cannot reuse an older game that lacks that capability.
-        rebuild = rebuild or (features['dlss_enabled'] and not features.get('framegen_enabled', False))
+        adds_fsr3 = 'Monado_Linux/scripts/setup_linux_fsr3.py' in candidate_manifest.get('files', {})
+        adds_fsr4 = 'Monado_Linux/scripts/setup_linux_fsr4.py' in candidate_manifest.get('files', {})
+        rebuild = rebuild or (adds_fsr4 and not features.get('fsr4_enabled', False)) or (adds_fsr3 and not features.get('fsr3_enabled', False)) or (features['dlss_enabled'] and not features.get('framegen_enabled', False))
         old_port = self.layout.build_port(self.workspace / 'Monado_Linux', self.game)
         # A one-time rebuild detaches legacy original/version-owned game output.
         # New launcher-only updates directly reference one permanent payload.

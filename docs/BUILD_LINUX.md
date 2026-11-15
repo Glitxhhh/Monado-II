@@ -1,15 +1,59 @@
 # Build and play on Linux
 
-Download and extract **`monado-ii-0.1.13-linux-setup.tar.gz`** from
-[Releases](https://github.com/brendonbusker/Monado-II/releases). Open a terminal in
-the extracted folder. The current pinned baseline is **Linux x86-64 (x86-64-v2),
-CPython 3.14, glibc 2.43 or newer**, and a native GNU C++ runtime exporting
-`GLIBCXX_3.4.32` and the required C++ ABI versions. Required tools are bash,
-pkg-config, dpkg-deb, binutils (`readelf` and `nm`) and squashfs-tools
-(`mksquashfs` and `unsquashfs`). The standard DLSS build also needs executable
-`/usr/bin/bwrap` (bubblewrap). GNU C++ is discovered in the host's native library
-directories; an Ubuntu multiarch path is not required. Compatible host graphics,
-audio and session libraries are also required as described below.
+The recommended download is **`monado-ii-0.1.19-linux-builder-x86_64.AppImage`** from
+[Releases](https://github.com/brendonbusker/Monado-II/releases/latest). It provides
+folder selection, local build progress and the normal settings launcher after
+building. The source/setup archive and terminal route remain available below.
+
+## Graphical setup (recommended)
+
+1. Verify the downloaded AppImage against the release's `SHA256SUMS`. Allow it to
+   execute in your file manager's permissions, then open it.
+2. Choose **Set up Monado II**. Select your own extracted **Definitive Edition
+   2.0.0** folder containing `exefs` and `romfs`, then check the files. No game
+   input is copied, moved or uploaded.
+3. Choose an empty final installation folder. The default is `~/Games/Monado-II`;
+   you can choose another drive or type a new folder path. Keep this location after
+   building because native build receipts use absolute paths.
+4. Choose whether to include NVIDIA DLSS support and prepare shaders. Advanced
+   settings limit parallel build workers to 1–6. These choices do not enable
+   experimental frame generation automatically.
+5. Build. The window reports actual stages and compilation progress, with details
+   and retained logs. When ready, open the settings launcher and press **Play**
+   yourself. Later opens of the same AppImage return to that installation.
+
+If FUSE is unavailable, extraction mode works without installing it:
+
+```sh
+chmod +x monado-ii-0.1.19-linux-builder-x86_64.AppImage
+./monado-ii-0.1.19-linux-builder-x86_64.AppImage --appimage-extract-and-run
+```
+
+**Use an existing installation** links a checked installation in place, preserving
+its original input, saves, settings and current update. If the input folder moves,
+**Locate game files** checks its new location before reconnecting it; no immediate
+rebuild or save conversion is required. The full [graphical builder guide](GRAPHICAL_BUILDER.md)
+covers cancellation, persistent tool caches, relocation and update behavior.
+
+The graphical AppImage includes CPython 3.14, so this entrypoint does not require a
+separately installed Python. It downloads the compiler and pinned private build
+dependencies as needed. It still needs compatible host tools and native libraries;
+missing requirements receive diagnostics rather than an automatic host install.
+The default portable baseline is **Linux x86-64-v2, glibc 2.39+**, and a native GNU C++ runtime
+exporting `GLIBCXX_3.4.32` and the required C++ ABI versions. Host tools include
+bash, pkg-config, dpkg-deb, binutils (`readelf` and `nm`) and squashfs-tools
+(`mksquashfs` and `unsquashfs`). The DLSS build also needs `/usr/bin/bwrap`
+(bubblewrap). GNU C++ is discovered through native library directories; an Ubuntu
+multiarch path is not required. Compatible graphics, audio and session libraries
+remain necessary. Build and run in the same compatible environment when using
+Distrobox. No universal distro or handheld-gameplay compatibility is implied.
+
+## Terminal/source setup
+
+Download and extract the latest **`monado-ii-<version>-linux-setup.tar.gz`** into its final folder.
+This route additionally requires a host **CPython 3.14**. Open a terminal in the
+extracted folder and follow the input/build instructions below. Neither ordinary
+builds nor background updates install system packages or run sudo.
 
 The builder fetches hash-locked media, codec and other ordinary user-space
 libraries into `Monado_Linux/.deps`. This includes libbluray 1.4.1 (package
@@ -58,7 +102,8 @@ rpm-ostree install dpkg
 
 Reboot to apply that deployment, then rerun the build. The script does not layer
 host packages, unlock SteamOS, reboot, install drivers or replace libc. A container
-below glibc 2.43 is rejected with compatible-image guidance; installing more
+below the selected baseline (2.39 by default, 2.43 with `--legacy-runtime`) is
+rejected with compatible-image guidance; installing more
 ordinary packages does not make an old libc satisfy that baseline. Unknown images
 get diagnostic information rather than guessed automatic installations.
 
@@ -216,8 +261,8 @@ The image contains no game input, generated game executable/code, caches or save
 Do not upload local generated outputs as a project release.
 
 Starting with 0.1.6, a normal Linux build includes experimental frame-generation
-support. Its launcher checkbox is off initially; users choose whether to enable
-it. Reported slow/glitchy behavior remains unresolved. This source/setup release requires local game
+support. Its launcher method is Off initially; users choose whether to enable
+it. Real gameplay smoothness still needs testing. This source/setup release requires local game
 generation. See [platform status](PLATFORM_STATUS.md) and
 [remaining work](../TODO.md) for features and validation limits.
 
@@ -271,23 +316,39 @@ Normal Linux builds include native frame-generation support without an extra fla
 ./Build_Monado_II.sh
 ```
 
-This requires the normal DLSS/DLAA build. Explicit `--without-dlss` omits both
-providers; contradictory `--without-dlss --framegen` is rejected. The old
-`--framegen` argument remains accepted for compatibility but is unnecessary.
+This uses compatible temporal input from DLSS/DLAA, native FSR3 or prepared
+FSR4 Lite. `--without-dlss` retains FSR3 and integrated generation; omitting both
+DLSS and FSR3 rejects an explicit `--framegen` request. The old `--framegen`
+argument remains accepted for compatibility but is unnecessary.
 The pinned FidelityFX source is built locally when missing. A verified local SDK
 is reused; an altered SDK stops the build for inspection. No SDK binaries are
-included in source releases or launcher images. Runtime frame generation stays
-**off by default**. In the launcher, select NVIDIA DLSS/DLAA and then enable the
-experimental frame-generation option.
+included in source releases. A launcher AppImage may carry the verified authored
+runtime and MIT FidelityFX components, while game code, NVIDIA SDK and FSR4 models
+remain local. Runtime frame generation stays **off by default**. In the launcher,
+select a working temporal upscaler and then choose
+**FSR 3 interpolation (2×, experimental)**. Optional display-refresh matching
+limits real FPS to half the display refresh, subject to your saved FPS ceiling.
+For example, 180 Hz with a 120 FPS setting requests up to 90 real / 180 output.
+It does not provide 60-to-180 or 120-to-180 arbitrary-phase generation.
 
-The FPS setting/counter continues to describe real rendered game frames. Generated
-images add GPU work and do not advance gameplay, input or audio. **Performance
+The FPS setting describes the real-frame ceiling. The on-screen counter separates
+**Game** from successful **Output (submitted)** and classified **Generated**
+presentation requests; output
+is not measured physical scanout. Generated images add GPU work and do not advance
+gameplay, input or audio. **Performance
 varies: it may run worse, stutter or show visual glitches. Leaving FG off is
 recommended for normal play.** At high native frame rates it may offer little
 benefit. Compare the same scene/settings with
 FG off/on after shader and SDK warmup. Component passes do not qualify physical
 presentation, latency, visual quality or every game scene. Maintainer testing of
 0.1.5 preferred FG off despite mostly stable gameplay; no broad improvement is claimed.
+
+When supported NVIDIA Smooth Motion driver components are installed, the launcher
+also offers that separate 2× method for supported RTX 40-series or newer GPUs.
+It requires restarting the game, is never stacked with integrated FSR, and shows
+**Output (driver submitted)** when its scoped observer can measure downstream
+requests. Generated-only NVIDIA identity remains unavailable; unsupported
+measurement is labelled **Output external (unavailable)**. No driver changes are made. See [frame-generation methods and testing](FRAME_GENERATION.md).
 
 Launcher-only updates preserve a compatible FG game. An older DLSS build without
 FG support is rebuilt to gain it. Current clients can rebuild ordinary FG builds
@@ -345,8 +406,8 @@ experimental. Edited release-owned source files also stop automatic installation
 so local changes can be merged manually. Normal settings changes do not modify
 the release-owned source.
 
-**Updating to 0.1.13 requires a full local game rebuild** for the changed build
-recipes and checks. The normal updater performs this rebuild before activation.
+**Updating to 0.1.19 requires a full local game rebuild** for the controller and
+game-camera changes. The normal updater performs this rebuild before activation.
 It preserves the original
 `Monado_Linux/play/launcher` save/settings profile and shared input in place;
 it does not convert, replace or delete saves. Preserve optional Quick Step metadata
@@ -386,8 +447,12 @@ manually move or rename an installed source/build/image directory.
 
 The original root AppImage remains the entry point and selects the checked active
 version. Keep the original folder, its Python support environment and the current
-managed directories together. The updater preserves original authored source and
-support files; it does not turn the installation into a standalone game AppImage.
+managed directories together. Ordinary host-Python source installations retain
+that workspace launcher on update. Installations using the graphical builder's
+persistent private Python can package a full standalone setup image on update.
+A newly downloaded graphical AppImage can also adopt an existing installation in
+place. None of these paths turns the installed game into a single-file game image.
+The updater preserves original authored source and support files.
 Downloads, native outputs and generated content under `Monado_Linux/updates` stay
 local and must not be committed or included in source releases.
 
@@ -404,8 +469,66 @@ build it manually. Keep your original installation/profile intact; a kit in a
 new folder uses a separate profile and does not automatically import saves. Back
 up the complete save/settings profile before manually transferring it. The updater
 never restores or deletes user progress as part of changing program versions.
+If the remembered game-input folder disappears, close other sessions and reopen
+Monado II. **Locate game files** accepts the supported extracted folder at its new
+location and checks its executable hashes against the existing build before
+reconnecting only known input links. Cancel or a mismatch preserves the old
+selection. It keeps the original profile and does not immediately rebuild the game.
+A later update may rebuild once to record that path; native build receipts are
+not rewritten. An existing ordinary input directory is never replaced. Moving
+the complete installed build remains a separate action requiring a fresh build
+at its destination.
+
 The updater remains Linux-only; no Windows updater/backport is included.
+
+### A 0.1.17 update fails at `package-appimage`
+
+Linux 0.1.17 can report `source already contains generated release-only files`
+while packaging its replacement AppImage, even after the game and native
+launcher build successfully. The downloaded source kit already contains checked
+distribution metadata; the full-image update path incorrectly passed it to a
+packager that accepts only clean authored source. This is a packaging defect,
+not evidence of missing game files or dependencies.
+
+Version 0.1.18 verifies that metadata and creates a normalized temporary export
+before repackaging. The strict source checks remain enabled. This also applies
+to older installations that have migrated to persistent private Python; it is
+not limited to users who first installed through the graphical AppImage. Fresh
+graphical setup follows a separate initial-build path.
+
+Use 0.1.18 or later for the next update attempt and keep the existing installation
+and profile in place. A failed candidate is not activated, so the previous
+working version remains selected. Preserve the reported build log if packaging
+still fails. Deleting a separate installation under `~/Games` does not cause or
+fix this specific error. Do not delete private Python caches or existing build
+directories as a workaround; they may support the active launcher. No save
+conversion or game feature change is needed for this correction.
 
 If a stage fails, use the log path printed by the builder. A successful local build
 and AppImage check do not establish full-game or other-GPU compatibility. The
 project will not provide game files or tell you where to obtain them.
+
+
+## Optional FSR4 Lite and quality controls
+
+Graphics includes native FSR3 and an optional experimental FSR4 Lite path. Use
+**Prepare FSR4 Lite (optional)** in the launcher to prepare its models locally.
+Preparation needs an installed compatible Proton and may download pinned tools
+and the official AMD SDK. It has progress, cancellation and retry; it does not
+start gameplay or install Proton/system packages. Normal builds compile the
+optional native module but do not download or select models automatically.
+`--without-fsr4` omits the module. GPU/model/size checks retain an existing
+upscaling fallback when the optional path cannot run.
+
+The launcher and F1 share additional quality controls. Original settings remain
+the default, and options requiring a restart are labelled. Quality presets keep
+your upscaler, generation, FPS, gameplay options and saves. Controller vibration
+is opt-in. See [frame generation](FRAME_GENERATION.md) for counters and testing.
+
+New builds separate the authored runtime from your locally recompiled game code.
+A verified bundled runtime can avoid recompiling the authored portion; compatible
+updates can reuse your local game-code library. Input, source, compiler and ABI
+checks decide reuse. A verified incompatibility falls back to source compilation;
+corrupt content stops with a clear error. `--source-build` on the standalone
+AppImage explicitly uses its full source workflow. Existing saves and input
+locations remain in place. The source archive remains a supported fallback.

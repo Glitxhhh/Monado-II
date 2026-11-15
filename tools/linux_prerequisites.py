@@ -36,6 +36,23 @@ AUDITED_HOST_REQUIREMENTS = {
         'libm.so.6', 'libmvec.so.1', 'libpulse.so.0', 'libresolv.so.2',
         'libstdc++.so.6', 'libva-drm.so.2', 'libva-x11.so.2', 'libva.so.2',
         'libvdpau.so.1', 'libvpl.so.2')}
+PORTABLE_BASELINE_SHA = '3dc92503846fd9df6e5d68b7b6441d29482a866a2ddb61a5ff1a22efbdb59cc0'
+PORTABLE_HOST_REQUIREMENTS = ('ld-linux-x86-64.so.2', 'libc.so.6', 'libgcc_s.so.1', 'libm.so.6', 'libstdc++.so.6')
+
+def portable_source_policy(root):
+    """Reviewed default recipe contract, not proof of a particular user's build.
+
+    Old source kits/receipts retain their original floor. The actual selected
+    dependency graph and every ELF are still checked by the normal build gates.
+    """
+    port = Path(root) / 'Monado_Linux'
+    try:
+        data = bounded_text(port / 'portable-baseline-linux.lock.json').encode()
+        return (hashlib.sha256(data).hexdigest() == PORTABLE_BASELINE_SHA and
+            all((port / 'scripts' / name).is_file() and not (port / 'scripts' / name).is_symlink()
+                for name in ('setup_portable_baseline.py', 'build_portable_dependencies.py', 'setup_portable_runtime_graph.py')))
+    except (OSError, ValueError, TypeError):
+        return False
 FEDORA_TOOLS = {'python3.14': 'python3.14', 'bash': 'bash',
     'pkg-config': 'pkgconf-pkg-config', 'dpkg-deb': 'dpkg', 'readelf': 'binutils',
     'nm': 'binutils', 'mksquashfs': 'squashfs-tools',
@@ -203,9 +220,13 @@ def library_paths(names):
     return paths
 
 
-def required_host_interfaces(root, lock):
+def required_host_interfaces(root, lock, legacy_runtime=False):
     """Use actual receipted closure, never all allowed host interface names."""
     port = root / 'Monado_Linux'
+    if not legacy_runtime and portable_source_policy(root):
+        allowed = lock.get('runtime', {}).get('host_sonames', {})
+        if all(name in allowed for name in PORTABLE_HOST_REQUIREMENTS):
+            return list(PORTABLE_HOST_REQUIREMENTS)
     try:
         tag = hashlib.sha256((port / 'graphics-deps-linux.lock.json').read_bytes()).hexdigest()
         allowed = lock.get('runtime', {}).get('host_sonames', {})
@@ -238,7 +259,7 @@ def package_maps(release):
     return None, {}, {}
 
 
-def inspect_environment(root=ROOT, without_dlss=False, game_only=False):
+def inspect_environment(root=ROOT, without_dlss=False, game_only=False, legacy_runtime=False):
     root = Path(root).resolve()
     release = os_release()
     context = detect_container()
@@ -257,6 +278,9 @@ def inspect_environment(root=ROOT, without_dlss=False, game_only=False):
         lock = {}
         issue('metadata', 'source', 'Cannot read prerequisite source metadata: ' + str(error), blocking_install=True)
     minimum = lock.get('runtime', {}).get('minimum_glibc', '2.43')
+    if not legacy_runtime and portable_source_policy(root):
+        minimum = '2.39'
+        report['notes'].append('This source kit defaults to the reviewed portable SDL/media recipe. Source builds still need CPython 3.14; the standalone setup AppImage supplies its own interpreter. Actual dependency/ELF checks remain mandatory.')
     if version_tuple(minimum) is None:
         issue('metadata', 'minimum-glibc', 'Invalid glibc requirement metadata.', blocking_install=True)
         minimum = '2.43'
@@ -289,7 +313,7 @@ def inspect_environment(root=ROOT, without_dlss=False, game_only=False):
         report['tools'][name] = selected
         if not selected or name == 'bwrap' and selected != '/usr/bin/bwrap':
             issue('tool', name, 'Missing trusted build tool %s in %s.' % (name, BUILD_PATH))
-    names = required_host_interfaces(root, lock)
+    names = required_host_interfaces(root, lock, legacy_runtime=True) if legacy_runtime else required_host_interfaces(root, lock)
     report['host_interfaces'] = names
     if names is None:
         report['notes'].append('Native client library requirements will be checked after private graphics dependencies are extracted; no allowed-but-unused interface is required by this check.')
@@ -433,11 +457,12 @@ def main(argv=None):
     parser.add_argument('--json', action='store_true', help='read-only machine-readable report')
     parser.add_argument('--without-dlss', action='store_true')
     parser.add_argument('--game-only', action='store_true')
+    parser.add_argument('--legacy-runtime', action='store_true', help='diagnose the original high-baseline dependency fallback')
     args = parser.parse_args(argv)
     if args.json and args.install_deps:
         parser.error('--json is read-only and cannot be combined with --install-deps')
     try:
-        inspector = lambda: inspect_environment(without_dlss=args.without_dlss, game_only=args.game_only)
+        inspector = (lambda: inspect_environment(without_dlss=args.without_dlss, game_only=args.game_only, legacy_runtime=True)) if args.legacy_runtime else (lambda: inspect_environment(without_dlss=args.without_dlss, game_only=args.game_only))
         report = inspector()
         if args.install_deps:
             if not report['compatible']:

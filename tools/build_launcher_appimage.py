@@ -240,7 +240,9 @@ def command(argv, commands):
     return result.stdout
 
 
-def package(launcher, game, output, *, root=ROOT, selection_provider=None, runtime_provider=None):
+def package(launcher, game, output, *, root=ROOT, selection_provider=None, runtime_provider=None, standalone_migration=None):
+    if standalone_migration not in (None, 'retained-workspace-bootstrap'):
+        raise AppImageError('unknown standalone migration receipt state')
     root = ordinary(root)
     launcher, game, output = map(ordinary, (launcher, game, output))
     port = root / 'Monado_Linux'
@@ -320,9 +322,185 @@ def package(launcher, game, output, *, root=ROOT, selection_provider=None, runti
         'contains_generated_game_code': False, 'contains_vendor_sdk': False,
         'requires_adjacent_workspace': True, 'commands': commands,
         'finished_utc': datetime.now(timezone.utc).isoformat()}
+    if standalone_migration is not None:
+        receipt['standalone_migration'] = standalone_migration
     with receipt_path.open('xb') as stream:
         stream.write(encoded(receipt))
     return receipt
+
+
+
+def _load_authored_module(root, relative, name):
+    path = ordinary(root / relative)
+    regular(path, 8 * 1024 * 1024)
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    previous = list(sys.path)
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        sys.path[:] = previous
+    return module
+
+
+def _normalize_template_sources(files, manifest, core):
+    """[XCDE] LINUX-088: unwrap only a verified Linux source-kit envelope.
+
+    The release packager accepts clean authored trees, not its own distribution
+    output. Installed bytes have already passed the unchanged source verifier;
+    this transformation applies only to the fresh in-memory template export.
+    """
+    generated = {'RELEASE_README.md', 'source-only-status.json'}
+    provenance = {'platform', 'release_version', 'release_kind',
+                  'source_release_version', 'windows_implementation', 'linux_feature_additions'}
+    present = generated.intersection(files)
+    if not present and not provenance.intersection(manifest):
+        return files  # A clean publication tree retains its exact manifest bytes.
+    if (present != generated or manifest.get('platform') != 'linux'
+            or manifest.get('release_kind') != 'source-only'
+            or provenance.intersection(manifest) != {'platform', 'release_version', 'release_kind'}
+            or 'update-version.json' not in files
+            or not any(name.startswith('Monado_Linux/') for name in files)
+            or any(name.startswith('Monado_Windows/') for name in files)):
+        raise AppImageError('Unsupported or incomplete Linux source-kit metadata')
+    version = core.installed_version.metadata(files['update-version.json'][0])['version']
+    status = dict(schema=1, project='Monado II', platform='linux', version=version,
+        kind='source-only', local_generation_required=True, contains_game_files=False,
+        contains_game_derived_code=False, contains_compiled_binaries=False,
+        runtime_validation='not performed by packaging', windows_backports='deferred')
+    heading = f'# Monado II — Linux source/setup kit ({version})\n\n'.encode('utf-8')
+    readme = files['RELEASE_README.md'][0]
+    # Exact authored prose emitted by package_source_release, after its versioned
+    # heading. Unknown/edited distribution metadata is never silently discarded.
+    body_sha256 = '5c4461d1f4f231e988eea16e66a1cf9f7c8535a28cf3dca353d20305d2dade7e'
+    if (manifest.get('release_version') != version
+            or files['source-only-status.json'][0] != encoded(status)
+            or not readme.startswith(heading) or digest(readme[len(heading):]) != body_sha256):
+        raise AppImageError('Inconsistent or unrecognized Linux source-kit metadata')
+    result = {name: value for name, value in files.items() if name not in generated}
+    document = {name: value for name, value in manifest.items() if name not in provenance}
+    document['files'] = {name: value for name, value in manifest['files'].items() if name not in generated}
+    result['publication-manifest.json'] = (encoded(document), files['publication-manifest.json'][1])
+    return result
+
+
+def reviewed_source_files(root):
+    """Export an exact source allowlist, ignoring all input/build/runtime trees.
+
+    Installed owners can legitimately expose a newer visible version marker;
+    only the updater's verified original metadata may restore its manifest-bound
+    bytes in the clean template. No save, dependency or game tree is enumerated.
+    """
+    core = _load_authored_module(root, 'tools/update_linux.py', '_monado_standalone_export_core')
+    manifest = core.installed_sources(root)
+    files = {}
+    for name, identity in sorted(manifest['files'].items()):
+        data = regular(root / name, 8 * 1024 * 1024)
+        if (len(data) != identity['bytes'] or digest(data) != identity['sha256']) and name == 'update-version.json':
+            data = core._original_metadata(root, manifest)
+        if len(data) != identity['bytes'] or digest(data) != identity['sha256']:
+            raise AppImageError('Source changed after export verification: ' + name)
+        files[name] = (data, 0o755 if os.access(root / name, os.X_OK) else 0o644)
+    data = regular(root / 'publication-manifest.json', 1024 * 1024)
+    if json.loads(data) != manifest:
+        raise AppImageError('Source manifest changed during template export')
+    files['publication-manifest.json'] = (data, 0o644)
+    return _normalize_template_sources(files, manifest, core)
+
+
+
+def standalone_build_environment(root=ROOT):
+    """Only the reviewed persistent interpreter can clone its binary closure.
+
+    Ordinary Fedora/Arch/source-script builds retain the established thin-image
+    path. A malformed private-runtime marker is a hard error, not permission to
+    silently switch modes after an attempted standalone package failed.
+    """
+    core = _load_authored_module(ordinary(root), 'tools/update_linux.py', '_monado_standalone_python_identity')
+    return core.private_build_python() is not None
+
+
+def standalone_package(launcher, game, output, *, root=ROOT):
+    """Keep the old updater receipt contract around a standalone setup image.
+
+    Native/input selection checks are unchanged. Only reviewed authored source
+    is exported to a clean temporary tree. The standalone packager compiles its
+    own authored frontend, uses locked local dependencies and performs its
+    independent binary-bundle/notice/readback audit. It never packages the game.
+    """
+    root = ordinary(root)
+    launcher, game, output = map(ordinary, (launcher, game, output))
+    port = root / 'Monado_Linux'
+    launcher_name = relative_build(launcher, root)
+    selected_game_port = install_layout.build_port(port, game)
+    game_name = relative_build(game, selected_game_port.parent)
+    if not output.is_relative_to(port / 'build') or output.suffix != '.AppImage':
+        raise AppImageError('AppImage output must be a fresh .AppImage below Monado_Linux/build')
+    receipt_path = output.with_name(output.name + '.receipt.json')
+    package_output = output.parent / 'standalone-package'
+    if any(path.exists() or path.is_symlink() for path in (output, receipt_path, package_output)):
+        raise AppImageError('refusing to replace an existing standalone AppImage, receipt or package directory')
+    if sys.platform != 'linux' or platform.machine() != 'x86_64':
+        raise AppImageError('native Linux x86-64 is required for AppImage packaging')
+    selection = verified_selection(launcher, game, root)
+    gui = regular(launcher)
+    native(gui)
+    if digest(gui) != selection['launcher_sha256']:
+        raise AppImageError('launcher changed after receipt verification')
+    legacy = dict(launcher=launcher_name, game=game_name,
+                  game_port='bound' if selected_game_port != port else 'current',
+                  launcher_sha256=selection['launcher_sha256'], game_sha256=selection['game_sha256'])
+    files = reviewed_source_files(root)
+    # A fresh update workspace has not packaged a thin image and therefore may
+    # have no AppImage runtime yet. Use the same pinned, verified acquisition
+    # boundary before the standalone packager reads its local dependency file.
+    runtime_bytes(port)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    ordinary(output.parent)
+    with tempfile.TemporaryDirectory(prefix='.standalone-source-', dir=output.parent) as temporary:
+        exported = Path(temporary) / 'source'
+        exported.mkdir()
+        for name, (data, mode) in files.items():
+            path = exported / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open('xb') as stream:
+                stream.write(data)
+            path.chmod(mode)
+        packager = _load_authored_module(exported, 'tools/build_builder_appimage.py', '_monado_legacy_standalone_packager')
+        runtime_receipt_path = game.parent / 'receipt.json'
+        runtime_receipt = json.loads(regular(runtime_receipt_path, 8 * 1024 * 1024)) if runtime_receipt_path.exists() or runtime_receipt_path.is_symlink() else {}
+        options = dict(legacy_selection=legacy)
+        if runtime_receipt.get('status') == 'passed' and runtime_receipt.get('split_game') is True:
+            options['runtime_executable'] = game
+        result = packager.package(exported, port, package_output, output, **options)
+    # Preserve the complete standalone provenance while retaining the exact
+    # source-updater schema and native selection used by existing clients.
+    data = regular(output, 64 * 1024 * 1024)
+    native(data, runtime=True)
+    if (result.get('status') != 'passed' or result.get('artifact_kind') != 'standalone-builder-appimage'
+            or result.get('archive_readback_verified') is not True or result.get('sha256') != digest(data)
+            or result.get('bytes') != len(data) or result.get('requires_adjacent_workspace') is not False
+            or any(result.get(key) is not False for key in ('contains_game_files', 'contains_game_executable',
+                'contains_generated_game_code', 'contains_vendor_sdk'))):
+        raise AppImageError('Standalone package failed the legacy updater receipt contract')
+    if verified_selection(launcher, game, root) != selection or regular(launcher) != gui:
+        raise AppImageError('Native selection changed during standalone packaging')
+    previous = regular(receipt_path, 8 * 1024 * 1024)
+    if json.loads(previous) != result:
+        raise AppImageError('Standalone package receipt changed before legacy adaptation')
+    result = dict(result, standalone_artifact_kind=result['artifact_kind'],
+                  artifact_kind='local-launcher-appimage', **legacy)
+    temporary_receipt = receipt_path.with_name('.' + receipt_path.name + '.standalone-partial')
+    with temporary_receipt.open('xb') as stream:
+        stream.write(encoded(result))
+        stream.flush()
+        os.fsync(stream.fileno())
+    if regular(receipt_path, 8 * 1024 * 1024) != previous:
+        temporary_receipt.unlink()
+        raise AppImageError('Standalone receipt changed during adaptation')
+    os.replace(temporary_receipt, receipt_path)
+    return result
 
 
 def main(argv=None):
@@ -330,9 +508,13 @@ def main(argv=None):
     parser.add_argument('--launcher-executable', type=Path, required=True)
     parser.add_argument('--game-executable', type=Path, required=True)
     parser.add_argument('--output', type=Path, required=True)
+    parser.add_argument('--standalone', action='store_true', help='use the independent setup image with reviewed persistent private Python; ordinary host builds retain their compatible workspace launcher')
     args = parser.parse_args(argv)
     try:
-        result = package(args.launcher_executable, args.game_executable, args.output)
+        standalone = args.standalone and standalone_build_environment()
+        operation = standalone_package if standalone else package
+        options = {'standalone_migration': 'retained-workspace-bootstrap'} if args.standalone and not standalone else {}
+        result = operation(args.launcher_executable, args.game_executable, args.output, **options)
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
         parser.exit(1, 'AppImage build failed: ' + str(error) + '\n')
     print(json.dumps({key: result[key] for key in ('status', 'output', 'bytes', 'sha256', 'archive_readback_verified')}, sort_keys=True))

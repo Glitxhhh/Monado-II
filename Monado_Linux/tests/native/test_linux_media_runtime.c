@@ -35,48 +35,6 @@ static void gradient(AVFrame *frame, unsigned index) {
             frame->data[2][y*frame->linesize[2]+x]=128;
         }
 }
-static void write_packets(AVCodecContext *codec, AVFormatContext *format,
-                          AVStream *stream, AVPacket *packet) {
-    int result;
-    while ((result=avcodec_receive_packet(codec,packet))==0) {
-        av_packet_rescale_ts(packet,codec->time_base,stream->time_base);
-        packet->stream_index=stream->index;
-        CHECK(av_interleaved_write_frame(format,packet));av_packet_unref(packet);
-    }
-    assert(result==AVERROR(EAGAIN)||result==AVERROR_EOF);
-}
-static void encode_movie(const char *path, const char *container, const char *encoder) {
-    const AVCodec *implementation=avcodec_find_encoder_by_name(encoder);assert(implementation);
-    AVFormatContext *format=NULL;
-    CHECK(avformat_alloc_output_context2(&format,NULL,container,path));assert(format);
-    AVCodecContext *codec=avcodec_alloc_context3(implementation);assert(codec);
-    codec->width=WIDTH;codec->height=HEIGHT;codec->pix_fmt=AV_PIX_FMT_YUV420P;
-    codec->time_base=(AVRational){1,30};codec->framerate=(AVRational){30,1};
-    codec->thread_count=1;codec->bit_rate=500000;codec->gop_size=FRAMES;codec->max_b_frames=0;
-    if (format->oformat->flags&AVFMT_GLOBALHEADER)codec->flags|=AV_CODEC_FLAG_GLOBAL_HEADER;
-    AVDictionary *options=NULL;
-    if (!strcmp(encoder,"libvpx-vp9")) {
-        CHECK(av_dict_set(&options,"deadline","realtime",0));
-        CHECK(av_dict_set(&options,"cpu-used","8",0));
-        CHECK(av_dict_set(&options,"lag-in-frames","0",0));
-    } else {
-        CHECK(av_dict_set(&options,"preset","ultrafast",0));
-        CHECK(av_dict_set(&options,"tune","zerolatency",0));
-    }
-    CHECK(avcodec_open2(codec,implementation,&options));
-    assert(av_dict_count(options)==0);av_dict_free(&options);
-    AVStream *stream=avformat_new_stream(format,NULL);assert(stream);
-    stream->time_base=codec->time_base;CHECK(avcodec_parameters_from_context(stream->codecpar,codec));
-    CHECK(avio_open(&format->pb,path,AVIO_FLAG_WRITE));CHECK(avformat_write_header(format,NULL));
-    AVFrame *frame=av_frame_alloc();AVPacket *packet=av_packet_alloc();assert(frame&&packet);
-    frame->format=codec->pix_fmt;frame->width=WIDTH;frame->height=HEIGHT;CHECK(av_frame_get_buffer(frame,32));
-    for (unsigned i=0;i<FRAMES;++i) {
-        gradient(frame,i);frame->pts=i;CHECK(avcodec_send_frame(codec,frame));write_packets(codec,format,stream,packet);
-    }
-    CHECK(avcodec_send_frame(codec,NULL));write_packets(codec,format,stream,packet);CHECK(av_write_trailer(format));
-    av_packet_free(&packet);av_frame_free(&frame);avcodec_free_context(&codec);
-    CHECK(avio_closep(&format->pb));avformat_free_context(format);
-}
 static void receive_frames(AVCodecContext *codec, AVFrame *frame, unsigned *count) {
     int result;
     while ((result=avcodec_receive_frame(codec,frame))==0) {
@@ -154,11 +112,11 @@ static unsigned opus_and_resample(void) {
     assert(resampled_energy>0.01);swr_free(&resample);return (unsigned)total;
 }
 int main(int argc,char **argv) {
-    assert(argc==2);av_log_set_level(AV_LOG_ERROR);char webm[4096],h264[4096];
-    int a=snprintf(webm,sizeof webm,"%s/synthetic-vp9.webm",argv[1]);int b=snprintf(h264,sizeof h264,"%s/synthetic-h264.mkv",argv[1]);
-    assert(a>0&&(size_t)a<sizeof webm&&b>0&&(size_t)b<sizeof h264);
-    encode_movie(webm,"webm","libvpx-vp9");unsigned vp9=decode_movie(webm,AV_CODEC_ID_VP9);
-    encode_movie(h264,"matroska","libx264");unsigned avc=decode_movie(h264,AV_CODEC_ID_H264);
+    // Clips are independently authored by the host test encoder. The private
+    // player runtime is required to decode them, not provide external encoders.
+    assert(argc==3);av_log_set_level(AV_LOG_ERROR);
+    unsigned vp9=decode_movie(argv[1],AV_CODEC_ID_VP9);
+    unsigned avc=decode_movie(argv[2],AV_CODEC_ID_H264);
     scale_gradient();unsigned resampled=opus_and_resample();
     printf("native media runtime: PASS vp9=%u h264=%u opus=%u resampled=%u\n",vp9,avc,SAMPLES,resampled);return 0;
 }

@@ -1,12 +1,19 @@
 // Actual authored frame-pacing implementation, synthetic guest pages only.
 // No game input, generated guest code, graphics, saves, or wall-clock sleeps.
 #define _GNU_SOURCE
+// The compiler supplies the same shared feature flags as the native build.
 #include <assert.h>
 #include <errno.h>
 #include <sys/mman.h>
 #include "../../runtime/hle/framepace.c"
 
 Settings g_settings;
+static float qualified_fg_cap;
+float vk_framegen_cap_fps(void) { return qualified_fg_cap; }
+bool diag_deterministic(void) {
+    const char *value = getenv("XCDE_DETERMINISTIC");
+    return value && *value && strcmp(value, "0");
+}
 static uint64_t now_ns = 1000000000ull, frame;
 static uint32_t interval = 2;
 static int protect_calls, fail_protect_call, protection = PROT_READ;
@@ -235,7 +242,57 @@ int main(int argc, char **argv) {
     }
     float original = argc == 4 && strcmp(scenario, "protect-failure") ? strtof(argv[3], NULL) : .997f;
     setup(fps, original);
-    if (!strcmp(scenario, "first-cutscene")) {
+    if (!strcmp(scenario, "refresh-cap")) {
+        *interval_ptr = (uintptr_t)&interval; step();
+        check_state(fps == 30 ? 2 : 1, normal_period(original, fps), fps);
+        // Mode alone cannot cap a failed/missing provider. Publication from
+        // a valid current GPU interval is required; saved user FPS is intact.
+        g_settings.frame_gen = true; g_settings.frame_gen_match_display = true;
+        qualified_fg_cap = 0; step(); CHECK(g_settings.fps == fps);
+        check_state(fps == 30 ? 2 : 1, normal_period(original, fps), fps);
+        qualified_fg_cap = 179.88f / 2; step();
+        float selected = fps > 0 && fps < qualified_fg_cap ? (float)fps : qualified_fg_cap;
+        CHECK(fabsf(xcde_effective_present_fps() - selected) < .0001f);
+        check_state(fps == 30 ? 2 : 1, fps == 30 ? original : original * 60.f / selected, (int)lroundf(selected));
+        // Missing/invalid publication, disabled matching and the external
+        // driver method each restore exactly the configured native policy.
+        static const float invalid_caps[] = {0, -1, NAN, INFINITY, 28.99f, 500.01f};
+        for (unsigned i = 0; i < sizeof invalid_caps / sizeof invalid_caps[0]; ++i) {
+            qualified_fg_cap = invalid_caps[i]; step();
+            check_state(fps == 30 ? 2 : 1, normal_period(original, fps), fps);
+            qualified_fg_cap = 179.88f / 2; step();
+            check_state(fps == 30 ? 2 : 1, fps == 30 ? original : original * 60.f / selected, (int)lroundf(selected));
+        }
+        g_settings.frame_gen_match_display = false; step();
+        check_state(fps == 30 ? 2 : 1, normal_period(original, fps), fps);
+        g_settings.frame_gen_match_display = true; step();
+        qualified_fg_cap = 59.94f / 2; step();
+        CHECK(fabsf(xcde_effective_present_fps() - 29.97f) < .0001f);
+        check_state(1, original * 60.f / 29.97f, 30);
+        raw_cutscene(true); steps(4); check_state(2, original, 30);
+        raw_cutscene(false); steps(4); check_state(1, original * 60.f / 29.97f, 30);
+        qualified_fg_cap = 0; step(); check_state(fps == 30 ? 2 : 1, normal_period(original, fps), fps);
+        qualified_fg_cap = 90; g_settings.frame_gen_smooth_motion = true; step();
+        check_state(fps == 30 ? 2 : 1, normal_period(original, fps), fps);
+        g_settings.frame_gen_smooth_motion = false; g_settings.frame_gen = false; step();
+        check_state(fps == 30 ? 2 : 1, normal_period(original, fps), fps); CHECK(g_settings.fps == fps);
+    } else if (!strcmp(scenario, "refresh-bypass")) {
+        g_settings.frame_gen = true; g_settings.frame_gen_match_display = true;
+        qualified_fg_cap = 179.88f / 2;
+        *interval_ptr = (uintptr_t)&interval; step();
+        CHECK(fabsf(xcde_effective_present_fps() - fps) < .0001f);
+        const char *scale = getenv("XCDE_FPS_PERIOD_SCALE");
+        const char *forced = getenv("XCDE_FPS_INTERVAL");
+        CHECK(diag_deterministic() || scale || forced);
+        check_state(forced ? (uint32_t)atoi(forced) : 1,
+                    scale ? original * strtof(scale, NULL) : normal_period(original, fps), fps);
+    } else if (!strcmp(scenario, "headless-cap")) {
+        // The renderer/provider is not linked into a headless build.
+        g_settings.frame_gen = true; g_settings.frame_gen_match_display = true;
+        qualified_fg_cap = 179.88f / 2;
+        *interval_ptr = (uintptr_t)&interval; step();
+        check_state(fps == 30 ? 2 : 1, normal_period(original, fps), fps);
+    } else if (!strcmp(scenario, "first-cutscene")) {
         // The cutscene settles while the game's interval pointer is absent.
         raw_cutscene(true); steps(4);
         CHECK(xcde_cutscene_30()); CHECK(*period == original); CHECK(protect_calls == 0);
@@ -270,7 +327,7 @@ int main(int argc, char **argv) {
         // after is measured at the first call, so .1 s expires on call 11.
         steps(10); CHECK(interval == 2); CHECK(*period == original); CHECK(protect_calls == 0);
         step(); check_state(2, original, 30);
-        raw_cutscene(false); steps(4); check_state(1, normal_period(original, fps), fps);
+        raw_cutscene(false); steps(4); check_state(fps == 30 ? 2 : 1, normal_period(original, fps), fps);
     } else if (!strcmp(scenario, "disabled-override")) {
         CHECK(getenv("XCDE_FPS_INTERVAL"));
         *interval_ptr = (uintptr_t)&interval; raw_cutscene(true); steps(5);

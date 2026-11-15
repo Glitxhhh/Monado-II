@@ -8,12 +8,18 @@
 
 #include "../input_bind.h"
 #include "../settings.h"
+#include "../quality_policy.h"
+#include "../gpu_selection.h"
+#ifdef __linux__
+#include "run_diagnostics_linux.h"
+#endif
 
 const char *const g_language_codes[N_LANGUAGES] = {"", "ja", "en-US", "fr", "de", "it", "es", "zh-CN", "ko", "nl", "pt", "ru"};
 const char *const g_language_names[N_LANGUAGES] = {"Auto", "Japanese", "English", "French", "German", "Italian", "Spanish",
                                                    "Chinese", "Korean", "Dutch", "Portuguese", "Russian"};
-Settings g_settings = {.fps = 30, .volume = 1.0f, .movie_audio = true, .res_mode = RES_MATCH, .upscaler = UPSCALE_BILINEAR, .upscale_quality = UQ_QUALITY, .game_blur = true, .vsync = true, .ui_lang = 1,
+Settings g_settings = {.aspect = ASPECT_ORIGINAL, .fps = 30, .volume = 1.0f, .movie_audio = true, .res_mode = RES_MATCH, .upscaler = UPSCALE_BILINEAR, .upscale_quality = UQ_QUALITY, .game_blur = true, .vsync = true, .ui_lang = 1,
     // [XCDE] LINUX-072: slider positions are remembered independently of enable flags.
+    .upscale_sharpness = -1.f, .quality_preset = QUALITY_CUSTOM, .grass_lod = GRASS_ORIGINAL,
     .cheat_damage_dealt_percent = 100, .cheat_damage_received_percent = 100,
     .cheat_exp_percent = 100, .cheat_ap_percent = 100, .cheat_sp_percent = 100, .cheat_gold_percent = 100};
 int g_window_w = 1280, g_window_h = 720;  // windowed size (settings.h)
@@ -68,11 +74,29 @@ static int cheat_percent(const char *value) {
 #define XCDE_CHEAT_MULTIPLIERS(X) \
     X(damage_dealt) X(damage_received) X(exp) X(ap) X(sp) X(gold)
 
-void settings_load(void) {
+// [XCDE] LINUX-089: exact opt-ins, shared ordering with ASPECT_*; unknown values
+// preserve original framing, including after reloading a previously fixed ratio.
+static const char *const aspect_values[N_ASPECTS] = {"native", "original", "16:10", "21:9", "32:9"};
+static int aspect_index(const char *value) {
+    for (int i = 0; i < N_ASPECTS; ++i) if (!strcmp(value, aspect_values[i])) return i;
+    return ASPECT_ORIGINAL;
+}
+
+static void settings_load_values(void) {
+    // [XCDE] LINUX-089: native aspect is opt-in, including reload/missing files.
+    g_settings.aspect = ASPECT_ORIGINAL;
+    xcde_quality_defaults(&g_settings);
+    g_settings.gpu_uuid[0]=0;
     // [XCDE] LINUX-014: absent/invalid new preference defaults to Normal on each
     // load, including a reload after a previously selected Fast preference.
     g_settings.menu_navigation_speed = MENU_NAV_NORMAL;
     g_settings.quickstep_slot = false; // [XCDE] LINUX-039: absent/invalid always OFF
+    g_settings.show_fps_overlay = false; // [XCDE] LINUX-094: old/missing configs keep the new overlay OFF
+    // [XCDE] LINUX-097: old, missing and reloaded files never opt into a new FG method.
+    g_settings.frame_gen = false;
+    g_settings.cutscene_mode = 0;
+    g_settings.frame_gen_smooth_motion = false;
+    g_settings.frame_gen_match_display = false;
     // [XCDE] LINUX-072: all cheats are opt-in, including absent-file/hidden runs.
 #define RESET_CHEAT(name) g_settings.cheat_##name = false; g_settings.cheat_##name##_percent = 100;
     XCDE_CHEAT_MULTIPLIERS(RESET_CHEAT)
@@ -92,7 +116,8 @@ void settings_load(void) {
         if (!eq) continue;
         *eq = 0;
         char *k = trim(s), *v = trim(eq + 1);
-        if (!strcmp(k, "fullscreen")) g_settings.fullscreen = atoi(v) != 0;
+        if (!strcmp(k, "aspect_ratio")) g_settings.aspect = aspect_index(v);
+        else if (!strcmp(k, "fullscreen")) g_settings.fullscreen = atoi(v) != 0;
         else if (!strcmp(k, "window")) sscanf(v, "%dx%d", &g_window_w, &g_window_h);
         else if (!strcmp(k, "resolution")) {  // match | 1x..4x | 75% | 50% | 25% | dynamic
             if (!strcmp(v, "match")) g_settings.res_mode = RES_MATCH;
@@ -103,11 +128,13 @@ void settings_load(void) {
             else if (atoi(v) >= 1 && atoi(v) <= 8) g_settings.res_mode = atoi(v);
         } else if (!strcmp(k, "upscaler")) {
             g_settings.upscaler = !strcmp(v, "fsr") ? UPSCALE_FSR1 : !strcmp(v, "fsr3") ? UPSCALE_FSR3
-                                : !strcmp(v, "dlss") ? UPSCALE_DLSS : UPSCALE_BILINEAR;
+                                : !strcmp(v, "dlss") ? UPSCALE_DLSS : !strcmp(v,"fsr4_lite") ? UPSCALE_FSR4_LITE : UPSCALE_BILINEAR;
         } else if (!strcmp(k, "upscale_quality")) {
             static const char *q[] = {"native", "quality", "balanced", "performance", "ultra"};
             for (int i = 0; i < 5; i++) if (!strcmp(v, q[i])) g_settings.upscale_quality = i;
         } else if (!strcmp(k, "frame_gen")) g_settings.frame_gen = atoi(v) != 0;
+        else if (!strcmp(k, "frame_gen_smooth_motion")) g_settings.frame_gen_smooth_motion = cheat_enabled(v);
+        else if (!strcmp(k, "frame_gen_match_display")) g_settings.frame_gen_match_display = cheat_enabled(v);
         else if (!strcmp(k, "cutscenes")) g_settings.cutscene_mode = !strcmp(v, "30") ? 1 : !strcmp(v, "30fg") ? 2 : 0;
         else if (!strcmp(k, "antialias")) g_settings.antialias = !strcmp(v, "smaa") ? AA_SMAA : AA_OFF;
         else if (!strcmp(k, "depth_of_field")) g_settings.dof_off = atoi(v) == 0;
@@ -119,6 +146,7 @@ void settings_load(void) {
         else if (!strcmp(k, "volume")) g_settings.volume = (float)atof(v) / 100.0f;
         else if (!strcmp(k, "movie_audio")) g_settings.movie_audio = atoi(v) != 0;
         else if (!strcmp(k, "show_fps")) g_settings.show_fps = atoi(v) != 0;
+        else if (!strcmp(k, "show_fps_overlay")) g_settings.show_fps_overlay = !strcmp(v, "1") || !strcmp(v, "true");
         else if (!strcmp(k, "fps")) g_settings.fps = !strcmp(v, "unlimited") ? 0 : atoi(v);
         else if (!strcmp(k, "menu_navigation_speed"))
             g_settings.menu_navigation_speed = !strcmp(v, "fast") ? MENU_NAV_FAST : MENU_NAV_NORMAL;
@@ -133,26 +161,45 @@ void settings_load(void) {
         else if (!strcmp(k, "language")) g_settings.language = lang_index(v);
         else if (!strncmp(k, "mod_", 4)) mod_set(k + 4, atoi(v) != 0);
         else if (!strcmp(k, "button_icons")) snprintf(g_button_icons, sizeof g_button_icons, "%s", v);
-        else bind_settings_load(k, v);
+        else if (!strcmp(k,"gpu_uuid")) {
+            if(!monado_gpu_uuid_normalize(v,g_settings.gpu_uuid))fprintf(stderr,"[settings] invalid GPU UUID; using automatic selection\n");
+        }
+        else if (!xcde_quality_load(&g_settings,k,v)) bind_settings_load(k, v);
     }
     fclose(f);
+    xcde_quality_bounds(&g_settings);
+    // [XCDE] LINUX-097: malformed mixed-backend files retain the existing FSR
+    // request and disable external FG. Cutscene-only FG also owns that choice.
+    if (g_settings.frame_gen || g_settings.cutscene_mode == 2) g_settings.frame_gen_smooth_motion = false;
 #ifdef __linux__
     // [XCDE] LINUX-006: imported Windows options must not reduce render resolution
     // for an unavailable temporal provider. Preserve enum/parser compatibility,
     // report the effective spatial mode, and leave the input config unchanged.
-    if (g_settings.upscaler == UPSCALE_FSR3
+    if (false
+#ifndef XCDE_LINUX_FSR3
+        || g_settings.upscaler == UPSCALE_FSR3
+#endif
+#ifndef XCDE_LINUX_FSR4
+        || g_settings.upscaler == UPSCALE_FSR4_LITE
+#endif
 #ifndef XCDE_LINUX_DLSS
         || g_settings.upscaler == UPSCALE_DLSS
 #endif
     ) {
         fprintf(stderr, "[settings] %s unavailable on Linux; using FSR 1 spatial scaling\n",
-                g_settings.upscaler == UPSCALE_DLSS ? "DLSS" : "FSR 3");
+                g_settings.upscaler == UPSCALE_DLSS ? "DLSS" : g_settings.upscaler==UPSCALE_FSR4_LITE ? "FSR4 Lite" : "FSR 3");
         g_settings.upscaler = UPSCALE_FSR1;
     }
     // [XCDE] LINUX-020: only a source-built provider plus the implemented DLSS temporal-input path can generate.
     bool framegen_supported = false;
 #ifdef XCDE_LINUX_FRAMEGEN
     framegen_supported = g_settings.upscaler == UPSCALE_DLSS;
+#ifdef XCDE_LINUX_FSR3
+    framegen_supported |= g_settings.upscaler == UPSCALE_FSR3;
+#endif
+#ifdef XCDE_LINUX_FSR4
+    framegen_supported |= g_settings.upscaler == UPSCALE_FSR4_LITE;
+#endif
 #endif
     if (!framegen_supported && (g_settings.frame_gen || g_settings.cutscene_mode == 2)) {
         fprintf(stderr, "[settings] frame generation unavailable on Linux; generated frames disabled\n");
@@ -166,21 +213,36 @@ void settings_load(void) {
     if (g_settings.volume > 2) g_settings.volume = 2;
 }
 
+void settings_load(void) {
+    settings_load_values();
+#ifdef __linux__
+    // [XCDE] LINUX-099: report parsed/fallback defaults even when input is
+    // missing or intentionally ignored. This never rewrites the settings file.
+    run_diag_settings("settings-loaded");
+#endif
+}
+
 void settings_save(void) {
     FILE *f = fopen(ini_path(), "w");
     if (!f) return;
     static const char *res[] = {"match", "1", "2", "3", "4", "5", "6", "7", "8", "dynamic", "75%", "25%", "50%"};
     fprintf(f, "# Monado settings (the launcher writes this file)\n");
     fprintf(f, "fullscreen = %d\nwindow = %dx%d\n", g_settings.fullscreen, g_window_w, g_window_h);
+    fprintf(f, "aspect_ratio = %s\n", aspect_values[g_settings.aspect >= 0 && g_settings.aspect < N_ASPECTS ? g_settings.aspect : ASPECT_ORIGINAL]); // [XCDE] LINUX-089
     fprintf(f, "resolution = %s\n", g_settings.res_mode >= 0 && g_settings.res_mode <= 12 ? res[g_settings.res_mode] : "match");
-    static const char *up[] = {"bilinear", "bilinear", "fsr", "fsr3", "dlss"};
+    static const char *up[] = {"bilinear", "bilinear", "fsr", "fsr3", "dlss", "fsr4_lite"};
     static const char *uq[] = {"native", "quality", "balanced", "performance", "ultra"};
-    fprintf(f, "upscaler = %s\nantialias = %s\n", up[g_settings.upscaler >= 0 && g_settings.upscaler <= 4 ? g_settings.upscaler : 0],
+    fprintf(f, "upscaler = %s\nantialias = %s\n", up[g_settings.upscaler >= 0 && g_settings.upscaler <= 5 ? g_settings.upscaler : 0],
             g_settings.antialias == AA_SMAA ? "smaa" : "off");
     fprintf(f, "upscale_quality = %s\nframe_gen = %d\n",
             uq[g_settings.upscale_quality >= 0 && g_settings.upscale_quality <= 4 ? g_settings.upscale_quality : 1], g_settings.frame_gen);
+    fprintf(f, "frame_gen_smooth_motion = %d\nframe_gen_match_display = %d\n",
+            g_settings.frame_gen_smooth_motion && !g_settings.frame_gen && g_settings.cutscene_mode != 2,
+            g_settings.frame_gen_match_display);
     fprintf(f, "depth_of_field = %d\n", !g_settings.dof_off);
     fprintf(f, "game_blur = %d\n", g_settings.game_blur);
+    xcde_quality_save(f,&g_settings);
+    fprintf(f,"gpu_uuid = %s\n",*g_settings.gpu_uuid?g_settings.gpu_uuid:"auto");
     fprintf(f, "vsync = %d\n", g_settings.vsync);
     if (g_settings.stick_deadzone) fprintf(f, "stick_deadzone = %d\n", g_settings.stick_deadzone);
     fprintf(f, "launcher_lang = %s\n", g_settings.ui_lang ? "en" : "es");  // (the launcher's key: kept when the game saves)
@@ -195,6 +257,7 @@ void settings_save(void) {
     fprintf(f, "cheat_no_fall_damage = %d\n", g_settings.cheat_no_fall_damage);
     fprintf(f, "volume = %d\nmovie_audio = %d\nshow_fps = %d\n", (int)(g_settings.volume * 100 + 0.5f), g_settings.movie_audio,
             g_settings.show_fps);
+    fprintf(f, "show_fps_overlay = %d\n", g_settings.show_fps_overlay); // [XCDE] LINUX-094
     if (g_settings.fps) fprintf(f, "fps = %d\n", g_settings.fps); else fprintf(f, "fps = unlimited\n");
     // [XCDE] LINUX-014: retain the launcher-only preference when F1 saves settings.
     fprintf(f, "menu_navigation_speed = %s\n", g_settings.menu_navigation_speed == MENU_NAV_FAST ? "fast" : "normal");

@@ -19,6 +19,8 @@ typedef struct {
     int quality;  // 0 DLAA, 1 Quality, 2 Balanced, 3 Performance, 4 Ultra Performance
     // Monotonic submission IDs: recorded commands may not have been submitted yet.
     uint64_t recording_seq, completed_seq;
+    // Optional R8 current-color bias mask, render resolution (0 history, 1 current).
+    DlssImage reactive;
 } DlssFrame;
 bool ngx_linux_init(const char *feature_dir, const char *data_dir);
 int ngx_linux_instance_exts(const char **out, int max);

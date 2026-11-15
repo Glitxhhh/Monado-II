@@ -12,6 +12,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
+import signal
 import stat
 import subprocess
 import sys
@@ -29,9 +31,135 @@ _lease_spec.loader.exec_module(install_lease)
 _controller_spec = importlib.util.spec_from_file_location('monado_controller_environment', Path(__file__).with_name('controller_environment.py'))
 controller_environment = importlib.util.module_from_spec(_controller_spec)
 _controller_spec.loader.exec_module(controller_environment)
+_run_log_spec = importlib.util.spec_from_file_location('monado_run_settings_log', Path(__file__).with_name('run_settings_log.py'))
+run_settings_log = importlib.util.module_from_spec(_run_log_spec)
+_run_log_spec.loader.exec_module(run_settings_log)
+_observer_spec = importlib.util.spec_from_file_location('monado_present_observer_manifest', Path(__file__).with_name('present_observer_manifest.py'))
+present_observer_manifest = importlib.util.module_from_spec(_observer_spec)
+_observer_spec.loader.exec_module(present_observer_manifest)
 BWRAP = Path('/usr/bin/bwrap')
 NGX_UPDATER = Path('/usr/bin/nvidia-ngx-updater')
 X11_SOCKETS = Path('/tmp/.X11-unix')
+
+
+# [XCDE] LINUX-097: NVIDIA driver FG is a separate, explicit launch choice.
+# Never inherit arbitrary driver switches or output paths into a checked game.
+def smooth_motion_component(manifests=None, library_dirs=None):
+    """Probe the installed host layer and ELF only; no driver code is loaded.
+
+    Presence is not selected-GPU qualification. The driver's layer owns its RTX
+    capability decision and reports unsupported hardware through the game log.
+    Arguments allow authored fixtures without reading a host user's settings.
+    """
+    if manifests is None:
+        manifests = (Path('/usr/share/vulkan/implicit_layer.d/nvidia_layers.json'),
+                     Path('/etc/vulkan/implicit_layer.d/nvidia_layers.json'))
+    if library_dirs is None:
+        library_dirs = tuple(Path(p) for p in ('/usr/lib/x86_64-linux-gnu', '/lib/x86_64-linux-gnu',
+                                               '/usr/lib64', '/lib64', '/usr/lib', '/lib',
+                                               '/run/opengl-driver/lib'))
+    for manifest in manifests:
+        try:
+            manifest = Path(manifest)
+            if not manifest.is_file() or not 0 < manifest.stat().st_size <= 131072:
+                continue
+            doc = json.loads(manifest.read_text(encoding='utf-8'))
+            if not isinstance(doc, dict):
+                continue
+            layers = doc.get('layers', [doc.get('layer')])
+            if not isinstance(layers, list) or len(layers) > 32:
+                continue
+            for layer in layers:
+                if not isinstance(layer, dict) or layer.get('name') != 'VK_LAYER_NV_present':
+                    continue
+                if layer.get('enable_environment') != {'NVPRESENT_ENABLE_SMOOTH_MOTION': '1'}:
+                    continue
+                name = layer.get('library_path')
+                if not isinstance(name, str) or not name or len(name) > 4095 or '\x00' in name:
+                    continue
+                path = Path(name)
+                if '..' in path.parts or (not path.is_absolute() and len(path.parts) != 1):
+                    continue
+                candidates = (path,) if path.is_absolute() else tuple(Path(d) / path for d in library_dirs)
+                for candidate in candidates:
+                    if not candidate.is_file() or not 64 <= candidate.stat().st_size <= 134217728:
+                        continue
+                    with candidate.open('rb') as stream:
+                        header = stream.read(20)
+                    if header[:6] == b'\x7fELF\x02\x01' and int.from_bytes(header[18:20], 'little') == 62:
+                        return True
+        except (OSError, UnicodeError, ValueError, TypeError):
+            continue
+    return False
+
+
+def frame_generation_profile(state):
+    """Read only this checked profile's ordinary INI; mixed FG fails to FSR.
+
+    No arbitrary XCDE_INI/environment path is read on the host side. Legacy FSR
+    uses atoi semantics; new external switches require exact 1/true opt-in.
+    """
+    path = Path(state) / 'xcde.ini'
+    try:
+        before = path.lstat()
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > 262144:
+            return {}
+        fd = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW | os.O_NONBLOCK)
+        with os.fdopen(fd, 'rb') as stream:
+            opened = os.fstat(stream.fileno())
+            data = stream.read(262145)
+            after = os.fstat(stream.fileno())
+        snapshot = lambda row: (row.st_dev, row.st_ino, row.st_size, row.st_mtime_ns, row.st_ctime_ns)
+        if snapshot(before) != snapshot(opened) or snapshot(opened) != snapshot(after) or len(data) > 262144:
+            return {}
+        values = {}
+        for raw in data.decode('utf-8').splitlines():
+            if len(raw.encode('utf-8')) > 510:
+                return {}
+            line = raw.lstrip('\ufeff').strip()
+            if not line or line[0] in '#;[' or '=' not in line:
+                continue
+            key, value = (part.strip() for part in line.split('=', 1))
+            if key in ('frame_gen', 'frame_gen_smooth_motion', 'cutscenes', 'show_fps_overlay'):
+                values[key] = value
+        return values
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return {}
+
+
+def smooth_motion_requested(state):
+    values = frame_generation_profile(state)
+    try:
+        legacy = re.match(r'^[+-]?[0-9]+', values.get('frame_gen', ''))
+        fsr = bool(legacy and int(legacy[0]) != 0) or values.get('cutscenes') == '30fg'
+        return not fsr and values.get('frame_gen_smooth_motion') in ('1', 'true')
+    except (OSError, UnicodeError, ValueError, TypeError):
+        return False
+
+
+def frame_generation_environment(environment, state, *, component_available=None):
+    """Admit one fixed external-driver boolean from profile intent, never a path."""
+    result = {key: value for key, value in environment.items()
+              if not key.startswith('NVPRESENT_') and key not in (
+                  'DISABLE_LAYER_NV_PRESENT_1', 'MONADO_CUDA_TASK_METADATA', 'MONADO_PRESENT_OBSERVER',
+                  )}
+    selected = smooth_motion_requested(state)
+    available = bool(component_available if component_available is not None else smooth_motion_component()) if selected else False
+    if selected and available:
+        result['NVPRESENT_ENABLE_SMOOTH_MOTION'] = '1'
+        result['NVPRESENT_LOG_LEVEL'] = '4'  # bounded driver activation/fallback rows, no output path
+        result['MONADO_CUDA_TASK_METADATA'] = '1'
+    report = {'method': 'nvidia-smooth-motion' if selected else 'application',
+              'external_driver_enabled': selected and available,
+              'component_available': available if selected else None,
+              'output_fps': 'external-driver-unavailable-to-application' if selected and available else 'application-presentations',
+              'cuda_task_metadata': selected and available,
+              # LINUX-101: diagnostics measure selected driver output even when
+              # the user hides the on-screen counter. Off/FSR never request it.
+              'observer_requested': selected and available}
+    if report['observer_requested']:
+        report['output_fps'] = 'downstream-measurement-requested-not-yet-active'
+    return result, report
 
 
 def checked_path(path, parents, *, exists):
@@ -124,7 +252,7 @@ def private_runtime_environment(environment, state, *, planned_namespace=False):
     return result
 
 
-def dlss_namespace(argv, state, *, pid_namespace=True):
+def dlss_namespace(argv, state, *, pid_namespace=True, cuda_task_metadata=False):
     """[XCDE] LINUX-017: mount-private NGX locks and network, no host writes.
 
     Keep the actual game argv separate: callers use argv[0] for build identity.
@@ -137,24 +265,24 @@ def dlss_namespace(argv, state, *, pid_namespace=True):
     if NGX_UPDATER.exists() and not NGX_UPDATER.is_file():
         raise ValueError('NVIDIA updater mask destination must be an installed file')
     command = [str(BWRAP), '--unshare-user']
+    if cuda_task_metadata and pid_namespace:
+        raise ValueError('Smooth Motion own-task metadata requires the host-supervised game PID scope')
     if pid_namespace:
         command += ['--unshare-pid']
     command += ['--unshare-net', '--ro-bind', '/', '/', '--dev-bind', '/dev', '/dev']
     # Outer GUI namespaces must not own PID1: a GUI crash must leave its game
     # alive for the existing Python subreaper/lock holder to adopt and wait for.
-    command += ['--proc', '/proc'] if pid_namespace else ['--ro-bind', '/proc', '/proc']
+    command += ['--proc', '/proc'] if pid_namespace or cuda_task_metadata else ['--ro-bind', '/proc', '/proc']
     command += ['--bind', str(state), str(state)]
-    # [XCDE] LINUX-077: Steam's optional controller metadata can live in host
-    # /tmp. Admit one validated read-only file before replacing /tmp; point SDL
-    # at its canonical state alias, not an assumed propagated /tmp submount.
+    # [XCDE] LINUX-089: the host supervisor exports only validated metadata into
+    # a dedicated private directory. Bind that directory RO at BOTH aliases;
+    # binding the original file would freeze its inode across Steam replacement.
     metadata = controller_environment.namespace_metadata(os.environ, state)
-    if metadata:
-        command += ['--ro-bind', metadata['source'], metadata['target']]
     command += ['--bind', str(state), '/tmp']
     if metadata:
-        # bwrap's directory bind does not propagate the earlier child file
-        # mount. Expose the same read-only inode at the private /tmp alias too.
-        command += ['--ro-bind', metadata['source'], '/tmp/' + controller_environment.PRIVATE_INFO]
+        command += ['--ro-bind', metadata['directory'], metadata['directory'],
+                    '--ro-bind', metadata['directory'],
+                    '/tmp/' + controller_environment.PRIVATE_DIRECTORY]
     x11 = X11_SOCKETS.is_dir()
     if x11:
         command += ['--ro-bind', str(X11_SOCKETS), '/tmp/.X11-unix']
@@ -166,16 +294,18 @@ def dlss_namespace(argv, state, *, pid_namespace=True):
         identity = hashlib.file_digest(stream, 'sha256').hexdigest()
     result = {'kind': 'bwrap-private-dlss', 'helper': str(BWRAP),
                      'helper_sha256': identity, 'x11_socket_bind': x11,
-                     'updater_masked': mask_updater, 'pid_namespace': pid_namespace}
+                     'updater_masked': mask_updater, 'pid_namespace': pid_namespace,
+                     'cuda_task_metadata': cuda_task_metadata}
     if metadata:
         result['controller_metadata'] = metadata
     return command, result
 
 
-def prepare_namespace_state(launch):
+def prepare_namespace_state(launch, *, controller_refresh=False):
     """Create only validated private directories; dry-run never calls this."""
     state = Path(launch['state'])
     fd = os.open('/', os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    mirror = None
     try:
         for part in state.parts[1:]:
             try:
@@ -198,25 +328,7 @@ def prepare_namespace_state(launch):
             os.close(child)
         metadata = launch['namespace'].get('controller_metadata')
         if metadata:
-            expected_target = state / controller_environment.PRIVATE_INFO
-            if (metadata.get('target') != str(expected_target)
-                    or controller_environment.metadata_file(metadata.get('source')) is None):
-                raise ValueError('Steam controller metadata changed or has an unsafe bind target')
-            target_fd = os.open('runtime', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
-            try:
-                item = os.open('steam-virtual-gamepad-info', os.O_RDONLY | os.O_CREAT | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK,
-                               0o600, dir_fd=target_fd)
-                try:
-                    info = os.fstat(item)
-                    existing_source = metadata['source'] == str(expected_target)
-                    if (not stat.S_ISREG(info.st_mode) or info.st_nlink != 1
-                            or info.st_uid != os.getuid()
-                            or (not existing_source and (stat.S_IMODE(info.st_mode) != 0o600 or info.st_size != 0))):
-                        raise ValueError('Steam controller metadata bind placeholder must be a private empty ordinary file')
-                finally:
-                    os.close(item)
-            finally:
-                os.close(target_fd)
+            mirror = controller_environment.MetadataMirror.prepare(metadata, state, fd)
         if launch['namespace'].get('x11_socket_bind', False):
             try:
                 os.mkdir('.X11-unix', 0o700, dir_fd=fd)
@@ -224,8 +336,46 @@ def prepare_namespace_state(launch):
                 pass
             child = os.open('.X11-unix', os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=fd)
             os.close(child)
+    except BaseException:
+        if mirror is not None:
+            mirror.close()
+        raise
     finally:
         os.close(fd)
+    if mirror is not None and not controller_refresh:
+        # Precompile/developer namespace callers need only the initial snapshot,
+        # not an input-session watcher or an unowned directory descriptor.
+        mirror.close()
+        return None
+    return mirror
+
+
+def wait_metadata_child(execution, environment, runtime_fd, mirror):
+    """[XCDE] LINUX-089: only hidden-metadata CLI launches need a supervisor.
+
+    Ordinary and inherited launches still exec directly. Keep the readonly
+    installation lease until this one owned child exits; signals do not kill it
+    or interrupt a save. No watcher process, game-controlled IPC or new paths.
+    """
+    interrupted = []
+    def keep_game(number, frame):
+        interrupted.append(number)
+        try:
+            os.write(2, b'Monado session remains active; close its window to finish safely.\n')
+        except OSError:
+            pass
+    handlers = {number: signal.signal(number, keep_game)
+                for number in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP)}
+    try:
+        mirror.start(log_fd=2)
+        child = subprocess.Popen(execution, env=environment, close_fds=True,
+                                 pass_fds=(runtime_fd,), start_new_session=True)
+        code = child.wait()
+        return 128 - code if code < 0 else code if code else 128 + interrupted[0] if interrupted else 0
+    finally:
+        mirror.stop()
+        for number, handler in handlers.items():
+            signal.signal(number, handler)
 
 
 def plan(executable, state, precompile=False, *, port=None):
@@ -248,6 +398,21 @@ def plan(executable, state, precompile=False, *, port=None):
     if not os.access(binary, os.X_OK):
         raise ValueError('selected ELF is not executable')
     verify_runtime_resources(binary, receipt)
+    if type(receipt.get('split_game', False)) is not bool:
+        raise ValueError('invalid split-game build receipt flag')
+    if receipt.get('split_game', False):
+        library = receipt.get('game_library', {})
+        expected = receipt.get('gamecode_abi', {}).get('id')
+        id_file = binary.parent / 'lasgame.so.id'
+        if (type(receipt.get('split_game')) is not bool or not isinstance(expected, str)
+                or not re.fullmatch(r'[0-9a-f]{64}', expected)
+                or library.get('path') != str(binary.parent / 'lasgame.so')
+                or library.get('sha256') != receipt.get('runtime_resources', {}).get('lasgame.so', {}).get('sha256')
+                or library.get('abi_id') != expected or library.get('id_path') != str(id_file)
+                or id_file.is_symlink() or not id_file.is_file()
+                or hashlib.sha256(id_file.read_bytes()).hexdigest() != library.get('id_sha256')
+                or id_file.read_text() != expected + '\n'):
+            raise ValueError('split runtime/game library ABI pair differs from its receipt')
     # ELF RUNPATH does not select dependencies of dependencies. Select the exact
     # receipted development sysroot for those too (not an inherited search path).
     sysroot = Path(receipt.get('dependencies', {}).get('sysroot', ''))
@@ -277,8 +442,32 @@ def plan(executable, state, precompile=False, *, port=None):
     framegen = receipt.get('framegen_enabled', False)
     if not isinstance(framegen, bool):
         raise ValueError('invalid frame-generation build receipt flag')
-    if framegen and (not dlss or not {'libmonado-fidelityfx.so', 'FidelityFX-MIT.txt'}.issubset(receipt.get('runtime_resources', {}))):
+    fsr3 = receipt.get('fsr3_enabled', False)
+    if type(fsr3) is not bool:
+        raise ValueError('invalid FSR3 build receipt flag')
+    if fsr3 and not {'libmonado-fsr3.so', 'AMD-FidelityFX-LICENSE.txt'}.issubset(receipt.get('runtime_resources', {})):
+        raise ValueError('FSR3 build receipt is missing its verified provider/resources')
+    if framegen and (not (dlss or fsr3) or not {'libmonado-fidelityfx.so', 'FidelityFX-MIT.txt'}.issubset(receipt.get('runtime_resources', {}))):
         raise ValueError('frame-generation build receipt is missing its supported provider/resources')
+    fsr4 = receipt.get('fsr4_enabled', False)
+    if type(fsr4) is not bool:
+        raise ValueError('invalid FSR4 build receipt flag')
+    if fsr4 and not {'libmonado-fsr4.so', 'FSR4-GPL-2.0-or-later.txt', 'FSR4-AMD-SDK-LICENSE.md', 'FSR4-component-source.tar.gz'}.issubset(receipt.get('runtime_resources', {})):
+        raise ValueError('FSR4 build receipt is missing its verified component/license/source resources')
+    if fsr4:
+        spec = importlib.util.spec_from_file_location('_monado_fsr4_asset_selection', ROOT / 'scripts/fsr4_assets_linux.py')
+        assets_module = importlib.util.module_from_spec(spec); spec.loader.exec_module(assets_module)
+        assets, reason = assets_module.available(ROOT, receipt)
+        launch['fsr4_assets'] = assets
+        launch['fsr4_unavailable_reason'] = reason
+        if assets:
+            argv[3:3] = ['--fsr4-assets', assets['asset_root']]
+    actual_game = bool(receipt.get('generated') or receipt.get('game_library')) and not precompile
+    smooth = actual_game and dlss and smooth_motion_requested(state) and smooth_motion_component()
+    launch['smooth_motion_planned'] = smooth
+    protocol = receipt.get('cuda_task_metadata_protocol')
+    launch['cuda_task_metadata_protocol'] = protocol if type(protocol) is int and protocol == 1 else None
+    launch['observer_library'] = present_observer_manifest.checked_resource(binary, receipt) if actual_game else None
     if dlss:
         required = {'libmonado-ngx.so', 'libnvidia-ngx-dlss.so.310.9.1', 'NVIDIA-DLSS-LICENSE.txt'}
         if not required.issubset(receipt.get('runtime_resources', {})):
@@ -286,7 +475,8 @@ def plan(executable, state, precompile=False, *, port=None):
         if private_tmp_alias(state):
             launch['namespace'] = {'kind': 'inherited-private-dlss', 'private_tmp_alias': True}
         else:
-            launch['execution_argv'], launch['namespace'] = dlss_namespace(argv, state)
+            launch['execution_argv'], launch['namespace'] = dlss_namespace(argv, state,
+                pid_namespace=not smooth, cuda_task_metadata=smooth)
     return launch
 
 
@@ -334,6 +524,24 @@ def main():
         environment['LD_LIBRARY_PATH'] = launch['library_path']
         # [XCDE] LINUX-016: same desktop icon/group for launcher and game.
         environment['SDL_APP_ID'] = 'monado-linux-port'
+        # [XCDE] LINUX-097: only the actual game gets a controlled driver flag;
+        # GUI/precompile use ordinary clean environments. Profile paths are not
+        # supplied by inherited variables, and no driver log filename is admitted.
+        environment, launch['frame_generation'] = frame_generation_environment(environment, Path(launch['state']))
+        requested = launch['frame_generation']['external_driver_enabled']
+        if 'smooth_motion_planned' in launch and requested != launch['smooth_motion_planned']:
+            raise ValueError('frame-generation settings or driver component changed while preparing Play; try Play again')
+        if requested and 'smooth_motion_planned' in launch:
+            if launch.get('cuda_task_metadata_protocol') != 1:
+                raise ValueError('Smooth Motion requires a current full game build with scoped CUDA metadata support; rebuild this version first')
+            if launch.get('namespace', {}).get('kind') == 'inherited-private-dlss':
+                raise ValueError('Smooth Motion needs the current launcher host Play supervisor; reopen the updated AppImage or Play script')
+            launch['frame_generation']['cuda_task_metadata_protocol'] = 1
+        observer = launch['frame_generation']['observer_requested']
+        launch['frame_generation']['counter_available'] = bool(observer and launch.get('observer_library'))
+        launch['frame_generation']['counter_kind'] = 'accepted-downstream-requests-not-scanout'
+        launch['frame_generation']['counter_status'] = ('planned-not-yet-active' if observer and launch.get('observer_library')
+            else 'resource-unavailable' if observer else 'not-requested')
         if 'namespace' in launch:
             environment = private_runtime_environment(environment, Path(launch['state']),
                                                        planned_namespace='execution_argv' in launch)
@@ -347,9 +555,34 @@ def main():
             print(json.dumps(launch, indent=2))
             return 0
         launch['runtime_validation'] = validate_runtime(launch)
+        if launch['frame_generation']['method'] == 'nvidia-smooth-motion':
+            if launch['frame_generation']['external_driver_enabled']:
+                print('[fg] NVIDIA Smooth Motion requested; driver log determines activation, generated-frame identity unavailable', file=sys.stderr)
+            else:
+                print('[fg] NVIDIA Smooth Motion component unavailable; ordinary presentation retained', file=sys.stderr)
         os.umask(0o077)
+        mirror = None
         if 'namespace' in launch:
-            prepare_namespace_state(launch)
+            mirror = prepare_namespace_state(launch, controller_refresh=True)
+        if observer and launch.get('observer_library'):
+            try:
+                directory = present_observer_manifest.prepare(Path(launch['state']), launch['observer_library'])
+                environment.pop('VK_ADD_LAYER_PATH', None)
+                environment.pop('VK_INSTANCE_LAYERS', None)
+                environment['VK_LAYER_PATH'] = directory
+                environment['MONADO_PRESENT_OBSERVER'] = '1'
+                launch['frame_generation']['counter_status'] = 'ready-for-driver-attachment'
+            except (OSError, ValueError, TypeError):
+                launch['frame_generation']['counter_available'] = False
+                launch['frame_generation']['counter_status'] = 'private-manifest-unavailable'
+                print('[fg] optional output counter unavailable: private manifest validation failed', file=sys.stderr)
+        # [XCDE] LINUX-099: private requested-settings snapshot, joined to the
+        # native effective-settings/renderer rows. Optional logging failure
+        # never changes settings, capabilities or validated launch behavior.
+        run_record = run_settings_log.record_game_run(launch, environment, manifest=ROOT.parent / 'publication-manifest.json')
+        environment['MONADO_RUN_ID'] = run_record['run_id']
+        print('[run] id=' + run_record['run_id'] + ' event=launch settings_record=' + run_record['status'] +
+              (' reason=' + run_record['reason'] if 'reason' in run_record else ''), file=sys.stderr)
         os.chdir(ROOT)
         # A read-only inherited installation lease pins this game even if its
         # launcher/supervisor dies. No writable regular descriptor is admitted.
@@ -358,12 +591,18 @@ def main():
         # Stdio remains for terminals/pipes; the guard validates file redirections.
         for entry in os.listdir('/proc/self/fd'):
             fd = int(entry)
-            if fd > 2 and fd != runtime_fd:
+            if fd > 2 and fd != runtime_fd and (mirror is None or fd != mirror.fileno()):
                 try:
                     os.close(fd)
                 except OSError:
                     pass
         execution = launch.get('execution_argv', launch['argv'])
+        if mirror is not None:
+            try:
+                return wait_metadata_child(execution, environment, runtime_fd, mirror)
+            finally:
+                mirror.close()
+                install_lease.release(runtime_fd)
         os.execve(execution[0], execution, environment)
     except (ValueError, OSError, subprocess.SubprocessError) as error:
         parser.exit(1, str(error) + '\n')

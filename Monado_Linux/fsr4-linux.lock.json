@@ -1,0 +1,164 @@
+{
+  "schema": 1,
+  "abi": 2,
+  "source_repository": "Ivanprestef2/Monado-Reborn",
+  "source_commit": "3cc9eeb46dc879fe36929d13758754c429b8377b",
+  "backend_upstream": "deadinside28/bloodborne_pc",
+  "backend_commit": "0fc2921c45f8ff3900f6bfa43a299e9a4f532af4",
+  "license": "GPL-2.0-or-later",
+  "files": {
+    "third_party/fsr4_native/portable_dot.h": {
+      "bytes": 2260,
+      "sha256": "f7680a42d1291eb6790d1747207ffb3162fab485f286793c5f8e208cff69e0d8"
+    },
+    "third_party/fsr4_native/LICENSE-AMD-SDK.md": {
+      "bytes": 65770,
+      "sha256": "32357259b965d6a8001e9e508ba60eda6034027c5923a7d226ffbaff813c2bfb"
+    },
+    "third_party/fsr4_native/monado_adapter.cpp": {
+      "bytes": 3145,
+      "sha256": "1c20a6b9f72390fabf448e6b759bca68035dec3d315efe4cda247cc8a51012ad"
+    },
+    "third_party/fsr4_native/fsr411.cpp": {
+      "bytes": 47874,
+      "sha256": "a04e713d2df502670ffc08d652120082c3106826f6363ebeeb119e53bd36dfda"
+    },
+    "third_party/fsr4_native/fsr411.h": {
+      "bytes": 4324,
+      "sha256": "86bea732251837f595a33ee9980381279b74bea382ec26b445a457ed8f03066f"
+    },
+    "third_party/fsr4_native/LICENSE": {
+      "bytes": 17984,
+      "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
+    },
+    "third_party/fsr4_native/README.md": {
+      "bytes": 3180,
+      "sha256": "9d9ebbde1fbe4df00fa180183dcc86741fadfb44deaa7ed9f80c4aea196e3522"
+    },
+    "third_party/fsr4cap/amdxc64.c": {
+      "bytes": 7092,
+      "sha256": "179dc835ae6fd9c016a4e3c84c021c494f96c4fd8f13b342dd7f49984f450cb6"
+    },
+    "third_party/fsr4cap/driver_model.py": {
+      "bytes": 4670,
+      "sha256": "f42d61dfada93042f79937828178c7d3ed7ec7e0c8d716ec6c820783a4f3ee59"
+    },
+    "third_party/fsr4cap/capture.h": {
+      "bytes": 785,
+      "sha256": "0cd5fb99cc3a4acaebc9746ce3076182126eae8661975c1a416244e7b1962a81"
+    },
+    "third_party/fsr4cap/rootsig.c": {
+      "bytes": 2958,
+      "sha256": "757bcf971a5cb658cdd08d656799e4c6e51e5045b743747dd8a07cca9a31a145"
+    },
+    "third_party/fsr4cap/postpass_lds.py": {
+      "bytes": 8371,
+      "sha256": "a82f699ec1116a105f3f3d0e99bc375a50f8c9194e02c26d543d2b146e66390c"
+    },
+    "third_party/fsr4cap/fsr4cap.c": {
+      "bytes": 16181,
+      "sha256": "10893d2ab5e164eeb55dbb371918a613f7d7b316bd12272f8f0ce6bf3f6a6add"
+    },
+    "third_party/fsr4cap/dxil-spirv-class-bindings.patch": {
+      "bytes": 2320,
+      "sha256": "774ac603a5e73f97d6fdb88e8271be28d88b6cafef80a3daef62cb95d3722e30"
+    },
+    "third_party/fsr4cap/extract.py": {
+      "bytes": 14541,
+      "sha256": "10ba04e0c7bdc948f2ce65635aca2a640cbe108fa31aafe5d1e4feca6528ea06"
+    },
+    "third_party/fsr4cap/LICENSE": {
+      "bytes": 17984,
+      "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
+    },
+    "third_party/fsr4cap/README.md": {
+      "bytes": 1304,
+      "sha256": "cb48c35503471b67a129b32661b91a251e69c24673bd548db9b7152683009636"
+    },
+    "third_party/fsr4cap/capture.c": {
+      "bytes": 27496,
+      "sha256": "ab47100138e37ff521cbe3a26fdef4fcb1131b497a8b76c0a475d8aef464d8c6"
+    },
+    "third_party/fsr4cap/ffx/README.md": {
+      "bytes": 367,
+      "sha256": "dc62177513cfb27fd4b770b8c9486c6ca62f6499bb0188e9d9722c02d28ee214"
+    },
+    "third_party/fsr4cap/ffx/upscalers/include/ffx_upscale.h": {
+      "bytes": 19313,
+      "sha256": "65be36d5653eb71c10379e0204f7bb7cd6a8aeec96e6f8cffc5f59ffeb1f89bf"
+    },
+    "third_party/fsr4cap/ffx/api/include/ffx_api.h": {
+      "bytes": 10726,
+      "sha256": "e1a9d1b559eaf75f4cb401f1c43a66e2f3dc9621abfeb58b9c6fac56443177fd"
+    },
+    "third_party/fsr4cap/ffx/api/include/ffx_api_types.h": {
+      "bytes": 13636,
+      "sha256": "cc0adc0ffc804dd7cd03c39c15581b575e416383177ffe95060201d52cc0fc49"
+    },
+    "third_party/fsr4cap/ffx/api/include/ffx_api_loader.h": {
+      "bytes": 2977,
+      "sha256": "18d1901dbbc881e8131b91c65ad44bb3b4a1de6c31435d5b75236f16727ba80e"
+    },
+    "third_party/fsr4cap/ffx/api/include/dx12/ffx_api_dx12.h": {
+      "bytes": 11323,
+      "sha256": "c9afbc3c4c673723e9e5369a666f0ff54560543b5a93537f8ff453bf1c3bf530"
+    },
+    "runtime/nvn/vulkan/fsr4_api.h": {
+      "bytes": 961,
+      "sha256": "48c2153aea4e9d005c6d05279408eed16de2ff3abe2b9d28d83f886bacda8b8e"
+    }
+  },
+  "dependencies": [
+    {
+      "repository": "HansKristian-Work/dxil-spirv",
+      "commit": "7dc52786cdb1f53c54dd5c5c2698dff00ea5f0a3",
+      "path": "dxil-spirv",
+      "url": "https://codeload.github.com/HansKristian-Work/dxil-spirv/tar.gz/7dc52786cdb1f53c54dd5c5c2698dff00ea5f0a3",
+      "archive_sha256": "db61cf48a890ec1b4ece116e4b8a84ecc8c430a9b4f15c52c14472c228b1452a",
+      "archive_bytes": 1648093,
+      "files": 2349
+    },
+    {
+      "repository": "KhronosGroup/SPIRV-Headers",
+      "commit": "c63848ecf2200425511319fd8bf2c17b751e501e",
+      "path": "spirv-headers",
+      "url": "https://codeload.github.com/KhronosGroup/SPIRV-Headers/tar.gz/c63848ecf2200425511319fd8bf2c17b751e501e",
+      "archive_sha256": "e62af3ae847d3dd4b4cf87ee70a3180bd527594c9f18c20f7434224a2ab20139",
+      "archive_bytes": 568626,
+      "files": 119
+    },
+    {
+      "repository": "KhronosGroup/SPIRV-Tools",
+      "commit": "199cb207b911501ddd76dcddf100a6e21c15ef23",
+      "path": "SPIRV-Tools",
+      "url": "https://codeload.github.com/KhronosGroup/SPIRV-Tools/tar.gz/199cb207b911501ddd76dcddf100a6e21c15ef23",
+      "archive_sha256": "08b88c2111d547ec807cef2c2e27e3d0e55e08313b9faf115fbcd980c13816cd",
+      "archive_bytes": 3509096,
+      "files": 1743
+    },
+    {
+      "repository": "KhronosGroup/SPIRV-Cross",
+      "commit": "be71ee8c12cd7dc5ca8fa9581f708c2e8561fe2a",
+      "path": "SPIRV-Cross",
+      "url": "https://codeload.github.com/KhronosGroup/SPIRV-Cross/tar.gz/be71ee8c12cd7dc5ca8fa9581f708c2e8561fe2a",
+      "archive_sha256": "07b24b45d7bf190fda45c4c320479da28d0d11dfad3568340ecf9b6a388a4021",
+      "archive_bytes": 2024240,
+      "files": 4815
+    },
+    {
+      "repository": "doitsujin/dxbc-spirv",
+      "commit": "8dae2d8573af08378c6059aca3d5987da99d20b5",
+      "path": "dxbc-spirv",
+      "url": "https://codeload.github.com/doitsujin/dxbc-spirv/tar.gz/8dae2d8573af08378c6059aca3d5987da99d20b5",
+      "archive_sha256": "9d423accde3fa56b3b56fc3778a2a4308ce13a2343cd9945fc4f41899de8fee4",
+      "archive_bytes": 440072,
+      "files": 163
+    }
+  ],
+  "sdk": {
+    "commit": "7539ae8b6568ad29ed78a753404351daf3b5cca7",
+    "url": "https://raw.githubusercontent.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/7539ae8b6568ad29ed78a753404351daf3b5cca7/Kits/FidelityFX/signedbin/amd_fidelityfx_upscaler_dx12.dll",
+    "sha256": "aad4fccccb29084a655f9a4f9f613bd22c8c03fb4a0f8840148cc6543b4ccace",
+    "provider_version": "4.1.2.4555"
+  }
+}

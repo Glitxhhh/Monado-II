@@ -21,6 +21,7 @@
 #include "../platform.h"
 #include "../settings.h"
 #include "../hle.h"
+#include "frame_threshold.h"
 
 #ifdef __linux__
 #include <errno.h>
@@ -701,7 +702,9 @@ static void art_macro(uint64_t frame) {
 // [XCDE] T236: the mouse camera as a PC game's - the mouse's pixels added to the camera's yaw / pitch (0.0025 rad a pixel
 // at mouse_sens 50), no stick in between: no dead zone, curve or top speed. The game's thread, each pad read.
 static _Atomic uint64_t g_cam_direct_frame;
+static void frames30_reset(void);
 static void party_actions_reset(void) {
+    frames30_reset();
     g_art_req = -1;
     g_art_used = false;
     g_macro_buttons = 0;
@@ -742,31 +745,32 @@ static void mouse_camera(uint64_t frame) {
 // "follow while running" move when its movement component counted more than 9 frames of a condition
 // (f_70004439f0, cmp at 0x7000443b9c) - at 60 fps every ~11 frames, so followers never got past a walk and fell
 // behind (measured 2 -> 17.5 m in 200 frames at 60 fps vs a steady 6.5 m at 30).
-// g_frames_per_30: game frames per 1/30 s - the fps option at 30 / 60 (1 / 2); above (120, 144, unlimited) measured
-// on the main thread (a 60 Hz display caps a 120 setting at 60). XCDE_FRAMES30_OFF=1: off (thresholds as the game has them).
-static volatile uint32_t g_frames_per_30 = 1;
-uint32_t xcde_frames_gt(uint32_t n) { return (n + 1) * g_frames_per_30 - 1; }
+// Measure native game frames, never interpolated output. Fixed 30/60 retain
+// their exact original scaling. Fractional/high rates keep their real cadence.
+static _Atomic uint64_t g_frames30_period_ns = 33333333;
+static FrameThresholdClock g_frames30_clock;
+static void frames30_reset(void) {
+    memset(&g_frames30_clock, 0, sizeof g_frames30_clock);
+    atomic_store_explicit(&g_frames30_period_ns, 33333333, memory_order_relaxed);
+}
+uint32_t xcde_frames_gt(uint32_t n) {
+    return frame_threshold_gt(n, atomic_load_explicit(&g_frames30_period_ns, memory_order_relaxed));
+}
 static void frames30_update(uint64_t frame) {
-    static uint64_t last = ~0ull, t_last;
-    static double avg;  // (seconds per frame, smoothed)
     static int off = -1;
     if (off < 0) off = getenv("XCDE_FRAMES30_OFF") != NULL;
-    if (frame == last) return;  // (the pad is read more than once in some frames)
-    last = frame;
     int fps = g_settings.fps;
-    uint32_t k = 1;
-    if (off || fps == 30) k = 1;
-    else if (fps == 60) k = 2;
-    else {
-        uint64_t now = plat_now_ns();
-        double dt = t_last ? (now - t_last) / 1e9 : 1.0 / 60;
-        t_last = now;
-        if (dt > 0 && dt < 0.25) avg = avg ? avg * 0.95 + dt * 0.05 : dt;
-        k = avg > 0 ? (uint32_t)(1.0 / 30 / avg + 0.5) : 1;
-        if (k < 1) k = 1;
-        if (k > 8) k = 8;
+    uint64_t period;
+    if (off || fps == 30 || fps == 60) {
+        memset(&g_frames30_clock, 0, sizeof g_frames30_clock);
+        period = off || fps == 30 ? 33333333 : 16666666;
     }
-    g_frames_per_30 = k;
+    else {
+        if (g_frames30_clock.initialized && frame == g_frames30_clock.last_frame && fps == g_frames30_clock.last_fps)
+            return;
+        period = frame_threshold_sample(&g_frames30_clock, frame, plat_now_ns(), fps);
+    }
+    atomic_store_explicit(&g_frames30_period_ns, period, memory_order_relaxed);
 }
 
 // [XCDE] T240 debugger: map jump on request. The scripts' "mapJump" native (f_7000512b50, script binding table at

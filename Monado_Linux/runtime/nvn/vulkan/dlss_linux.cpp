@@ -328,6 +328,11 @@ extern "C" bool ngx_linux_evaluate(VkCommandBuffer cb, const DlssFrame *f) {
         c.width > o.width || c.height > o.height || o.width > 16384 || o.height > 16384 ||
         (f->quality == 0 && (c.width != o.width || c.height != o.height)) || c.format != VK_FORMAT_R8G8B8A8_UNORM || o.format != VK_FORMAT_R8G8B8A8_UNORM ||
         m.format != VK_FORMAT_R16G16_SFLOAT || d.format != VK_FORMAT_R32_SFLOAT) return false;
+    // [XCDE] LINUX-103: NGX supports a current-colour bias mask. Reject partial
+    // descriptors and wrong size/format before touching layouts or SDK state.
+    bool have_reactive = f->reactive.image || f->reactive.view;
+    if (have_reactive && (!f->reactive.image || !f->reactive.view || f->reactive.format != VK_FORMAT_R8_UNORM ||
+        f->reactive.width != c.width || f->reactive.height != c.height)) return false;
     if (f->recording_seq < current.last_seq) return false;
     for (auto i = retired.begin(); i != retired.end();) {
         if (i->last_seq <= f->completed_seq) { release(*i); i = retired.erase(i); } else ++i;
@@ -355,9 +360,10 @@ extern "C" bool ngx_linux_evaluate(VkCommandBuffer cb, const DlssFrame *f) {
     }
     // Direct NGX has no resource-layout field. Its sampled inputs use read-only
     // layout; restore the renderer's GENERAL invariant even after failed evaluation.
-    VkImageMemoryBarrier layouts[3]{};
-    const DlssImage *inputs[] = {&c, &m, &d};
-    for (unsigned i = 0; i < 3; i++) {
+    VkImageMemoryBarrier layouts[4]{};
+    const DlssImage *inputs[] = {&c, &m, &d, &f->reactive};
+    const unsigned input_count = have_reactive ? 4 : 3;
+    for (unsigned i = 0; i < input_count; i++) {
         layouts[i].sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
         layouts[i].srcAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
         layouts[i].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -367,11 +373,14 @@ extern "C" bool ngx_linux_evaluate(VkCommandBuffer cb, const DlssFrame *f) {
         layouts[i].image = inputs[i]->image;
         layouts[i].subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
     }
-    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, 3, layouts);
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 0, nullptr, input_count, layouts);
     auto color = resource(c, false), motion = resource(m, false), depth = resource(d, false), output = resource(o, true);
+    NVSDK_NGX_Resource_VK reactive{};
+    if (have_reactive) reactive = resource(f->reactive, false);
     NVSDK_NGX_VK_DLSS_Eval_Params eval{};
     eval.Feature.pInColor = &color; eval.Feature.pInOutput = &output;
     eval.pInDepth = &depth; eval.pInMotionVectors = &motion;
+    eval.pInBiasCurrentColorMask = have_reactive ? &reactive : nullptr;
     eval.InJitterOffsetX = f->jitter[0]; eval.InJitterOffsetY = f->jitter[1];
     eval.InRenderSubrectDimensions = {c.width, c.height};
     eval.InReset = f->reset || recreated;
@@ -380,14 +389,15 @@ extern "C" bool ngx_linux_evaluate(VkCommandBuffer cb, const DlssFrame *f) {
     eval.InPreExposure = eval.InExposureScale = 1.0f;
     current.last_seq = f->recording_seq;
     bool ok = result(NGX_VULKAN_EVALUATE_DLSS_EXT(cb, current.handle, current.params, &eval), "evaluate SR/DLAA");
-    for (auto &layout : layouts) {
+    for (unsigned i=0; i<input_count; i++) {
+        auto &layout = layouts[i];
         std::swap(layout.oldLayout, layout.newLayout);
         layout.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
         layout.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT;
     }
     VkMemoryBarrier output_barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, VK_ACCESS_SHADER_WRITE_BIT,
         VK_ACCESS_MEMORY_READ_BIT | VK_ACCESS_MEMORY_WRITE_BIT};
-    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &output_barrier, 0, nullptr, 3, layouts);
+    vkCmdPipelineBarrier(cb, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 1, &output_barrier, 0, nullptr, input_count, layouts);
     if (!ok) { retired.push_back(current); current = {}; }
     return ok;
 }

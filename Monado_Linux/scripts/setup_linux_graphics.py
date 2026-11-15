@@ -335,6 +335,7 @@ def validate_private_runtime(sysroot, lock, previous=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--offline', action='store_true')
+    parser.add_argument('--portable', action='store_true', help='use source-built GNU 2.39 SDL/media providers and a closed low-baseline runtime graph')
     args = parser.parse_args()
     lock_bytes = LOCK.read_bytes()
     lock = json.loads(lock_bytes)
@@ -378,6 +379,11 @@ def main():
             stage.rename(target)
     reject_managed_symlinks(bin_dir)
     bin_dir.mkdir(exist_ok=True)
+    if args.portable:
+        import importlib.util
+        spec = importlib.util.spec_from_file_location('_monado_setup_portable_graph', ROOT / 'scripts/setup_portable_runtime_graph.py')
+        portable = importlib.util.module_from_spec(spec); spec.loader.exec_module(portable)
+        target = portable.build_graph(target)
     # Deliberately do not mix other project/local .pc files into this sysroot.
     write_managed_text(wrapper, '#!/usr/bin/env bash\nset -euo pipefail\n' +
                        'export PKG_CONFIG_SYSROOT_DIR=' + shlex.quote(str(target)) + '\n' +

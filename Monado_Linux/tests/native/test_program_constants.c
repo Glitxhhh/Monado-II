@@ -2,6 +2,8 @@
 // against synthetic allocator/translator boundaries; no GPU, game or caches.
 #include "nvn/program_binding.h"
 #include "nvn/maxwell/shader.h"
+#include "graphics_options.h"
+#include "nvn/vulkan/bloom_policy.h"
 #include <assert.h>
 #include <setjmp.h>
 #include <stdarg.h>
@@ -35,6 +37,7 @@ typedef struct {
  ShaderInfo *vi,*fi;NvnShaderStage stages[6];
  uint64_t code[2],src[2],cmax[2],gcode,gsrc,gcmax;
  ShaderKey vkey,fkey,gkey;bool no_fs;uint64_t t_new;bool prewarmed;_Atomic int state;
+ uint8_t bloom_kind,bloom_mode;
 } Prog;
 typedef struct { uint64_t key;void*val; } HEnt;
 static struct { unsigned n;HEnt entries[64]; } prog_tab;
@@ -47,6 +50,16 @@ static uint32_t stencil_unit_mask(int stage){(void)stage;return 0;}
 static uint64_t SDL_GetTicksNS(void){return 1;}
 static void translate_program(void*p){(void)p;}
 static void run_translate(void(*fn)(void*),void*p){(void)fn;(void)p;++builds;}
+// Only the runtime option input is mocked; all bloom classification/mode/key
+// helpers below come from the production header. No game shader bytes are used.
+static int selected_bloom_mode;
+static unsigned option_reads;
+static bool change_option_after_read;
+int xcde_graphics_option(int index){
+ assert(index==GFX_BLOOM_STABILITY);option_reads++;int mode=selected_bloom_mode;
+ if(change_option_after_read){selected_bloom_mode=2;change_option_after_read=false;}
+ return mode;
+}
 #include "program_cache_source.h"
 typedef struct { Prog p;ShaderInfo*si;uint32_t local[3]; } CsProg;
 static unsigned g_cs_n;
@@ -105,6 +118,49 @@ int main(void){
  assert(p->stages[1].const_offset==32&&q->stages[1].const_offset==48);
  memset(np.stages,0,sizeof np.stages);np.stage_mask=0;
  info=checked_cbuf(1,&si,&p->stages[1],1);assert(info.range==64&&!memcmp(uploaded,blob+32,64));
+ // Positive helper contracts use the recognized hash IDs directly. These do
+ // not claim recognition of a real game blob: the fixture owns no such bytes.
+ const char *original="authored original fragment";
+ const uint64_t seed=UINT64_C(0xcbf29ce484222325);
+ uint64_t mode_keys[3];
+ for(unsigned kind=1;kind<=2;kind++){
+  uint64_t hash=kind==1?UINT64_C(0x2aa23b65117ab1a5):UINT64_C(0x0887965a4681061d);
+  assert(bloom_kind_from_hash(hash)==kind && !bloom_kind_from_hash(hash^1));
+  for(int mode=-1;mode<=3;mode++){
+   unsigned captured_mode=bloom_mode(kind,mode);
+   assert(captured_mode==(mode>=1&&mode<=2?(unsigned)mode:0));
+   if(!captured_mode)assert(bloom_source(kind,captured_mode,original)==original);
+  }
+ }
+ for(unsigned mode=0;mode<3;mode++)mode_keys[mode]=bloom_cache_identity(seed,mode);
+ assert(mode_keys[0]==seed && mode_keys[1]!=seed && mode_keys[2]!=seed && mode_keys[1]!=mode_keys[2]);
+ assert(bloom_cache_identity(seed,3)==seed);
+ for(unsigned i=0;i<300;i++)assert(bloom_cache_identity(seed,i%3)==mode_keys[i%3]);
+ assert(bloom_source(1,1,original)==monado_bloom_prefilter_box_glsl);
+ assert(bloom_source(1,2,original)==monado_bloom_prefilter_karis_glsl);
+ assert(bloom_source(2,1,original)==monado_bloom_tent_glsl && bloom_source(2,2,original)==monado_bloom_tent_glsl);
+ unsigned frozen_mode=bloom_mode(1,1);selected_bloom_mode=2;
+ assert(bloom_source(1,frozen_mode,original)==monado_bloom_prefilter_box_glsl);
+ // A complete authored unrecognized blob exercises real hashing and the real
+ // program cache across live mode changes. Unrelated programs must not acquire
+ // three shader/pipeline variants just because the global option changed.
+ unsigned char unknown[0x240];for(unsigned i=0;i<sizeof unknown;i++)unknown[i]=(unsigned char)(i*29u+7u);
+ assert(!bloom_kind(unknown,sizeof unknown) && !bloom_kind((const uint8_t*)1,0x22f));
+ NvnProgram plain={0};plain.stage_mask=3;plain.stages[0]=stage(blob,16,32);plain.stages[1]=stage(unknown,64,32);plain.stages[1].code_copy_size=sizeof unknown;
+ unsigned builds_before=builds,reads_before=option_reads;
+ selected_bloom_mode=0;change_option_after_read=true;
+ Prog*plain_program=get_program(&plain,&vk,&fk);
+ assert(plain_program && builds==builds_before+1 && option_reads==reads_before+1 && selected_bloom_mode==2);
+ assert(!plain_program->bloom_kind && !plain_program->bloom_mode);
+ for(unsigned i=0;i<300;i++){
+  selected_bloom_mode=(int)(i%3);reads_before=option_reads;
+  assert(get_program(&plain,&vk,&fk)==plain_program && builds==builds_before+1 && option_reads==reads_before+1);
+ }
+ assert(plain_program->stages[1].code_copy==unknown && plain_program->stages[1].const_offset==64);
+ memset(plain.stages,0,sizeof plain.stages);plain.stage_mask=0;
+ info=checked_cbuf(1,&si,&plain_program->stages[1],1);
+ assert(info.range==64 && !memcmp(uploaded,unknown+64,32));for(unsigned i=32;i<64;i++)assert(!uploaded[i]);
+ assert(!plain_program->bloom_kind && !plain_program->bloom_mode);
  // Compute cache re-use requires content, metadata and workgroup specialization,
  // not only a recycled guest address. Its queued pipeline owns the same stage.
  unsigned char control[0x754]={0};np=(NvnProgram){0};np.stage_mask=1u<<5;

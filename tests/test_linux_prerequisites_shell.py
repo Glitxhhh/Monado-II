@@ -96,6 +96,36 @@ exit 99
         self.assertNotIn(b'--install-deps', self.calls[split:])
         self.assertEqual(self.calls[-4:], [b'--without-dlss', b'--game-only', b'--jobs=2', b''])
 
+    def test_new_build_flags_forward_once_without_shell_evaluation(self):
+        self.python()
+        marker = self.base / 'must not be created'
+        path = '/authored/My Games/$(touch ' + str(marker) + ')/`echo literal`/runtime'
+        result = self.run_entry('--no-appimage', '--without-fsr4', '--without-fsr3', '--legacy-runtime',
+            '--reuse-game-code', path, '--runtime-bundle=' + path, '--runtime-sha256', 'a'*64)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse(marker.exists())
+        split = self.calls.index(b'CALL', 1)
+        self.assertIn(b'--game-only', self.calls[:split])
+        self.assertIn(b'--legacy-runtime', self.calls[:split])
+        self.assertNotIn(b'--no-appimage', self.calls[:split])
+        self.assertEqual(self.calls[split+5:], [b'--no-appimage', b'--without-fsr4', b'--without-fsr3', b'--legacy-runtime',
+            b'--reuse-game-code', path.encode(), ('--runtime-bundle=' + path).encode(), b'--runtime-sha256', b'a'*64, b''])
+
+    def test_fsr3_allows_explicit_framegen_without_dlss(self):
+        self.python()
+        result = self.run_entry('--without-dlss', '--framegen', '--no-appimage')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(b'--framegen', self.calls)
+
+    def test_fallback_flags_keep_readonly_plan_and_doctor_boundaries(self):
+        self.python()
+        result = self.run_entry('--install-deps', '--plan', '--static-game', '--legacy-runtime', '--without-fsr4')
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.calls.count(b'CALL'), 1)
+        self.assertNotIn(b'--install-deps', self.calls)
+        self.assertIn(b'--static-game', self.calls)
+        self.assertIn(b'--legacy-runtime', self.calls)
+
     def test_plan_with_install_flag_never_calls_doctor_or_install(self):
         self.python()
         result = self.run_entry('--install-deps', '--plan', '--jobs', '4')
@@ -150,7 +180,12 @@ exit 99
         invalid = [('--unknown',), ('--jobs',), ('--jobs', '7'), ('--jobs=0',),
                    ('--build-id', '../../outside'), ('--reuse-game',),
                    ('--build-id', '-bad'), ('--reuse-game', '-bad'),
-                   ('--reuse-game=',), ('--without-dlss', '--framegen'),
+                   ('--reuse-game=',), ('--without-dlss', '--without-fsr3', '--framegen'),
+                   ('--runtime-bundle',), ('--runtime-sha256', 'bad'),
+                   ('--runtime-bundle', '/authored/archive'), ('--runtime-sha256', 'a'*64),
+                   ('--no-appimage', '--game-only'),
+                   ('--static-game', '--reuse-game-code', '/authored/game'),
+                   ('--reuse-game', '/authored/game', '--reuse-game-code', '/authored/game'),
                    ('--game-only', '--reuse-game', '/authored/old')]
         for args in invalid:
             with self.subTest(args=args):

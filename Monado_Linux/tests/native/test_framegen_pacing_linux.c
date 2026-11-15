@@ -96,7 +96,7 @@ int main(void) {
     for(unsigned i=0;i<sizeof targets/sizeof*targets;i++) {
         float measured=40.f,interval=fg_pacing_interval_ms(measured,targets[i]);
         assert(measured==40.f&&fg_pacing_deadline(1000,interval,&deadline)&&deadline==1000+halves[i]);cases++;
-        assert(fg_pacing_interval_ms(4.f,targets[i])==4.f);cases++;
+        assert(fg_pacing_interval_ms(4.f,targets[i])==1000.f/targets[i]);cases++;
     }
     float world=fg_pacing_interval_ms(40.f,165),cutscene=fg_pacing_interval_ms(40.f,30);
     assert(cutscene>world&&fg_pacing_interval_ms(40.f,165)==world);cases++;
@@ -114,10 +114,52 @@ int main(void) {
     double old_period=16.,bounded_period=16.;
     for(unsigned i=0;i<32;i++) {
         float paced=fg_pacing_interval_ms((float)bounded_period,60);
-        assert(paced<=1000.f/60.f&&paced<=bounded_period);
+        assert(paced==1000.f/60.f);
         old_period=12.+old_period*.5;bounded_period=12.+paced*.5;
     }
     assert(old_period>23.99&&bounded_period<=20.334&&bounded_period>20.3);cases++;
+    // Persistent pair deadlines preserve output phase across early/jittery work.
+    FgPacingClock schedule={0};FgPacingPlan plan={0};
+    assert(!fg_pacing_schedule(NULL,1000,16,&plan));cases++;
+    assert(!fg_pacing_schedule(&schedule,0,16,&plan));cases++;
+    assert(!fg_pacing_schedule(&schedule,1000,NAN,&plan));cases++;
+    assert(!fg_pacing_schedule(&schedule,1000,16,NULL));cases++;
+    assert(fg_pacing_schedule(&schedule,1000000000,16,&plan));
+    assert(plan.generated_ns==1000000000&&plan.real_ns==1008000000&&!plan.rebased);cases++;
+    fg_pacing_observe(&schedule,plan.generated_ns);fg_pacing_observe(&schedule,plan.real_ns);
+    assert(fg_pacing_schedule(&schedule,1010000000,16,&plan));
+    assert(plan.generated_ns==1016000000&&plan.real_ns==1024000000&&!plan.rebased);cases++;
+    // A late output or oversleep cannot be repaid with a catch-up burst.
+    fg_pacing_observe(&schedule,1029000000);
+    assert(fg_pacing_output_deadline(&schedule,1030000000)==1037000000);cases++;
+    assert(fg_pacing_schedule(&schedule,1030000000,16,&plan));
+    assert(plan.generated_ns==1037000000&&plan.real_ns==1045000000);cases++;
+    // Rebase on a long pause, a period change or a backwards clock.
+    fg_pacing_observe(&schedule,1045000000);
+    assert(fg_pacing_schedule(&schedule,1600000000,16,&plan)&&plan.rebased&&plan.generated_ns==1600000000);cases++;
+    fg_pacing_observe(&schedule,plan.real_ns);
+    assert(fg_pacing_schedule(&schedule,1610000000,32,&plan)&&plan.rebased&&plan.generated_ns==1624000000);cases++;
+    fg_pacing_observe(&schedule,plan.real_ns);
+    assert(fg_pacing_schedule(&schedule,1000000000,32,&plan)&&plan.rebased&&plan.generated_ns==1000000000);cases++;
+    fg_pacing_observe(&schedule,0);assert(!schedule.active);cases++;
+    assert(!fg_pacing_schedule(&schedule,UINT64_MAX-1000,16,&plan));cases++;
+    schedule=(FgPacingClock){.last_output_ns=UINT64_MAX-1,.half_ns=2,.active=true};
+    assert(!fg_pacing_output_deadline(&schedule,1));cases++;
+    fg_pacing_clock_reset(&schedule);assert(!schedule.active&&!schedule.last_output_ns&&!schedule.next_pair_ns);cases++;
+    // Synthetic 90-to-180 and fractional 29.97-to-59.94 timelines are exact
+    // scheduling arithmetic, not measured gameplay or a claim of physical scanout.
+    const float bases[]={90.f,29.97f};
+    for(unsigned b=0;b<2;b++){
+        uint64_t origin=4000000000ull,last=0,half=(uint64_t)((double)(1000.f/bases[b])*500000.);
+        for(unsigned i=0;i<12;i++){
+            uint64_t ready=origin+i*2*half-(i?half/2:0);
+            assert(fg_pacing_schedule(&schedule,ready,1000.f/bases[b],&plan));
+            assert(!last||plan.generated_ns-last==half);
+            assert(plan.real_ns-plan.generated_ns==half);
+            fg_pacing_observe(&schedule,plan.generated_ns);fg_pacing_observe(&schedule,plan.real_ns);last=plan.real_ns;
+        }
+        fg_pacing_clock_reset(&schedule);cases++;
+    }
     printf("MODEL synchronous_feedback_ms=%.6f bounded_pacing_ms=%.6f; scheduling arithmetic only, no game-performance claim\n",old_period,bounded_period);
     printf("actual pacing helper: %u deterministic cases passed\n",cases);
 #else

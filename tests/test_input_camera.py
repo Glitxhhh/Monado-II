@@ -99,6 +99,7 @@ class InputCamera(unittest.TestCase):
     def test_other_controller_cannot_switch_selected_party(self): self.scenario('wrong-device')
     def test_disconnect_cancels_gesture_and_new_controller_recovers(self): self.scenario('disconnect')
     def test_concurrent_overlay_cancellation_cannot_republish_held_camera(self): self.scenario('concurrent-cancellation')
+    def test_vibration_selected_virtual_pad_and_lifecycle_stop(self): self.scenario('rumble-lifecycle')
 
 
 if __name__ == '__main__':

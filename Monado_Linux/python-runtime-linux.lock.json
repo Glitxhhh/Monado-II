@@ -1,0 +1,61 @@
+{
+  "schema": 1,
+  "name": "CPython",
+  "version": "3.14.4",
+  "minimum_glibc": "2.39",
+  "filename": "Python-3.14.4.tar.xz",
+  "url": "https://www.python.org/ftp/python/3.14.4/Python-3.14.4.tar.xz",
+  "bytes": 23855332,
+  "sha256": "d923c51303e38e249136fc1bdf3568d56ecb03214efdef48516176d3d7faaef8",
+  "license": "PSF-2.0 and bundled component notices",
+  "upstream_release": "https://www.python.org/downloads/release/python-3144/",
+  "development_packages": [
+    {
+      "package": "libbz2-dev",
+      "version": "1.0.8-5.1",
+      "architecture": "amd64",
+      "filename": "libbz2-dev_1.0.8-5.1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/b/bzip2/libbz2-dev_1.0.8-5.1_amd64.deb",
+      "size": 33604,
+      "sha256": "26f4b10a9e6e4fb7f4a2b34f6ef50eb80e8b43af2d2206aaf14237667472b2e0"
+    },
+    {
+      "package": "libsqlite3-dev",
+      "version": "3.45.1-1ubuntu2",
+      "architecture": "amd64",
+      "filename": "libsqlite3-dev_3.45.1-1ubuntu2_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/s/sqlite3/libsqlite3-dev_3.45.1-1ubuntu2_amd64.deb",
+      "size": 910736,
+      "sha256": "d23577c43936fedd8c4fa1337a6e960a6e71e94ac164d7a15c46ea96bf21265d"
+    },
+    {
+      "package": "libssl-dev",
+      "version": "3.0.13-0ubuntu3",
+      "architecture": "amd64",
+      "filename": "libssl-dev_3.0.13-0ubuntu3_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/o/openssl/libssl-dev_3.0.13-0ubuntu3_amd64.deb",
+      "size": 2406170,
+      "sha256": "7135fe0e6a78b15fe4e30660765b67887ae33b36a7902293c2d7fddc09e13397"
+    },
+    {
+      "package": "libzstd-dev",
+      "version": "1.5.5+dfsg2-2build1",
+      "architecture": "amd64",
+      "filename": "libzstd-dev_1.5.5+dfsg2-2build1_amd64.deb",
+      "url": "https://archive.ubuntu.com/ubuntu/pool/main/libz/libzstd/libzstd-dev_1.5.5+dfsg2-2build1_amd64.deb",
+      "size": 363838,
+      "sha256": "2692254b78b0beeb284cda9bd34883ba470881475bc7c0eefbef479404bcfd23"
+    }
+  ],
+  "development_signed_index_sha256": "cdb2f31d809f589719a53c6ad15f255b27569c4059542ada282aaa21b8e164b0",
+  "development_requested": [
+    "libffi-dev",
+    "libssl-dev",
+    "libbz2-dev",
+    "liblzma-dev",
+    "zlib1g-dev",
+    "libsqlite3-dev",
+    "uuid-dev",
+    "libzstd-dev"
+  ]
+}

@@ -110,7 +110,7 @@ def main():
             state = out / 'state'
             launch = run_linux.plan(args.executable, state, precompile=True)
             build = json.loads((Path(launch['argv'][0]).parent / 'receipt.json').read_text())
-            if build.get('status') != 'passed' or build.get('precompile_protocol') != 1 or not build.get('generated'):
+            if build.get('status') != 'passed' or build.get('precompile_protocol') != 1 or not (build.get('generated') or build.get('split_game') and build.get('game_library')):
                 raise RuntimeError('native compiler requires a passed generated build with precompile protocol 1')
             receipt['game_build_receipt_sha256'] = digest(Path(launch['argv'][0]).parent / 'receipt.json')
             receipt['game_before'] = {'path': launch['argv'][0], 'sha256': launch['binary_sha256']}

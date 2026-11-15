@@ -206,6 +206,11 @@ def load_policy(port, sysroot, *, expected_lock=None, expected_policy=None):
         if digest(lock_path) != lock_tag:
             raise RuntimeDependencyError('Runtime sysroot does not match the dependency lock')
         policy = lock.get('runtime')
+        if marker.get('portable_baseline') is not None:
+            path = port / 'scripts/setup_portable_runtime_graph.py'
+            spec = importlib.util.spec_from_file_location('_monado_checked_portable_graph', path)
+            portable = importlib.util.module_from_spec(spec); spec.loader.exec_module(portable)
+            policy = portable.verify_marker(port, sysroot, marker)
     else:
         policy = marker.get('runtime_policy')
     marked = marker.get('runtime_policy_sha256')

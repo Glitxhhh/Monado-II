@@ -35,8 +35,8 @@ _runtime_spec.loader.exec_module(runtime_check)
 RUNTIME = '''loader dispatch kernel ipc fnprof platform/linux platform/linux_state_guard services/fs services/romfs_virtual
 services/am services/acc services/time services/hid_set services/kbicons services/misc services/audio services/hwopus
 hle/heaps hle/pl hle/vi hle/nvn_boot hle/fibers hle/fiber_context_linux hle/input hle/party hle/bindings hle/movie
-hle/framepace hle/title_exit hle/desktop_exit_caption hle/system_exit hle/expanded_saves hle/expanded_save_scan
-hle/quickstep_slot hle/quickstep_save hle/quickstep_native hle/quickstep_picker hle/quickstep_stats hle/quickstep_stats_ui hle/quickstep_ui_memory hle/cheats_rewards hle/cheats_combat host/stubs host/settings_ini host/stubs_gfx host/gamelib_static host/main_boot
+hle/framepace hle/graphics hle/foliage_distance hle/title_exit hle/desktop_exit_caption hle/system_exit hle/expanded_saves hle/expanded_save_scan
+hle/quickstep_slot hle/quickstep_save hle/quickstep_native hle/quickstep_picker hle/quickstep_stats hle/quickstep_stats_ui hle/quickstep_ui_memory hle/cheats_rewards hle/cheats_combat host/stubs host/settings_ini host/stubs_gfx host/xcde_aspect host/gamelib_static host/main_boot
 diag/diag diag/sampler diag/watchdog diag/crashdump paths'''.split()
 NVN = '''astc cmdbuf formats maxwell/translate objects output_scale smaa_data tegra texpatch
 vulkan/device vulkan/exec vulkan/host_import vulkan/driver_heap vulkan/radv_dcc_compat vulkan/precompile vulkan/shaders vulkan/textures vulkan/temporal'''.split()
@@ -89,8 +89,9 @@ def check_correctness_macros(macros):
         raise RuntimeError('compiler disables assertions or enables fast math')
 
 
-def authored_sources(with_dlss=False, with_framegen=False):
-    sources = [ROOT / ('runtime/' + n + '.c') for n in RUNTIME] + [ROOT / ('runtime/nvn/' + n + '.c') for n in NVN] + [ROOT / n for n in CPP]
+def authored_sources(with_dlss=False, with_framegen=False, split_game=False):
+    units = [n if n != 'host/gamelib_static' or not split_game else 'gamelib' for n in RUNTIME]
+    sources = [ROOT / ('runtime/' + n + '.c') for n in units] + [ROOT / ('runtime/nvn/' + n + '.c') for n in NVN] + [ROOT / n for n in CPP]
     if with_dlss:
         sources.append(ROOT / 'runtime/nvn/vulkan/dlss_linux.cpp')
     if with_framegen:
@@ -136,9 +137,14 @@ def source_snapshot():
     # dependency identities are separate; this is not a full transitive SDK lock.
     names = [ROOT / 'scripts/build_linux.py', ROOT / 'scripts/linux_runtime_check.py',
              ROOT / 'scripts/linux_runtime_graph.py', ROOT / 'graphics-deps-linux.lock.json',
-             ROOT / 'requirements-linux.lock', ROOT / 'tools/gen_smaa_inc.py',
+             ROOT / 'requirements-linux.lock', ROOT / 'tools/gen_smaa_inc.py', ROOT / 'tools/gen_all.py',
              ROOT / 'dlss-linux.lock.json', ROOT / 'scripts/setup_linux_dlss.py',
-             ROOT / 'fsr-linux.lock.json', ROOT / 'scripts/setup_linux_fsr.py']
+             ROOT / 'fsr-linux.lock.json', ROOT / 'scripts/setup_linux_fsr.py', ROOT / 'scripts/setup_linux_fsr3.py', ROOT / 'scripts/setup_linux_fsr4.py', ROOT / 'fsr4-linux.lock.json',
+             ROOT / 'scripts/setup_present_observer_linux.py',
+             ROOT / 'scripts/present_observer_manifest.py', ROOT / 'scripts/gamecode_identity.py',
+             ROOT / 'scripts/setup_linux_graphics.py', ROOT / 'portable-baseline-linux.lock.json',
+             ROOT / 'scripts/setup_portable_baseline.py', ROOT / 'scripts/build_portable_dependencies.py',
+             ROOT / 'scripts/setup_portable_runtime_graph.py']
     for dirname in ('runtime', 'third_party'):
         names += [p for p in (ROOT / dirname).rglob('*') if p.is_file() and p.suffix in ('.c', '.cpp', '.h', '.hpp', '.inc', '.hlsl')]
     icon = ROOT / 'local_assets/monado-icon.png'
@@ -249,17 +255,43 @@ class Builder:
                       '-Iruntime/nvn/vulkan', '-Ithird_party/imgui', '-Ithird_party/imgui/backends',
                       '-Ithird_party/streamline/include', '-Ithird_party/smaa/Textures', '-I' + str(self.output / 'inc'),
                       '-DGAMELIB_ID="linux-dev"', *self.cflags]
+        if (self.runtime_policy or {}).get('minimum_glibc') == '2.39' or getattr(self.args, 'split_game', False):
+            self.flags += ['-target', 'x86_64-linux-gnu.2.39']
+            self.receipt['glibc_target'] = '2.39'
+        self.receipt['split_game'] = bool(getattr(self.args, 'split_game', False))
+        if self.receipt['split_game']:
+            spec = importlib.util.spec_from_file_location('monado_gamecode_identity', ROOT / 'scripts/gamecode_identity.py')
+            identity_module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(identity_module)
+            abi = identity_module.identity(ROOT, self.receipt['dependencies']['compiler_wrappers'])
+            self.receipt['gamecode_abi'] = abi
+            self.flags = [x for x in self.flags if not x.startswith('-DGAMELIB_ID=')]
+            self.flags += ['-DGAMELIB_ID="' + abi['id'] + '"', '-fPIC', '-fvisibility=default']
         # [XCDE] LINUX-013: explicit passive developer trace, absent in normal builds.
         self.receipt['foley_trace'] = self.args.foley_trace
         if self.args.foley_trace:
             self.flags += ['-DXCDE_FOLEY_TRACE=1']
         self.receipt['dlss_enabled'] = bool(getattr(self.args, 'dlss', False))
         self.receipt['precompile_protocol'] = 1  # [XCDE] LINUX-018 checked supervisor/backend contract
+        self.receipt['cuda_task_metadata_protocol'] = 1  # [XCDE] LINUX-099: scoped native-child compatibility
         if self.receipt['dlss_enabled']:
             self.setup_dlss()
+        self.receipt['fsr3_enabled'] = bool(getattr(self.args, 'fsr3', False))
+        if self.receipt['fsr3_enabled']:
+            self.setup_fsr3()
+        self.receipt['fsr4_enabled'] = bool(getattr(self.args, 'fsr4', False))
+        if self.receipt['fsr4_enabled']:
+            self.setup_fsr4()
         self.receipt['framegen_enabled'] = bool(getattr(self.args, 'framegen', False))
         if self.receipt['framegen_enabled']:
             self.setup_framegen()
+        # [XCDE] LINUX-099: authored optional driver-output counter companion.
+        # It is built locally, never linked into or executed by this builder.
+        spec = importlib.util.spec_from_file_location('monado_present_observer_build',
+            ROOT / 'scripts/setup_present_observer_linux.py')
+        observer = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(observer)
+        observer.build(self)
         for name, compiler, language in (('cc-predefines', self.cc, 'c'), ('cxx-predefines', self.cxx, 'c++')):
             record, macros = self.run(name, [compiler, *self.flags, '-dM', '-E', '-x', language, '/dev/null'])
             if record['exit']:
@@ -352,6 +384,107 @@ class Builder:
             self.copy_runtime_resource(icon, 'icon.png', expected)
         self.save()
 
+    def setup_fsr3(self):
+        spec = importlib.util.spec_from_file_location('monado_setup_linux_fsr3', ROOT / 'scripts/setup_linux_fsr3.py')
+        module = importlib.util.module_from_spec(spec)
+        # The authored FSR3 recipe imports its adjacent shared SDK recipe.
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        try:
+            spec.loader.exec_module(module)
+            dependency = module.verify_existing()
+        finally:
+            sys.path.pop(0)
+        # The generated SDK headers contain the audited Linux visibility fix;
+        # they must precede the inherited Win32 third_party/ffx_api headers.
+        self.flags.insert(0, '-I' + dependency['header_dir'])
+        self.flags += ['-DXCDE_LINUX_FSR3=1']
+        self.receipt['dependencies']['fsr3'] = dependency
+        self.copy_runtime_resource(Path(dependency['library_path']), 'libmonado-fsr3.so', dependency['library_sha256'])
+        self.copy_runtime_resource(Path(dependency['license_path']), 'AMD-FidelityFX-LICENSE.txt', dependency['license_sha256'])
+        self.save()
+
+    def setup_fsr4(self):
+        sys.path.insert(0, str(ROOT / 'scripts'))
+        try:
+            import setup_linux_fsr4 as module
+            dependency = module.verify_existing()
+        finally:
+            sys.path.pop(0)
+        self.flags += ['-DXCDE_LINUX_FSR4=1']
+        self.receipt['dependencies']['fsr4'] = dependency
+        for name, row in dependency['runtime_resources'].items():
+            self.copy_runtime_resource(Path(row['path']), name, row['sha256'])
+        self.save()
+
+    def setup_prebuilt(self, payload):
+        """Bind an imported authored runtime to newly compiled local game code.
+
+        The importer supplies data only. We independently recheck every byte,
+        native-source closure, requested feature and guest ABI before copying.
+        No imported executable is run during this operation.
+        """
+        payload = Path(payload).absolute()
+        if payload != payload.resolve() or payload.is_symlink() or not payload.is_dir():
+            raise ValueError('prebuilt runtime payload must be an ordinary directory')
+        manifest = json.loads((payload / 'manifest.json').read_text())
+        old = manifest.get('build_receipt')
+        if old is None:
+            old = json.loads((payload / 'receipt.json').read_text())
+        if (manifest.get('schema') != 1 or not isinstance(old, dict) or old.get('status') != 'passed'
+                or old.get('split_game') is not True or old.get('sources_before') != source_snapshot()
+                or old.get('sources_before') != old.get('sources_after')):
+            raise ValueError('prebuilt runtime does not match the checked native source closure')
+        spec = importlib.util.spec_from_file_location('monado_gamecode_prebuilt_identity', ROOT / 'scripts/gamecode_identity.py')
+        identity_module = importlib.util.module_from_spec(spec); spec.loader.exec_module(identity_module)
+        abi = identity_module.identity(ROOT, self.receipt['dependencies']['compiler_wrappers'])
+        if manifest.get('abi_id') != abi['id'] or old.get('gamecode_abi', {}).get('id') != abi['id']:
+            raise ValueError('prebuilt runtime guest ABI/toolchain differs')
+        for name in ('dlss', 'fsr3', 'fsr4', 'framegen'):
+            if old.get(name + '_enabled', False) is not bool(getattr(self.args, name, False)):
+                raise ValueError('prebuilt runtime feature differs: ' + name)
+        self.receipt.update(split_game=True, gamecode_abi=abi, assertions_enabled=True,
+            prebuilt_runtime={'manifest_sha256': digest(payload / 'manifest.json'), 'path': str(payload)},
+            dlss_enabled=old.get('dlss_enabled', False), fsr3_enabled=old.get('fsr3_enabled', False), fsr4_enabled=old.get('fsr4_enabled', False),
+            framegen_enabled=old.get('framegen_enabled', False),
+            precompile_protocol=old.get('precompile_protocol'), cuda_task_metadata_protocol=old.get('cuda_task_metadata_protocol'))
+        record, flags = self.run('prebuilt-pkg-cflags', [ROOT / '.deps/bin/pkg-config-graphics', '--cflags', *PACKAGES])
+        if record['exit']:
+            raise RuntimeError('prebuilt local companion development flags unavailable')
+        self.cflags = shlex.split(flags)
+        self.flags = [*identity_module.GUEST_FLAGS, '-I' + str(ROOT / 'runtime'), *self.cflags, '-DGAMELIB_ID="' + abi['id'] + '"']
+        self.receipt['glibc_target'] = '2.39'
+        self.prebuilt_executable = self.output / 'xcde-linux.partial'
+        accepted = old.get('executable', {})
+        binary = payload / 'xcde-linux'
+        if binary.is_symlink() or not binary.is_file() or digest(binary) != accepted.get('sha256'):
+            raise ValueError('prebuilt authored runtime bytes differ')
+        with binary.open('rb') as src, self.prebuilt_executable.open('xb') as dst:
+            shutil.copyfileobj(src, dst)
+        self.prebuilt_executable.chmod(0o755)
+        for name, row in old.get('runtime_resources', {}).items():
+            if name in ('lasgame.so', 'lasgame.so.id'):
+                continue
+            if Path(name).name != name:
+                raise ValueError('invalid prebuilt runtime companion')
+            self.copy_runtime_resource(payload / name, name, row['sha256'])
+        required = manifest.get('required_local_resources', {})
+        nvidia = {'libmonado-ngx.so', 'libnvidia-ngx-dlss.so.310.9.1', 'NVIDIA-DLSS-LICENSE.txt'}
+        fsr4_resources = {'libmonado-fsr4.so', 'FSR4-GPL-2.0-or-later.txt', 'FSR4-AMD-SDK-LICENSE.md', 'FSR4-component-source.tar.gz'}
+        if self.receipt['fsr4_enabled'] and fsr4_resources.intersection(required):
+            self.setup_fsr4()
+        if set(required) - nvidia - fsr4_resources - {'icon.png'}:
+            raise ValueError('runtime bundle requires unprepared local resources: ' + ', '.join(sorted(set(required) - nvidia - fsr4_resources - {'icon.png'})))
+        if self.receipt['dlss_enabled'] and not nvidia.issubset(self.receipt.get('runtime_resources', {})):
+            # Closed-source companions are intentionally absent from ordinary
+            # transport. Bind the current locally verified official SDK and
+            # authored loader recipe; never substitute an unverified .so.
+            self.setup_dlss()
+        elif 'icon.png' in required:
+            source = ROOT / 'local_assets/monado-icon.png'
+            self.copy_runtime_resource(source, 'icon.png', required['icon.png']['sha256'])
+        self.receipt['runtime_link_objects'] = old.get('runtime_link_objects', {})
+        self.save()
+
     def setup_framegen(self):
         # [XCDE] LINUX-020: offline verification only; dependency setup is a separate explicit build.
         import importlib.util
@@ -375,17 +508,100 @@ class Builder:
             raise RuntimeError('selected extracted DE 2.0.0 input failed its checker')
         self.receipt['input'] = {'path': str(selected.resolve()), 'exefs': {
             p.name: digest(p) for p in sorted((selected / 'exefs').iterdir()) if p.is_file()}}
+        if self.receipt.get('split_game') and self.args.generated is not None:
+            generated_root = self.args.generated.absolute()
+            marker = generated_root / '.monado-generation.json'
+            if marker.is_symlink() or not marker.is_file():
+                raise ValueError('split game code requires a content-bound generation receipt; regenerate with current tools/gen_all.py')
+            stamp = json.loads(marker.read_text())
+            parameters = {'simd': 'c', **{name: digest(ROOT / relative) for name, relative in (
+                ('profile', 'games/xcde/profile.json'), ('patches', 'games/xcde/patches.py'), ('hle', 'games/xcde/hle_symbols.txt'))}}
+            expected = {p.relative_to(generated_root).as_posix(): digest(p) for p in generated_sources(generated_root)}
+            if (stamp.get('schema') != 1 or stamp.get('sources') != self.receipt['gamecode_abi']['sources']
+                    or stamp.get('parameters') != parameters or stamp.get('generated') != expected
+                    or stamp.get('input_sha256') != {name: self.receipt['input']['exefs'][name] for name in ('main', 'sdk')}):
+                raise ValueError('generated game code does not match current content/ABI/input; regenerate before building')
+            self.receipt['generation_receipt_sha256'] = digest(marker)
+        self.save()
+
+    def reuse_game_code(self, executable):
+        """Reuse only an owned, receipted library with the same ABI and input."""
+        spec = importlib.util.spec_from_file_location('_monado_reused_library_runner', ROOT / 'scripts/run_linux.py')
+        runner = importlib.util.module_from_spec(spec); spec.loader.exec_module(runner)
+        executable = Path(executable).absolute()
+        runner.runtime_check.native_file(executable)
+        # The normal installation binding controls which earlier payloads may
+        # be consumed. Never search another installation or a human save path.
+        runner.install_layout.build_port(ROOT, executable)
+        old_path = executable.parent / 'receipt.json'
+        if old_path.is_symlink() or old_path.stat().st_size > 8 * 1024 * 1024:
+            raise ValueError('reused library receipt must be bounded and ordinary')
+        old = json.loads(old_path.read_text())
+        if (old.get('status') != 'passed' or old.get('split_game') is not True
+                or old.get('executable', {}).get('sha256') != digest(executable)
+                or old.get('gamecode_abi') != self.receipt['gamecode_abi']
+                or old.get('input', {}).get('exefs') != self.receipt['input']['exefs']):
+            raise ValueError('reused game code ABI/input/runtime receipt differs; regenerate locally')
+        runner.verify_runtime_resources(executable, old)
+        library = executable.parent / 'lasgame.so'
+        identifier = executable.parent / 'lasgame.so.id'
+        row = old.get('game_library', {})
+        if (identifier.is_symlink() or not identifier.is_file() or digest(identifier) != row.get('id_sha256')
+                or identifier.read_text() != self.receipt['gamecode_abi']['id'] + '\n'
+                or row.get('sha256') != digest(library)):
+            raise ValueError('reused game library or ABI marker differs from its receipt')
+        self.copy_runtime_resource(library, 'lasgame.so', row['sha256'])
+        target_id = self.output / 'lasgame.so.id'
+        target_id.write_text(identifier.read_text())
+        self.receipt['game_library'] = {'path': str(self.output / 'lasgame.so'), 'sha256': row['sha256'],
+            'abi_id': self.receipt['gamecode_abi']['id'], 'id_path': str(target_id), 'id_sha256': digest(target_id)}
+        self.receipt['reused_game_code'] = {'source_runtime': str(executable), 'receipt_sha256': digest(old_path),
+            'library_sha256': row['sha256'], 'input_exefs': self.receipt['input']['exefs']}
         self.save()
 
     def link(self):
         temporary = self.output / 'xcde-linux.partial'
-        objects = [self.receipt['objects'][name]['path'] for name in sorted(self.receipt['objects'])]
-        record, _ = self.run('link-graphics', [self.cxx, '-march=x86_64_v2', *objects,
-                                             *self.libs, '-o', temporary], timeout=300)
-        if record['exit']:
-            self.receipt['errors'].append('graphics link failed; see link-graphics stderr')
-            self.save()
-            return None
+        objects = [self.receipt['objects'][name]['path'] for name in sorted(self.receipt['objects'])
+                   if not self.receipt.get('split_game') or name not in self.receipt['generated']]
+        if self.receipt.get('split_game') and self.receipt['generated']:
+            entry = ROOT / 'runtime/host/gamelib_entry_linux.c'
+            if self.compile(entry) is None:
+                raise RuntimeError('game-code table entry compilation failed')
+            game_objects = [self.receipt['objects'][name]['path'] for name in sorted(self.receipt['generated'])]
+            game_objects.append(self.receipt['objects'][str(entry.relative_to(ROOT))]['path'])
+            export_map = self.output / 'inc/gamecode-exports.map'
+            export_map.write_text('{ global: lasgame_tables; local: *; };\n')
+            library = self.output / 'lasgame.so'
+            record, _ = self.run('link-game-library', [self.cc, '-target', 'x86_64-linux-gnu.2.39', '-shared', *game_objects, '-lm', '-pthread',
+                '-Wl,-z,noexecstack', '-Wl,--version-script,' + str(export_map), '-o', library], timeout=300)
+            if record['exit']:
+                raise RuntimeError('local game-code shared library link failed')
+            id_file = self.output / 'lasgame.so.id'
+            id_file.write_text(self.receipt['gamecode_abi']['id'] + '\n')
+            self.receipt['game_library'] = {'path': str(library), 'sha256': digest(library),
+                'abi_id': self.receipt['gamecode_abi']['id'], 'id_path': str(id_file), 'id_sha256': digest(id_file)}
+            self.receipt.setdefault('runtime_resources', {})[library.name] = {'path': str(library),
+                'bytes': library.stat().st_size, 'sha256': digest(library)}
+        if not getattr(self, 'prebuilt_executable', None):
+            self.receipt['runtime_link_objects'] = {name: row['object_sha256'] for name, row in self.receipt['objects'].items()
+                if name not in self.receipt['generated'] and name != 'runtime/host/gamelib_entry_linux.c'}
+            target_flags = ['-target', 'x86_64-linux-gnu.2.39'] if self.receipt.get('glibc_target') == '2.39' else []
+            record, _ = self.run('link-graphics', [self.cxx, *target_flags, '-march=x86_64_v2', *objects,
+                                                 *self.libs, '-o', temporary], timeout=300)
+            if record['exit']:
+                self.receipt['errors'].append('graphics link failed; see link-graphics stderr')
+                self.save()
+                return None
+        if self.receipt.get('game_library'):
+            # Every non-system import of local game code must exist in the
+            # selected authored runtime; reject a mismatched ABI before play.
+            _, exported = self.run('runtime-exports', ['/usr/bin/nm', '-D', '--defined-only', temporary])
+            _, imported = self.run('game-library-imports', ['/usr/bin/nm', '-D', '--undefined-only', self.output / 'lasgame.so'])
+            names = {row.split()[-1].split('@')[0] for row in exported.splitlines() if row.split()}
+            missing = [row.split()[-1] for row in imported.splitlines() if row.split() and row.split()[0] == 'U'
+                       and '@' not in row.split()[-1] and row.split()[-1] not in names]
+            if missing:
+                raise RuntimeError('game library imports absent from runtime: ' + ', '.join(missing))
         with temporary.open('rb') as stream:
             header = stream.read(64)
         if len(header) < 64 or header[:6] != b'\x7fELF\x02\x01' or int.from_bytes(header[18:20], 'little') != 62:
@@ -409,6 +625,8 @@ class Builder:
         extra = ['-std=c++17'] if source.suffix == '.cpp' else []
         if relative == 'runtime/host/main_boot.c':
             extra += ['-DXCDE_GFX']
+        if self.receipt.get('split_game') and (relative in self.receipt.get('generated', {}) or relative == 'runtime/host/gamelib_entry_linux.c'):
+            extra += ['-fvisibility=hidden']
         if relative == 'runtime/kernel.c':
             # [XCDE] LINUX-070: XCDE_GFX is entry-file-only. Keep the native
             # heap hook explicit without changing standalone kernel fixtures.
@@ -432,6 +650,11 @@ class Builder:
     def finish(self, error=None):
         after = source_snapshot()
         self.receipt['sources_after'] = after
+        if self.receipt.get('split_game') and self.receipt.get('gamecode_abi'):
+            spec = importlib.util.spec_from_file_location('_monado_final_game_abi', ROOT / 'scripts/gamecode_identity.py')
+            identity_module = importlib.util.module_from_spec(spec); spec.loader.exec_module(identity_module)
+            if identity_module.identity(ROOT, self.receipt['dependencies']['compiler_wrappers']) != self.receipt['gamecode_abi']:
+                self.receipt['errors'].append('guest generator/ABI changed during native build')
         for name, expected in self.receipt['generated'].items():
             try:
                 unchanged = digest(ROOT / name) == expected
@@ -478,15 +701,27 @@ def main():
     parser.add_argument('--keep-going', action='store_true', help='compile audit: retain all failures; never accepts a failed build')
     parser.add_argument('--foley-trace', action='store_true', help='bounded local diagnostic for grass/footstep investigation; no gameplay correction')
     parser.add_argument('--dlss', action='store_true', help='offline-verify pinned NVIDIA SDK and build native SR/DLAA provider plus private loader module; never executes vendor code')
+    parser.add_argument('--fsr4', action='store_true', help='include the optional source-built FSR4 native module; models remain local and separately prepared')
+    parser.add_argument('--fsr3', action='store_true', help='offline-verify the source-built native FSR3 upscaler and include its provider')
+    parser.add_argument('--split-game', action='store_true', help='build a reusable authored runtime and a separately identified local game-code shared library')
+    parser.add_argument('--prebuilt-runtime', type=Path, help='verified data-only imported runtime; locally compile game code only')
+    parser.add_argument('--runtime-only', action='store_true', help='link an authored split runtime template with no game code or game input')
+    parser.add_argument('--reuse-game-code', type=Path, help='reuse a compatible receipted local game library after verifying exact input and ABI')
     parser.add_argument('--framegen', action='store_true', help='offline-verify the native FidelityFX dependency and include optional interpolation alongside DLSS')
     args = parser.parse_args()
     if sys.platform != 'linux' or platform.machine() != 'x86_64':
         parser.error('native Linux x86-64 required')
     if args.generated and args.only:
         parser.error('--only cannot be combined with a complete link')
-    if args.framegen and not args.dlss:
-        parser.error('initial Linux frame generation requires --dlss')
-    available = authored_sources(with_dlss=args.dlss, with_framegen=args.framegen)
+    if args.prebuilt_runtime and (not args.split_game or not (args.generated or args.reuse_game_code) or args.only):
+        parser.error('--prebuilt-runtime requires --split-game and locally --generated game sources')
+    if args.runtime_only and (not args.split_game or args.generated or args.only or args.prebuilt_runtime):
+        parser.error('--runtime-only requires --split-game and no game generation/import flags')
+    if args.reuse_game_code and (not args.split_game or args.generated or args.runtime_only or args.only):
+        parser.error('--reuse-game-code requires --split-game without generated/runtime-only/only flags')
+    if args.framegen and not (args.dlss or args.fsr3):
+        parser.error('Linux frame generation requires --dlss or --fsr3')
+    available = authored_sources(with_dlss=args.dlss, with_framegen=args.framegen, split_game=args.split_game)
     generated = generated_sources(args.generated) if args.generated else []
     if args.only:
         wanted = set(args.only)
@@ -499,14 +734,26 @@ def main():
     builder = Builder(output, args)
     error, executable = None, None
     try:
-        builder.setup()
-        if generated:
+        if args.prebuilt_runtime:
+            builder.setup_prebuilt(args.prebuilt_runtime)
+            available = []
+        else:
+            builder.setup()
+        if generated or args.reuse_game_code:
             builder.check_input()
             builder.receipt['generated'] = {str(p.relative_to(ROOT)): digest(p) for p in generated}
+            if args.reuse_game_code:
+                builder.reuse_game_code(args.reuse_game_code)
             builder.save()
         with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-            list(pool.map(builder.compile, [*available, *generated]))
-        if generated and not builder.failed.is_set():
+            pending = {pool.submit(builder.compile, source): source for source in [*available, *generated]}
+            for completed, future in enumerate(concurrent.futures.as_completed(pending), 1):
+                result = future.result()
+                # A frontend can report actual completed compilation units;
+                # it must never substitute an estimated timer for build work.
+                print(f'[compile {completed}/{len(pending)}] '
+                      f'{"done" if result is not None else "failed/skipped"}', flush=True)
+        if (generated or args.reuse_game_code or args.runtime_only) and not builder.failed.is_set():
             executable = builder.link()
     except (OSError, ValueError, RuntimeError, subprocess.SubprocessError, KeyboardInterrupt) as failure:
         error = failure
@@ -516,6 +763,9 @@ def main():
         executable.replace(final)
         builder.receipt['executable'] = {
             'path': str(final), 'sha256': digest(final)}
+        if args.runtime_only:
+            builder.receipt['artifact_kind'] = 'linux-runtime-template'
+            builder.receipt['scope'] = 'authored native runtime template; no game code/input; never launched'
         builder.save()
     scope = 'graphics ELF linked; not run' if passed and executable else 'runtime object build; no accepted executable'
     print(f'{"PASS" if passed else "FAIL"}: {scope}\nReceipt: {output / "receipt.json"}', flush=True)

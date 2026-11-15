@@ -336,11 +336,12 @@ static DlssImage ngx_image(const TexBackend *b) {
     return {b->image, view, b->format, b->width, b->height};
 }
 extern "C" bool dlss_evaluate(VkCommandBuffer cb, const TexBackend *color, const TexBackend *mv, const TexBackend *depth,
-    const TexBackend *out, const TexBackend *, const float jitter[2], bool reset, const TmpCamera *, const double[16],
+    const TexBackend *out, const TexBackend *reactive, const float jitter[2], bool reset, const TmpCamera *, const double[16],
     uint64_t recording_seq, uint64_t completed_seq) {
     if (!color || !mv || !depth || !out || !jitter) return false;
     DlssFrame f{ngx_image(color), ngx_image(mv), ngx_image(depth), ngx_image(out), {jitter[0], jitter[1]},
                 reset, g_settings.upscale_quality, recording_seq, completed_seq};
+    if (reactive) f.reactive = ngx_image(reactive);
     return ngx_linux_evaluate(cb, &f);
 }
 extern "C" void dlss_reset(void) { ngx_linux_reset(); }

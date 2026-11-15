@@ -77,3 +77,23 @@ audio and session interface boundaries are checked separately. No such runtime
 package, driver, proprietary SDK or game executable is added to source releases
 or launcher-only AppImages by this change. A future public binary bundle still
 requires its own complete license and redistribution review.
+
+The graphical-builder development preview has a separate binary packaging
+boundary in `tools/build_builder_appimage.py`. Its explicit startup payload is
+limited to the authored setup frontend, reviewed source template, CPython,
+selected standard-library modules and support libraries, and SDL3. The exact
+inventory and original copyright/license notices accompany the image; see
+`tools/builder_appimage/BUNDLE_NOTICES.md`. It does not include the game's media
+runtime closure, NVIDIA SDK, recompiled game or extracted game assets. This
+specific setup payload does not authorize bundling arbitrary development
+sysroots or other binaries. Existing source-only publication rules still apply.
+
+
+Linux graphics helpers and authored GLSL adaptations retain MIT attribution to
+Peiikai and Monado contributors; exact provenance and local correctness changes
+are documented in [UPSTREAM](Monado_Linux/docs/UPSTREAM.md). Optional FSR4 Lite
+backend/capture sources keep their GPL-2.0-or-later licences and AMD SDK notice;
+see [ADR0013](Monado_Linux/docs/adr/0013-native-fsr4-linux.md). Their terms are not
+replaced by the root MIT licence. Model/shader assets are prepared locally and
+are absent from the normal source distribution. Any combined binary distribution
+must satisfy its applicable terms and corresponding-source obligations.

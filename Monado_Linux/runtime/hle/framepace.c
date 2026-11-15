@@ -17,6 +17,9 @@
 #include "../hle.h"
 #include "../platform.h"
 #include "../settings.h"
+#ifdef __linux__
+#include "../host/run_diagnostics_linux.h"
+#endif
 
 // [XCDE] LINUX-013: passive hooks; compile-time disabled in ordinary builds.
 #include "foley_trace.inc"
@@ -126,7 +129,29 @@ bool xcde_in_cutscene(void) {
 static bool g_cut30;
 bool xcde_cutscene_30(void) { return g_cut30; }
 // the frame rate the window is presented at (device.c repeat presents): 30 while a cutscene is held at 30
-int xcde_present_fps(void) { return g_cut30 ? 30 : g_settings.fps; }
+// [XCDE] LINUX-097: the render thread publishes a cap only after the native
+// provider has accepted current inputs. Missing/failed FG retains the user's
+// native cap. Keep fractional refresh (59.94 etc.) rather than rounding it.
+float xcde_effective_present_fps(void) {
+    if (g_cut30) return 30.f;
+// [XCDE] LINUX-101: XCDE_GFX belongs only to the entry file. The renderer
+// publishes this optional cap when the shared native frame-generation feature
+// is linked; headless/non-FG translation units must keep no Vulkan reference.
+#if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
+    if (g_settings.frame_gen && g_settings.frame_gen_match_display &&
+        !g_settings.frame_gen_smooth_motion && !diag_deterministic() &&
+        !ENV("XCDE_FPS_PERIOD_SCALE") && !ENV("XCDE_FPS_INTERVAL")) {
+        extern float vk_framegen_cap_fps(void);
+        float cap = vk_framegen_cap_fps();
+        if (isfinite(cap) && cap >= 29.f && cap <= 500.f)
+            return g_settings.fps > 0 && g_settings.fps < cap ? (float)g_settings.fps : cap;
+    }
+#endif
+    return (float)g_settings.fps;
+}
+int xcde_present_fps(void) {
+    return (int)lroundf(xcde_effective_present_fps());
+}
 
 // [XCDE] LINUX-011: MPGUI initialized its animation step to 1/30 second and
 // never updated it, so 165 GUI updates advanced 5.5 seconds of animation. The
@@ -219,7 +244,29 @@ static void fps_interval_force(void) {
     }
     frames++;
     g_cut30 = g_settings.cutscene_mode && !ENV("XCDE_FPS_INTERVAL") && xcde_in_cutscene();
-    if (want < 0 || plat_now_ns() < after || frames < after_frames) return;
+#ifdef __linux__
+    run_diag_pacing(xcde_effective_present_fps(), g_cut30);
+#endif
+    // A qualified fractional cap can cross the native 30-FPS early-return
+    // boundary. Remember only our own override so failure/off/cutscene restores
+    // the original period+interval pair rather than leaving a stale 29.97 cap.
+    static bool refresh_applied;
+    bool refresh_override = false;
+    int frame_want = want;
+    float effective_scale = scale;
+#if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
+    if (!g_cut30 && !ENV("XCDE_FPS_PERIOD_SCALE") && !ENV("XCDE_FPS_INTERVAL") &&
+        g_settings.frame_gen && g_settings.frame_gen_match_display && !g_settings.frame_gen_smooth_motion) {
+        float effective = xcde_effective_present_fps();
+        if (effective > 0.f && effective != (float)g_settings.fps) {
+            effective_scale = 60.f / effective;
+            refresh_override = true;
+            frame_want = 1;
+        }
+    }
+#endif
+    if ((want < 0 && !refresh_override && !refresh_applied) || plat_now_ns() < after || frames < after_frames) return;
+    if (frame_want < 0) frame_want = 2; // Restore a native30 override we own.
     uint32_t *p = (uint32_t *)(uintptr_t)*(volatile uint64_t *)(uintptr_t)0x7000b92ea0ull;
     if (!p) return;
     // [XCDE] LINUX-011: a fractional high-FPS period cannot represent the native
@@ -230,7 +277,7 @@ static void fps_interval_force(void) {
     static float original_period;
     static bool have_period;
     if (!have_period) { original_period = *k; have_period = true; }
-    float period = original_period * (!g_cut30 && scale > 0 ? scale : 1.0f);
+    float period = original_period * (!g_cut30 && effective_scale > 0 ? effective_scale : 1.0f);
     if (*k != period) {
         uint64_t page = (uint64_t)(uintptr_t)k & ~0xFFFull;
         float previous = *k;
@@ -247,17 +294,25 @@ static void fps_interval_force(void) {
     }
     if (g_cut30) {
         *p = 2;  // native 30 Hz: two unscaled display periods
+        refresh_applied = false;
+#ifdef __linux__
+        run_diag_limiter(2, original_period, *k);
+#endif
         return;
     }
     static int logged;
-    if (!logged && *p != (uint32_t)want) { logged = 1; LOG("[fps] frame interval %u -> %d\n", *p, want); }
+    if (!logged && *p != (uint32_t)frame_want) { logged = 1; LOG("[fps] frame interval %u -> %d\n", *p, frame_want); }
     {   // XCDE_FPS_LOG=1: how often the game set its interval back since the last frame (per 120 frames)
         static int lg = -1, reset;
         static uint64_t n;
         if (lg < 0) lg = ENV("XCDE_FPS_LOG") != NULL;
         if (lg) { reset += *p != (uint32_t)want; if (++n % 120 == 0) { LOG("[fps] frame %llu: interval set back %d of 120 frames\n", (unsigned long long)n, reset); reset = 0; } }
     }
-    *p = (uint32_t)want;
+    *p = (uint32_t)frame_want;
+    refresh_applied = refresh_override;
+#ifdef __linux__
+    run_diag_limiter(frame_want, original_period, *k);
+#endif
 }
 
 // [XCDE] T224 research: XCDE_MEMWATCH=<frame>:<lo hex>-<hi hex>[,<lo>-<hi>...] - at 8 consecutive frame boundaries from

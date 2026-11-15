@@ -108,11 +108,29 @@ class PrerequisiteData(unittest.TestCase):
 
     def test_audited_first_use_requirements_are_exact_not_allowed_boundary(self):
         lock = json.loads((ROOT / 'Monado_Linux/graphics-deps-linux.lock.json').read_text())
-        names = doctor.required_host_interfaces(ROOT, lock)
+        names = doctor.required_host_interfaces(ROOT, lock, legacy_runtime=True)
         self.assertEqual(len(names), 18)
         self.assertIn('libasound.so.2', names)
         self.assertNotIn('libGL.so.1', names)
         self.assertIn('libGL.so.1', lock['runtime']['host_sonames'])
+
+    def test_portable_first_use_omits_removed_media_interfaces(self):
+        lock = json.loads((ROOT / 'Monado_Linux/graphics-deps-linux.lock.json').read_text())
+        self.assertTrue(doctor.portable_source_policy(ROOT))
+        self.assertEqual(doctor.required_host_interfaces(ROOT,lock),list(doctor.PORTABLE_HOST_REQUIREMENTS))
+        self.assertNotIn('libOpenCL.so.1',doctor.required_host_interfaces(ROOT,lock))
+
+    def test_partial_or_changed_portable_source_keeps_original_floor(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root=Path(temp);port=root/'Monado_Linux';port.mkdir()
+            (port/'portable-baseline-linux.lock.json').write_bytes((ROOT/'Monado_Linux/portable-baseline-linux.lock.json').read_bytes())
+            self.assertFalse(doctor.portable_source_policy(root))
+            (port/'scripts').mkdir()
+            for name in ('setup_portable_baseline.py','build_portable_dependencies.py','setup_portable_runtime_graph.py'):
+                (port/'scripts'/name).write_text('# authored fixture, never run')
+            self.assertTrue(doctor.portable_source_policy(root))
+            (port/'portable-baseline-linux.lock.json').write_text('{}')
+            self.assertFalse(doctor.portable_source_policy(root))
 
     def test_unknown_lock_does_not_require_every_allowed_interface(self):
         with tempfile.TemporaryDirectory() as temp:

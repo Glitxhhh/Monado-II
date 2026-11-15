@@ -102,7 +102,9 @@ def main():
         run('compiler-version', [compiler, '--version'])
         binary = output / 'test_framepace_linux'
         flags = ['-O1', '-UNDEBUG', '-march=x86_64_v2', '-ffp-contract=off', '-fno-strict-aliasing',
-                 '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections']
+                 '-ffunction-sections', '-fdata-sections', '-Wl,--gc-sections', '-DXCDE_LINUX_FRAMEGEN=1']
+        if os.environ.get('MONADO_TEST_UBSAN') == '1':
+            flags += ['-fsanitize=undefined', '-fno-sanitize-recover=all']
         run('compile', [compiler, *flags, SOURCE, '-lm', '-o', binary], artifact=binary)
         for fps in (30, 60, 120, 144, 165, 0):
             for scenario in ('basic', 'first-cutscene'):
@@ -114,6 +116,13 @@ def main():
                 ('delayed-cutscene', {'XCDE_FPS_AFTER_S': '.1', 'XCDE_FPS_AFTER_FRAMES': '8'}),
                 ('disabled-override', {'XCDE_FPS_INTERVAL': '-1'})):
             run(scenario, [binary, scenario, 165], overrides, marker='PASS framepace')
+        for fps in (30, 60, 120, 165, 0):
+            run(f'refresh-cap-{fps}', [binary, 'refresh-cap', fps], marker='PASS framepace')
+        for name, overrides in (
+                ('deterministic', {'XCDE_DETERMINISTIC': '1'}),
+                ('period', {'XCDE_FPS_PERIOD_SCALE': '.25'}),
+                ('interval', {'XCDE_FPS_INTERVAL': '3', 'XCDE_FPS_PERIOD_SCALE': '.5'})):
+            run('refresh-bypass-' + name, [binary, 'refresh-bypass', 120], overrides, marker='PASS framepace')
         for call in (1, 2):
             run(f'protect-failure-{call}', [binary, 'protect-failure', 165, call],
                 expected=-signal.SIGABRT, marker='cannot make limiter constant writable' if call == 1

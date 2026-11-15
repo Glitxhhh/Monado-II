@@ -1,3 +1,13 @@
+# Windows parity branch status
+
+This preparation targets accepted Linux **dev104 R5**, not only public release020
+or older016. All Windows implementation files remain original; source CI is not a
+native Windows build or game pass. See the [current handoff](WINDOWS_PORT_HANDOFF.md)
+and [source inventory](WINDOWS_PARITY_INVENTORY.json). Historical public-release
+status below predates the new FSR3/optionalFSR4/portable2.39/GameLib dev work; use
+the frozen source and handoff for port requirements. No new Windows release/version
+is claimed by this branch.
+
 # Platform status
 
 Linux 0.1.16 preserves validated Steam/SDL input context, exposes existing HIDAPI
@@ -91,8 +101,7 @@ qualification; coverage limits below remain applicable.
 Windows retains the original Monado implementation. Its original author reported
 whole-game playability on NVIDIA RTX, including Future Connected. This fork has
 not independently built or run that Windows source. The Linux improvements listed
-in [TODO](../TODO.md) have not been backported. Windows development is approved;
-[the current handoff](WINDOWS_PORT_HANDOFF.md) covers the pending implementation.
+in [TODO](../TODO.md) have not been backported and are not currently planned.
 There is no Windows updater in this release.
 
 The public launcher restores the exact original generated landscape artwork;

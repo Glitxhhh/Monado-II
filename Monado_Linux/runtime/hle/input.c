@@ -17,7 +17,9 @@
 #include "../settings.h"
 #include "../input_bind.h"
 #include "pad_modifier.h"
+#include "rumble_policy.h" // [XCDE] LINUX-103
 #include "../platform/sdl_controller_diagnostics.h"  // [XCDE] LINUX-077
+#include "../platform/sdl_controller_recovery.h"  // [XCDE] LINUX-089
 
 enum {
     BTN_A = 0, BTN_B, BTN_X, BTN_Y, BTN_LSTICK, BTN_RSTICK, BTN_L, BTN_R, BTN_ZL, BTN_ZR, BTN_PLUS, BTN_MINUS,
@@ -181,6 +183,48 @@ extern bool menu_input_captured(void);
 static PadModifierState pad_modifier;
 static SDL_SpinLock pad_modifier_lock;
 static _Atomic bool pad_focus_lost;
+// [XCDE] LINUX-103: guest threads publish envelopes; only SDL's owner touches
+// the selected device. Keep this lock separate from selected-pad lifetime.
+static SDL_SpinLock rumble_lock;
+static RtRumble rumble;
+static _Atomic bool rumble_permitted = true;
+void input_rumble_offer(uint32_t handle, const float value[4], void *unused) {
+    (void)unused;
+    SDL_LockSpinlock(&rumble_lock);
+    rt_rumble_offer(&rumble, handle, value, SDL_GetTicksNS());
+    SDL_UnlockSpinlock(&rumble_lock);
+}
+void input_rumble_permit(bool permitted) { atomic_store(&rumble_permitted, permitted); }
+bool input_rumble_permitted(void) { return atomic_load(&rumble_permitted); }
+static void input_rumble_clear(void) {
+    SDL_LockSpinlock(&rumble_lock);
+    rumble.amplitude[0] = rumble.amplitude[1] = 0;
+    SDL_UnlockSpinlock(&rumble_lock);
+}
+// Call while owning pad_modifier_lock, before replacing or closing a pad.
+static void input_rumble_stop_locked(void) {
+    input_rumble_clear();
+    if (pad) SDL_RumbleGamepad(pad, 0, 0, 0);
+    SDL_LockSpinlock(&rumble_lock);
+    rumble.sent[0] = rumble.sent[1] = 0;
+    SDL_UnlockSpinlock(&rumble_lock);
+}
+void input_rumble_pump(void) {
+    SDL_LockSpinlock(&pad_modifier_lock);
+    bool enabled = pad && SDL_GamepadConnected(pad) && g_settings.input_rumble &&
+        atomic_load(&rumble_permitted) && !pad_focus_lost && !host_test && !menu_input_captured();
+    uint16_t out[2];
+    SDL_LockSpinlock(&rumble_lock);
+    bool send = rt_rumble_poll(&rumble, SDL_GetTicksNS(), enabled, out);
+    SDL_UnlockSpinlock(&rumble_lock);
+    if (send && pad) SDL_RumbleGamepad(pad, out[0], out[1], (out[0] || out[1]) ? 150 : 0);
+    SDL_UnlockSpinlock(&pad_modifier_lock);
+}
+void input_rumble_shutdown(void) {
+    SDL_LockSpinlock(&pad_modifier_lock);
+    input_rumble_stop_locked();
+    SDL_UnlockSpinlock(&pad_modifier_lock);
+}
 // Controller buttons (and the triggers as buttons) -> Switch buttons through g_bind_pad; the sticks stay the sticks.
 static void stick_deadzone(int32_t *x, int32_t *y);  // (below)
 static uint64_t map_pad_buttons(uint32_t host) {
@@ -272,6 +316,7 @@ static void stick_deadzone(int32_t *x, int32_t *y) {
 
 // Forget held keys (the menu took focus); the gamepad is re-read on its next event.
 void input_reset(void) {
+    input_rumble_clear(); // next owner-thread tick stops menu-captured vibration
     memset(keys_down, 0, sizeof keys_down);
     memset(mouse_down, 0, sizeof mouse_down);
     mouse_look_set(false);
@@ -354,7 +399,9 @@ static bool input_open_available_pad(SDL_JoystickID removed) {
         if (!candidate) {
             if (failures < 16) {
                 ++failures;
-                LOG("[input] cannot open gamepad id=%u: %.192s\n", (unsigned)ids[i], SDL_GetError());
+                char error[193];
+                LOG("[input] cannot open gamepad id=%u: %s\n", (unsigned)ids[i],
+                    rt_input_log_error(SDL_GetError(), error));
             }
             continue;
         }
@@ -371,12 +418,41 @@ static bool input_open_available_pad(SDL_JoystickID removed) {
     return opened;
 }
 
+// [XCDE] LINUX-089: Steam/QAM or another overlay can consume hotplug/button
+// events. Inspect connectedness and retry discovery on the SDL UI event thread,
+// including its idle timeout. Do not call from input_frame (renderer thread),
+// the guest Npad polling thread, or while the caller holds pad_modifier_lock.
+static RtControllerRecovery pad_recovery;
+void input_poll_controller(void) {
+    if (!rt_controller_recovery_due(&pad_recovery, SDL_GetTicks())) return;
+    bool disconnected = false;
+    SDL_LockSpinlock(&pad_modifier_lock);
+    if (pad && !SDL_GamepadConnected(pad)) {
+        cancel_pad_modifier_locked();
+        input_rumble_stop_locked();
+        SDL_CloseGamepad(pad);
+        pad = NULL;
+        pad_buttons = 0;
+        pad_lx = pad_ly = pad_rx = pad_ry = 0;
+        note_family();
+        disconnected = true;
+    }
+    SDL_UnlockSpinlock(&pad_modifier_lock);
+    if (disconnected) {
+        recompute_pad(0);
+        rt_input_inventory(stderr, "game", "disconnected handle");
+    }
+    if (!pad && input_open_available_pad(0))
+        rt_input_inventory(stderr, "game", "controller recovered");
+}
+
 void input_handle_event(const SDL_Event *e) {
     static bool scanned;  // pads present at startup: their ADDED event may have gone to the start screen's loop
     if (!scanned) {
         scanned = true;
         rt_input_inventory(stderr, "game", "startup");
         input_open_available_pad(0);
+        rt_controller_recovery_scanned(&pad_recovery, SDL_GetTicks());
     }
     switch (e->type) {
     case SDL_EVENT_KEY_DOWN: case SDL_EVENT_KEY_UP:
@@ -420,6 +496,7 @@ void input_handle_event(const SDL_Event *e) {
         recompute_pad(0);
         break;
     case SDL_EVENT_WINDOW_FOCUS_LOST:
+        input_rumble_shutdown();
         memset(mouse_down, 0, sizeof mouse_down);
         mouse_look_set(false);
         pad_focus_lost = true;
@@ -428,22 +505,31 @@ void input_handle_event(const SDL_Event *e) {
     case SDL_EVENT_WINDOW_FOCUS_GAINED:
         pad_focus_lost = false;
         cancel_pad_modifier();
+        // An overlay may have swallowed releases or replacement-device events.
+        // Refresh the sampled state without closing a healthy selected pad.
+        rt_input_inventory(stderr, "game", "focus returned");
+        rt_controller_recovery_request(&pad_recovery);
+        input_poll_controller();
+        recompute_pad(0);
         break;
     case SDL_EVENT_GAMEPAD_ADDED: {
         rt_input_inventory(stderr, "game", "gamepad added");
         input_open_available_pad(0);
+        rt_controller_recovery_scanned(&pad_recovery, SDL_GetTicks());
         break;
     }
     case SDL_EVENT_GAMEPAD_REMOVED:
         SDL_LockSpinlock(&pad_modifier_lock);
         if (pad && SDL_GetGamepadID(pad) == e->gdevice.which) {
             cancel_pad_modifier_locked();
+            input_rumble_stop_locked();
             SDL_CloseGamepad(pad); pad = NULL; note_family();
         }
         SDL_UnlockSpinlock(&pad_modifier_lock);
         recompute_pad(0);
         input_open_available_pad(e->gdevice.which);
         rt_input_inventory(stderr, "game", "gamepad removed");
+        rt_controller_recovery_scanned(&pad_recovery, SDL_GetTicks());
         break;
     case SDL_EVENT_GAMEPAD_AXIS_MOTION: case SDL_EVENT_GAMEPAD_BUTTON_DOWN: case SDL_EVENT_GAMEPAD_BUTTON_UP: {
         uint32_t pressed = 0;
@@ -831,7 +917,7 @@ HLE_FUNC("_ZN2nn3hid27BindNpadStyleSetUpdateEventERKjPNS_2os15SystemEventTypeENS
     LOG("[input] style set update event bound\n");
 }
 
-// Vibration devices: accepted but inert (the SDK's vibration node graph stays recompiled).
+// [XCDE] LINUX-103: vibration node graph stays recompiled; HID sends reach SDL.
 HLE_FUNC("_ZN2nn3hid25InitializeVibrationDeviceERKNS0_21VibrationDeviceHandleE", hid_init_vibration) { (void)c; }
 HLE_FUNC("_ZN2nn3hid25GetVibrationDeviceHandlesEPNS0_21VibrationDeviceHandleEiRKjNS_4util10BitFlagSetILi32ENS0_12NpadStyleTagEEE", hid_vibration_handles) {
     uint32_t *out = (uint32_t *)(uintptr_t)c->x[0];

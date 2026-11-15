@@ -35,10 +35,14 @@ typedef struct {
     VkSemaphore timeline;      // value = last completed submission number
     VkCommandPool pool;        // render thread only
     bool custom_border, divisor, host_import, robust2, logic_op, minmax;
+    bool sampler_anisotropy; // [XCDE] LINUX-103: actually enabled device feature
     // [XCDE] LINUX-070: only RADV opts into driver-owned guest heap backing.
     // Capability flags describe features/extensions enabled on this device.
     bool radv, heap_placed, heap_dmabuf;
     VkDeviceSize heap_map_alignment;
+    bool fsr4_lite; // strict enabled optional native Lite feature contract
+    const char *fsr4_reason; // static diagnostic; NULL when capabilities are enabled
+    bool feedback_loop; // LINUX-103: actually enabled optional features
     bool gpl;  // [XCDE] T188: VK_EXT_graphics_pipeline_library with fast linking (exec.c build_pipeline)
     // [XCDE] FSR 3 frame generation's queues (device.c create_device): present, image acquire, async compute; fam UINT32_MAX: none
     VkQueue fg_queue[3];
@@ -66,6 +70,13 @@ uint64_t vk_completed_seq(void);
 void vk_wait_seq(uint64_t seq);
 void vk_full_barrier(VkCommandBuffer cb);
 void vk_end_pass(void);
+void vk_feedback_boundary(void); // guest visibility or external image contents changed
+void vk_feedback_texture_gone(NvnTexture *t);
+#if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
+void vk_queue_lock(void);
+void vk_queue_unlock(void);
+void vk_framegen_drain(void); // wait only; no renderer/UI callbacks from caller
+#endif
 void vk_submit_extra(VkSemaphore wait, VkSemaphore signal, VkCommandBuffer extra);  // submit + one more cb (present)
 
 // Transient GPU-visible memory that lives until the submission it was allocated for completes.
@@ -78,12 +89,14 @@ VkDescriptorSet vk_alloc_set(VkDescriptorSetLayout layout);
 // ---- textures (textures.c)
 typedef struct TexBackend {
     VkImage image;
+    uint64_t image_identity; // creation serial, distinguishes recycled Vulkan image handles
     VmaAllocation mem;
     VkFormat format;
     VkImageViewType base_type;
     uint32_t width, height, depth, layers, levels, samples;
     VkImageAspectFlags aspect;
     bool gpu_owned, uploaded, dynamic;
+    bool feedback_usage; // created with ATTACHMENT_FEEDBACK_LOOP usage
     uint64_t data_hash, sample_hash, checked_frame, full_frame;
     uint64_t first_up_frame;  // [XCDE] glitch watch: the frame of the first upload
     bool first_up_zero;       // that upload's data was all zero bytes
@@ -124,6 +137,7 @@ VkImageView vk_image_view(TexBackend *b, VkImageViewType type, VkFormat fmt, uin
                           uint32_t nly, VkComponentMapping sw, VkImageAspectFlags aspect);
 VkImageView vk_dummy_view(int textype);
 VkSampler vk_sampler(NvnSamplerDesc *d);
+VkSampler vk_sampler_filtered(NvnSamplerDesc *d, bool color, bool integer, bool shadow, unsigned levels); // LINUX-103
 VkSampler vk_default_sampler(bool linear);
 void vk_image_init_layout(VkCommandBuffer cb, VkImage img, VkImageAspectFlags aspect);
 // Destruction once every submission that may use the object has completed.

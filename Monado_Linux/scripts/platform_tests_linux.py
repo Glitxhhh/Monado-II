@@ -134,11 +134,15 @@ class Runner:
         # Zig spells named CPU baselines differently from GCC/direct Clang.
         baseline = "x86_64_v2" if Path(self.compiler).resolve() == (ROOT / ".deps/bin/clang-cc").resolve() else "x86-64-v2"
         self.flags = ["-O1", "-UNDEBUG", "-march=" + baseline, "-ffp-contract=off", "-fno-strict-aliasing", "-pthread", "-Iruntime"]
+        self.ubsan = os.environ.get("MONADO_TEST_UBSAN") == "1"
+        if self.ubsan:
+            self.flags += ["-fsanitize=undefined", "-fno-sanitize-recover=all"]
         libdir = sysroot / "usr/lib/x86_64-linux-gnu"
         self.sdl = libdir / "libSDL3.so"
         self.sdl_flags = ["-I" + str(sysroot / "usr/include")]
         self.sdl_link = [str(self.sdl), "-Wl,-rpath," + str(libdir), "-ldl"]
         self.receipt = {"schema": 1, "scope": "synthetic Linux components only; no game input or gameplay",
+                        "ubsan": self.ubsan,
                         "started_utc": datetime.now(timezone.utc).isoformat(), "status": "running",
                         "source_root": str(ROOT), "output": str(output), "groups": selected,
                         "host": {"uname": list(platform.uname()), "libc": platform.libc_ver(),

@@ -338,9 +338,20 @@ class ManagedBuild(unittest.TestCase):
         with self.assertRaisesRegex(build.BuildError, 'frame-generation flag differs'):
             build.layout(self.workspace, 2, dlss=True, framegen=False, reuse_game=self.game)
         original = files(self.game.parent)
+        def authored_namespace(argv, state, *, pid_namespace, cuda_task_metadata):
+            # This fixture does not select external driver generation. Reusing
+            # its FSR-capable game must retain the ordinary private PID scope,
+            # without admitting the separate Smooth Motion procfs exception.
+            self.assertEqual(state, self.state)
+            self.assertIs(pid_namespace, True)
+            self.assertIs(cuda_task_metadata, False)
+            return argv, {'kind': 'authored'}
         with mock.patch.object(build, 'existing_framegen_sdk', side_effect=AssertionError('do not rebuild old SDK')), \
-                mock.patch.object(build.run_linux, 'dlss_namespace', side_effect=lambda argv, state: (argv, {'kind': 'authored'})):
+                mock.patch.object(build.run_linux, 'dlss_namespace', side_effect=authored_namespace) as namespace:
             paths, commands = build.layout(self.workspace, 2, reuse_game=self.game)
+        namespace.assert_called_once_with(
+            [str(self.game), '--state-root', str(self.state), str(self.input)], self.state,
+            pid_namespace=True, cuda_task_metadata=False)
         self.assertEqual(paths['game'], self.game)
         self.assertFalse(any(name in ('framegen-source', 'native-framegen-dependency', 'generate-game', 'build-game') for name, _ in commands))
         self.assertEqual(files(self.game.parent), original)

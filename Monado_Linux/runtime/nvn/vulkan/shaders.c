@@ -586,6 +586,20 @@ static const char *builtin_src(const char *name, int *stage) {
     // whatever the HUD covered - in the main menu the field hints in the game's captured background showed as a text
     // outline over the character cards (user shot). Faint overlays still get the upscaled scene under them.
     // a.xy = 1 / window size.
+    // [XCDE] LINUX-103: convert native temporal linear LDR output before the
+    // existing gamma-space HUD composition and ordinary FG scene presentation.
+    if (!strcmp(name, "tmp_srgb.frag")) {
+        *stage = STAGE_FRAGMENT;
+        return "#version 450\n"
+               "layout(set=0,binding=0) uniform sampler2D image;\n"
+               "layout(push_constant) uniform P { vec4 a; vec4 b; } pc;\n"
+               "layout(location=0) out vec4 outputColor;\n"
+               "void main(){ vec3 c=texture(image,gl_FragCoord.xy*pc.a.xy).rgb;\n"
+               "c=clamp(c,vec3(0.0),vec3(1.0));\n"
+               "if(any(isnan(c))||any(isinf(c)))c=vec3(0.0);\n"
+               "vec3 encoded=mix(1.055*pow(c,vec3(1.0/2.4))-0.055,c*12.92,lessThanEqual(c,vec3(0.0031308)));\n"
+               "outputColor=vec4(encoded,1.0); }\n";
+    }
     if (!strcmp(name, "tmp_hud.frag")) {
         *stage = STAGE_FRAGMENT;
         return "#version 450\n"
@@ -812,7 +826,7 @@ static const char *builtin_src(const char *name, int *stage) {
                "layout(set = 0, binding = 1) uniform sampler2D depthTex;\n"
                "layout(set = 0, binding = 2) uniform sampler2D sceneTex;\n"  // [XCDE] the game image before the HUD
                "layout(set = 0, binding = 3) uniform sampler2D velTex;\n"  // [XCDE] T215: the game's velocity buffer
-               "layout(push_constant) uniform P { mat4 m; vec4 a; vec4 b; } pc;\n"
+               "layout(push_constant) uniform P { mat4 m; vec4 a; vec4 b; vec4 c; } pc;\n"
                "layout(location = 0) out vec4 oColor;\n"
                "layout(location = 1) out vec2 oMv;\n"
                "layout(location = 2) out float oDepth;\n"
@@ -822,16 +836,22 @@ static const char *builtin_src(const char *name, int *stage) {
                "  ivec2 csz = textureSize(colorTex, 0), dsz = textureSize(depthTex, 0);\n"
                "  ivec2 cp = min(ivec2(vec2(p) * vec2(csz) / pc.a.zw), csz - 1);\n"
                "  vec3 c = texelFetch(colorTex, cp, 0).rgb;\n"
-               "  oColor = vec4(c, 1.0);\n"
+               // [XCDE] LINUX-103: native FSR3 consumes linear LDR. Native
+               // DLSS keeps its accepted gamma input and creation flags.
+               "  vec3 lin = mix(pow((max(c, vec3(0.0)) + 0.055) / 1.055, vec3(2.4)), c / 12.92, lessThanEqual(c, vec3(0.04045)));\n"
+               "  oColor = vec4(pc.c.x > 0.5 ? lin : c, 1.0);\n"
                "  vec3 dh = abs(c - texelFetch(sceneTex, min(cp, textureSize(sceneTex, 0) - 1), 0).rgb);\n"
                "  oHud = max(dh.r, max(dh.g, dh.b)) > 1.5 / 255.0 ? 1.0 : 0.0;\n"  // (pixels the HUD passes changed)
                "  float d = texelFetch(depthTex, min(ivec2(vec2(p) * vec2(dsz) / pc.a.zw), dsz - 1), 0).r;\n"
-               "  oDepth = d;\n"
+               "  if (isnan(d) || isinf(d)) d = 1.0;\n"
+               "  d = clamp(d, 0.0, 1.0); oDepth = d;\n"
                "  vec2 uv = (gl_FragCoord.xy - pc.a.xy) / pc.a.zw;\n"
                "  vec4 ndc = vec4(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0, pc.b.x > 0.5 ? d * 2.0 - 1.0 : d, 1.0);\n"
                "  vec4 q = pc.m * ndc;\n"
                "  vec2 puv = vec2(q.x / q.w * 0.5 + 0.5, 0.5 - q.y / q.w * 0.5);\n"
                "  oMv = pc.b.y > 0.5 && abs(q.w) > 1e-7 ? puv - uv : vec2(0.0);\n"
+               // Invalid or extreme reprojection must not poison temporal history.
+               "  if (any(isnan(oMv)) || any(isinf(oMv)) || any(greaterThan(abs(oMv), vec2(1.0)))) oMv = vec2(0.0);\n"
                // [XCDE] T215: where the scene has geometry, the game's own velocity (per object: characters, animation)
                // RGB10A2: R = sqrt|v.x|, G = sqrt|v.y|, alpha bit 0 = x negative, bit 1 = y positive (UV units, previous
                // minus current, as ours - measured against the camera motion on static scenery: XCDE_TMP_VEL_FIT)
@@ -844,7 +864,15 @@ static const char *builtin_src(const char *name, int *stage) {
                // bits as a square root: our float camera motion is the same thing, exact. Keep ours unless the game's
                // differs by more than its rounding (3 steps of sqrt-coded 10 bits) - a pixel with its own motion.
                "    vec2 step = 6.0 * vec2(v.r, v.g) / 1023.0 + 2.0 / (1023.0 * 1023.0);\n"
-               "    oMv = pc.b.w > 0.5 && all(lessThanEqual(abs(gv - oMv), step)) ? oMv : gv;\n"
+               // [XCDE] LINUX-103: bounded velocity agreement and reactivity
+               // inspired by Reborn T260 (MIT); preserve exact camera motion
+               // within the known RGB10 quantization interval. Reject a stale /
+               // wrong guest velocity texture rather than making it authoritative.
+               "    vec2 delta = abs(gv - oMv);\n"
+               "    bool valid = !any(isnan(gv)) && !any(isinf(gv)) && all(lessThanEqual(abs(gv), vec2(1.0))) && all(lessThanEqual(delta, vec2(0.1)));\n"
+               "    bool moving = valid && any(greaterThan(delta, step));\n"
+               "    if (valid && !(pc.b.w > 0.5 && !moving)) oMv = gv;\n"
+               "    if (moving) oHud = max(oHud, 0.5);\n"
                "  }\n"
                "}\n";
     }

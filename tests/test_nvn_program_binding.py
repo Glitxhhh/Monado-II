@@ -69,7 +69,11 @@ class NvnProgramBindingTests(unittest.TestCase):
         else:  # Baseline regression runner: same expected contract, original source signature.
             invocation = '(void)shader; return cbuf_info(stage,si,k,0,0,0);'
         constants = function(source, 'ubo_span') + constants + '\nstatic VkDescriptorBufferInfo checked_cbuf(int stage, ShaderInfo *si, const NvnShaderStage *shader,int k){' + invocation + '}\n'
-        cache = 'static Prog *get_program_(NvnProgram*,ShaderKey*,ShaderKey*);\n' + function(source, 'get_program') + function(source, 'get_program_')
+        cache_build = function(source, 'get_program_')
+        # Derive the forward declaration from the real implementation. Its
+        # frozen bloom-mode argument must not be dropped by this fixture.
+        declaration = cache_build[:cache_build.index('{')].strip() + ';\n'
+        cache = declaration + function(source, 'get_program') + cache_build
         begin = source.index('static struct CsEnt')
         finish = source.index('g_cs_tab[256]', begin) + len('g_cs_tab[256];')
         compute = source[begin:finish] + '\n' + function(source, 'compute_program')

@@ -12,6 +12,7 @@
 #include "../../runtime/kernel.h"
 #include "../../runtime/diag/diag.h"
 #include "../../runtime/paths.h"
+#include "../../runtime/gamelib.h"
 #define CHECK(c) do { if (!(c)) { fprintf(stderr, "fixture failure: %s\n", #c); abort(); } } while (0)
 
 bool test_plat_reserve_guest(uint64_t lo, uint64_t hi) {
@@ -55,6 +56,15 @@ int vk_precompile_main(const char *root) {
     return 37;
 }
 int diag_minidump_helper(int n, char **a) { (void)n; (void)a; return 2; }
+// [XCDE] LINUX-103: precompile must bypass GameLib; invalid-watchdog cases
+// need a successful synthetic load to reach their existing argument checks.
+bool gamelib_load(const char *root, char *error, size_t size) {
+    (void)root; (void)error; (void)size;
+    CHECK(getenv("TEST_BOOT_WATCHDOG") != NULL);
+    return true;
+}
+int rt_radv_dcc_prepare(char *error, size_t size) { (void)error; (void)size; return 0; }
+bool tmp_fsr4_set_asset_dir(const char *path) { (void)path; abort(); }
 void diag_watchdog_start(void) { CHECK(getenv("TEST_BOOT_WATCHDOG") != NULL); }
 void kernel_dump_threads(FILE *f) { (void)f; abort(); }
 void loader_load(const char *p) { (void)p; fputs("fixture unexpectedly reached loader\n", stderr); abort(); }
