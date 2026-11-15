@@ -26,5 +26,8 @@ int main(void) {
     assert(DeleteFileW(alias.c_str()));
     // A separately selected runtime never changes profile identity or cwd choice.
     assert(runtime_executable("C:/other-runtime")!="C:/other-runtime"+canonical);
+    auto runtime=canonical+"/authored-separate-runtime";assert(CreateDirectoryW(wide(runtime).c_str(),nullptr));assert(CreateDirectoryW(wide(runtime+"/build").c_str(),nullptr));
+    assert(!runtime_available(runtime));FILE *image=open(runtime_executable(runtime),"wb");assert(image);fputs("authored ordinary image gate fixture; never executed",image);fclose(image);
+    assert(runtime_available(runtime));assert(!runtime_available(canonical)); // The stable profile has logs but no game executable.
     puts("PASS native launcher explicit canonical owned profile, Unicode/literal argument paths, strict unknown/duplicate options, legacy shot syntax and separate runtime executable");return 0;
 }

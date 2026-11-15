@@ -65,4 +65,8 @@ public:
     }
 };
 static std::string runtime_executable(const std::string& runtime_root){return runtime_root+"/build/xcde.exe";}
+static bool runtime_available(const std::string& runtime_root){
+    auto path=wide(runtime_executable(runtime_root));HANDLE file=CreateFileW(path.c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr);if(file==INVALID_HANDLE_VALUE)return false;
+    BY_HANDLE_FILE_INFORMATION info{};bool ok=GetFileInformationByHandle(file,&info)&&info.nNumberOfLinks==1&&!(info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT));CloseHandle(file);return ok;
+}
 } // namespace monado_launcher_windows

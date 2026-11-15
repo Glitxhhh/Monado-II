@@ -127,6 +127,35 @@ zero sharpening and complete feedback snapshots retain the accepted policies.
 Native feedback-loop use remains disabled pending a qualified feature enable;
 the complete per-subresource snapshot fallback is active.
 
+`nvn/vulkan/host_import.[ch]` transfers the accepted portable LINUX-005 checked
+Vulkan import contract: external-buffer capability and pointer/buffer memory-type
+intersection, coherent host-visible storage, aligned allocation, dedicated
+requirements, checked binding and complete failed-import cleanup. The native
+`host_import_windows.inc` lifecycle retires recorded and submitted work before
+heap growth replaces the import; reset releases the import before guest-page
+reset. `host_import_memory_windows.h` validates and commits only the checked
+prefix of the existing private VirtualAlloc reservation without remapping it or
+changing protected pages. Unsupported/failed global memory never supplies dummy
+zeros. Linux RADV/dma-buf/placed-mmap backing remains Linux-specific. Native
+authored tests separately cover controlled Vulkan failures, actual VirtualAlloc
+lifetime and real NVIDIA Vulkan coherent alias transfers; these do not establish
+full gameplay, provider or performance qualification.
+
+The accepted LINUX-017/094 lifecycle order is retained in the native executor:
+drain queued rendering and native SDK presents, wait for the GPU, clear dynamic
+resolution/FPS/cap history, invalidate borrowed executor/provider references,
+then destroy textures. Non-game clears also invalidate game/repeated-output
+classification. The bounded LINUX-093 aspect output transition diagnostics are
+retained on the render owner thread.
+
+`ui/window_windows.h` and the strict launch-monitor prefix adapt initial display
+selection to the launcher's native monitor device. Windowed mode restores a
+decorated resizable client fitted inside that monitor's work area; fullscreen
+transitions verify the actual SDL/native state and report failure without
+pretending that a request succeeded. Hidden authored SDL/Win32 windows exercise
+both real displays, failed transitions and saved-size restoration without game
+input or human-profile mutation.
+
 ## Launcher and FPS controls
 
 The accepted ImGui theme, reviewed embedded artwork/fonts, quality controls and
@@ -143,6 +172,14 @@ FPS is unavailable because this SDK boundary supplies no accepted-output identit
 Callbacks and reset epochs use atomic state. Provider configuration/preparation
 failure disables generation; failed disable is fatal instead of reusing stale
 inputs. These authored component checks do not qualify real SDK/GPU gameplay.
+
+Native presentation verifies preparation belongs to the current rendered frame,
+including when spatial scaling bypasses temporal reconstruction. Context changes,
+swapchain recreation and shutdown use the native SDK's checked
+`ffxDispatchDescFrameGenerationSwapChainWaitForPresentsVK` boundary before releasing
+resources; a GPU-idle call alone does not drain future work owned by a host
+presentation worker. The descriptor retains the bundled SDK 1.1.4 ABI documented
+in AMD's [FSR 3.1 integration overview](https://gpuopen.com/presentations/2024/FidelityFX_Super_Resolution_3-1_Release-Overview_and_Integration.pdf).
 
 ## Native Windows presentation correction
 

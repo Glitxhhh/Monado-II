@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import struct
 import tempfile
 import unittest
 from unittest import mock
@@ -81,6 +82,19 @@ class NativePreparationContext(unittest.TestCase):
         self.assertEqual(result['status'], 'unavailable')
         self.assertEqual(result['files'], {})
         self.assertTrue(extra.is_file())
+
+    def test_optional_manager_is_independent_of_preparation_availability(self):
+        manager=self.root/'authored manager.exe';payload=struct.pack('<8sIIQ',b'MONADOP1',1,1,0);payload_sha=hashlib.sha256(payload).hexdigest()
+        image=b'MZ'+b'authored never executed'.ljust(4094,b' ')+payload+struct.pack('<8sQQ32s',b'M2BNDL01',4096,len(payload),bytes.fromhex(payload_sha));manager.write_bytes(image)
+        options=dict(manager=manager,manager_sha256=hashlib.sha256(image).hexdigest(),manager_payload_sha256=payload_sha,manager_manifest_sha256=self.identity)
+        with mock.patch.object(context.sys,'executable',str(self.home/'python.exe')):
+            result=context.create(self.port,self.output,installation=self.output,manifest=self.manifest,manifest_sha256='0'*64,**options)
+            self.assertEqual(result['status'],'unavailable')
+            self.assertEqual(result['manager']['sha256'],options['manager_sha256'])
+            manager.unlink()
+            result=context.create(self.port,self.output,installation=self.output,manifest=self.manifest,manifest_sha256=self.identity,**options)
+            self.assertEqual(result['status'],'available',result['reason'])
+            self.assertNotIn('manager',result)
 
 
 if __name__ == '__main__':

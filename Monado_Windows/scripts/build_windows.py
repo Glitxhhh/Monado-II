@@ -36,7 +36,7 @@ hle/quickstep_slot hle/quickstep_save hle/quickstep_native hle/quickstep_picker 
 hle/cheats_rewards hle/cheats_combat host/stubs host/settings_ini host/run_diagnostics_windows host/stubs_gfx host/xcde_aspect host/gamelib_static host/main_boot
 diag/diag diag/sampler diag/watchdog diag/crashdump paths""".split()
 NVN = """astc cmdbuf formats maxwell/translate objects output_scale smaa_data tegra texpatch
-vulkan/device vulkan/exec vulkan/precompile vulkan/shaders vulkan/textures vulkan/temporal""".split()
+vulkan/device vulkan/exec vulkan/host_import vulkan/precompile vulkan/shaders vulkan/textures vulkan/temporal""".split()
 IMGUI = ["third_party/imgui/" + n + ".cpp" for n in ("imgui", "imgui_draw", "imgui_tables", "imgui_widgets")]
 CPP = IMGUI + ["third_party/imgui/backends/imgui_impl_vulkan.cpp", "runtime/nvn/vulkan/imgui_glue.cpp",
                "runtime/ui/menu_vk.cpp", "runtime/nvn/vulkan/dlss.cpp", "runtime/nvn/vulkan/vma.cpp"]
@@ -330,6 +330,9 @@ class Builder:
                 cmd += ["-DMONADO_WINDOWS_BASELINE_LABEL=" + json.dumps(self.receipt["baseline"]["accepted_baseline"] + " · " + self.receipt["baseline"]["implementation"]),
                         "-DMONADO_WINDOWS_BUILD_IDENTITY=" + json.dumps(self.receipt["native_build_identity"])]
                 cmd += ["-DMONADO_FSR4_CONTEXT_SHA256=" + json.dumps(self.receipt.get("preparation_context_sha256", ""))]
+                selected = self.receipt.get("providers", {}).get("selection", {})
+                provider_status = "Local optional SDKs staged: " + ", ".join(sorted(selected)) + ". Runtime checks GPU/provider activation." if selected else "No local DLSS/FSR3 SDKs staged. Optional choices use the available fallback."
+                cmd += ["-DMONADO_WINDOWS_PROVIDER_STATUS=" + json.dumps(provider_status)]
             self.run("compile-" + relative, cmd + ["-c", str(source), "-o", str(obj)])
             if digest(source) != before:
                 raise RuntimeError(f"Source changed during compile; retry in a new output: {source}")
@@ -593,7 +596,33 @@ class Builder:
             paths.update(self.output / "build" / ("lasgame.dll" + suffix) for suffix in (".id", ".sha256"))
         if self.receipt.get("preparation_context_sha256"):
             paths.add(self.output / "fsr4-preparation-context.json")
+        for relative, expected in self.receipt.get("providers", {}).get("files", {}).items():
+            name = Path(relative)
+            if name.is_absolute() or ".." in name.parts or name.as_posix() != relative:
+                raise RuntimeError("Provider receipt has an unsafe output path")
+            path = self.output / name
+            if not ordinary(path) or path.stat().st_size != expected["bytes"] or digest(path) != expected["sha256"]:
+                raise RuntimeError("Staged local provider file changed or is missing: " + relative)
+            paths.add(path)
         return {p.relative_to(self.output).as_posix(): digest(p) for p in sorted(paths)}
+
+    def stage_providers(self):
+        fidelityfx, streamline = getattr(self.args, "fidelityfx", None), getattr(self.args, "streamline", None)
+        if fidelityfx is None and streamline is None:
+            return
+        dependencies = (ROOT / "tools/windows_provider_selection.py", ROOT / "tools/pe_symbols_windows.py",
+                        ROOT.parent / "tools/windows_file_guard.py")
+        identities = {path: digest(path) for path in dependencies}
+        spec = importlib.util.spec_from_file_location("monado_build_providers", dependencies[0])
+        helper = importlib.util.module_from_spec(spec)
+        sys.modules[spec.name] = helper
+        spec.loader.exec_module(helper)
+        self.receipt["providers"] = helper.stage(self.output, fidelityfx=fidelityfx, streamline=streamline,
+            progress=lambda phase, done, total, message: print(f"{message} ({done}/{total})", flush=True))
+        for path, identity in identities.items():
+            if not ordinary(path) or digest(path) != identity:
+                raise RuntimeError("Local provider verifier changed during staging")
+            self.receipt["sources"][os.path.relpath(path, ROOT).replace("\\", "/")] = identity
 
     def retention_inventory(self):
         # The finalized build-receipt.json is deliberately excluded: its own
@@ -711,6 +740,7 @@ class Builder:
                     self.split_link(objects, game_objects)
                 else:
                     self.link("xcde_boot.exe" if stage == "boot" else "xcde.exe", objects + game_objects)
+        self.stage_providers()
         if stage in ("launcher", "all"):
             helper_path = ROOT / "tools/preparation_context_windows.py"
             spec = importlib.util.spec_from_file_location("monado_preparation_context", helper_path)
@@ -718,7 +748,11 @@ class Builder:
             context = context_helper.create(ROOT, self.output,
                 installation=getattr(self.args, "preparation_installation", None) or self.output,
                 manifest=getattr(self.args, "preparation_python_manifest", None),
-                manifest_sha256=getattr(self.args, "preparation_python_manifest_sha256", None))
+                manifest_sha256=getattr(self.args, "preparation_python_manifest_sha256", None),
+                manager=getattr(self.args, "preparation_manager", None),
+                manager_sha256=getattr(self.args, "preparation_manager_sha256", None),
+                manager_payload_sha256=getattr(self.args, "preparation_manager_payload_sha256", None),
+                manager_manifest_sha256=getattr(self.args, "preparation_manager_manifest_sha256", None))
             context_path = self.output / "fsr4-preparation-context.json"
             atomic_json(context_path, context)
             self.receipt.update(preparation_context=str(context_path), preparation_context_sha256=digest(context_path),
@@ -780,11 +814,19 @@ def main(argv=None):
     ap.add_argument("--preparation-python-manifest", type=Path)
     ap.add_argument("--preparation-python-manifest-sha256")
     ap.add_argument("--preparation-installation", type=Path)
+    ap.add_argument("--preparation-manager", type=Path)
+    ap.add_argument("--preparation-manager-sha256")
+    ap.add_argument("--preparation-manager-payload-sha256")
+    ap.add_argument("--preparation-manager-manifest-sha256")
+    ap.add_argument("--fidelityfx", type=Path, help="explicit local FidelityFX SDK/DLL folder with its license; no download")
+    ap.add_argument("--streamline", type=Path, help="explicit local Streamline SDK/DLL folder with its licenses; no download")
     ap.add_argument("--jobs", type=int, choices=range(1, 7), default=4)
     ap.add_argument("--keep-going", action="store_true", help="retain all runtime compile diagnostics; never link failed objects")
     ap.add_argument("--launch-current", action="store_true", help="verify active pair/DLLs, then open only its settings launcher")
     ap.add_argument("--check-current", action="store_true", help="verify active pair/DLLs without launching anything")
     args = ap.parse_args(argv)
+    if (args.fidelityfx is not None or args.streamline is not None) and args.stage != "all":
+        ap.error("Local optional providers require the complete fresh --stage all recipe")
     if args.reuse_game_library is not None:
         # Normalize CLI spelling without resolving any reparse-point ancestry.
         args.reuse_game_library = args.reuse_game_library.absolute()

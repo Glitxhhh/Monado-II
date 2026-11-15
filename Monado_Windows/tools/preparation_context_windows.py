@@ -5,6 +5,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
+import struct
 import sys
 
 
@@ -16,7 +18,30 @@ def module(path, name):
     return result
 
 
-def create(port, output, *, installation, manifest=None, manifest_sha256=None):
+def checked_manager(guard, path, identity, payload_identity, manifest_identity):
+    if not all(isinstance(value,str) and re.fullmatch('[0-9a-f]{64}',value) for value in (identity,payload_identity,manifest_identity)):
+        raise ValueError('Portable manager identities are missing')
+    path=Path(guard.canonical_path(path))
+    with guard.locked_directory(path.parent,owner=True) as parent:
+        with parent.open_regular(path.name,max_bytes=2304*1024*1024,owner=True) as stream:
+            stream.seek(0,2);size=stream.tell()
+            if size<4152:raise ValueError('Portable manager has no payload')
+            stream.seek(0)
+            if hashlib.file_digest(stream,'sha256').hexdigest()!=identity:raise ValueError('Portable manager full identity changed')
+            stream.seek(-56,2);magic,offset,length,sha=struct.unpack('<8sQQ32s',stream.read(56))
+            if magic!=b'M2BNDL01' or offset<4096 or not 24<=length<=2*1024*1024*1024 or offset+length+56!=size or sha.hex()!=payload_identity:
+                raise ValueError('Portable manager payload identity differs')
+            stream.seek(offset);digest=hashlib.sha256();remaining=length
+            while remaining:
+                data=stream.read(min(1024*1024,remaining))
+                if not data:raise ValueError('Portable manager payload is truncated')
+                digest.update(data);remaining-=len(data)
+            if digest.digest()!=sha:raise ValueError('Portable manager payload changed')
+    return dict(path=str(path),bytes=size,sha256=identity,payload_sha256=payload_identity,manifest_sha256=manifest_identity)
+
+
+def create(port, output, *, installation, manifest=None, manifest_sha256=None,
+           manager=None, manager_sha256=None, manager_payload_sha256=None, manager_manifest_sha256=None):
     port, output = Path(port), Path(output)
     python = Path(sys.executable).absolute()
     home = python.parent
@@ -38,6 +63,13 @@ def create(port, output, *, installation, manifest=None, manifest_sha256=None):
                 guard_path.stat().st_size!=guard_identity['bytes'] or hashlib.sha256(guard_path.read_bytes()).hexdigest()!=guard_identity['sha256']):
             raise ValueError('Native guard differs from the reviewed source manifest')
         guard = module(port.parent/'tools/windows_file_guard.py', 'monado_preparation_context_guard')
+        if manager is not None:
+            try:
+                value['manager']=checked_manager(guard,manager,manager_sha256,manager_payload_sha256,manager_manifest_sha256)
+            except (OSError,ValueError,TypeError):
+                # A missing optional setup executable must not disable the
+                # independent pinned interpreter/model-preparation context.
+                pass
         if manifest is not None:
             with guard.locked_directory(Path(manifest).parent, owner=True) as parent:
                 raw = parent.read_regular(Path(manifest).name, max_bytes=16*1024*1024, owner=True)

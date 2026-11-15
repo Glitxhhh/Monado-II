@@ -126,6 +126,15 @@ GAMELIB_EXPORT const GameLibTables *lasgame_tables(void){return &tables;}
         self.assertEqual(result.returncode, 23, result.stderr)
         self.assertIn('AUTHORED precompile boundary', result.stderr)
 
+    def test_native_launch_monitor_prefix_is_checked_before_entry(self):
+        result=self.scenario('missing',bad_precompile='monitor-valid')
+        self.assertEqual(result.returncode,23,result.stderr)
+        for mode in ('invalid','missing','duplicate'):
+            with self.subTest(mode=mode):
+                result=self.scenario('missing',bad_precompile='monitor-'+mode)
+                self.assertEqual(result.returncode,2,result.stderr)
+                self.assertNotIn('AUTHORED',result.stderr)
+
     def test_precompile_rejects_missing_duplicate_extra_or_invalid_session_tokens(self):
         for mode in ('missing','duplicate','extra','session','identity'):
             with self.subTest(mode=mode):

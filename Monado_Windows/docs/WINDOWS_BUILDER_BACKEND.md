@@ -8,7 +8,7 @@ The frontend invokes the cached `python/python.exe` with `-I -S -B` and
 `setup/bootstrap_windows.py` with these arguments:
 
 ```
---action build|resume|adopt|locate-input|check-update|update|prepare-fsr4|select-fsr4|build-fsr4-tools
+--action build|resume|adopt|locate-input|check-update|update|prepare-fsr4|select-fsr4|build-fsr4-tools|select-providers
 --cache ABSOLUTE_CACHE
 --payload-sha256 OUTER_PAYLOAD_SHA256
 --manifest-sha256 PAYLOAD_MANIFEST_SHA256
@@ -21,6 +21,8 @@ The frontend invokes the cached `python/python.exe` with `-I -S -B` and
 [--archives LOCAL_PINNED_ARCHIVES] [--support LOCAL_D3D_SUPPORT]
 [--cmake LOCAL_EXE] [--ninja LOCAL_EXE] [--compiler LOCAL_EXE]
 [--vulkan-prefix LOCAL_HEADERS_AND_IMPORT_LIBRARY]
+[--fidelityfx LOCAL_SDK_FOLDER] [--streamline LOCAL_SDK_FOLDER]
+[--manager-executable PORTABLE_BUILDER_EXE --manager-sha256 FULL_EXE_SHA256]
 ```
 
 The native frontend authenticates the embedded payload and extracted cache.
@@ -38,8 +40,8 @@ Progress consists of UTF-8 JSONL records of at most 64 KiB. Each record has
 Successful checked results may additionally return `launcher`, `profile` and
 `launcher_args`, the exact pair `['--profile-root', ABSOLUTE_PROFILE]`, optionally
 followed by `['--fsr4-assets', VERIFIED_ASSETS, '--fsr4-component', VERIFIED_DLL]`.
-Recognized durable optional source choices are flat `fsr4_sdk`, `fsr4_tools` and
-`fsr4_component` fields. The native
+Recognized durable optional source choices are flat `fsr4_sdk`, `fsr4_tools`,
+`fsr4_component`, `provider_fidelityfx` and `provider_streamline` fields. The native
 frontend opens that checked settings executable outside the backend's owned job.
 Terminal statuses are `success`, `error`, `cancelled`, `needs-setup`, `needs-input`,
 `up-to-date` and `update-available`. No public Windows update metadata means

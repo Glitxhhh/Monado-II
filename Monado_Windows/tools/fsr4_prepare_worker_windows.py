@@ -304,7 +304,9 @@ def verified_context(path,expected_sha256):
     if hashlib.sha256(raw).hexdigest()!=expected_sha256:raise PreparationError('Preparation context differs from the checked launcher')
     context=document(raw,limit=16*1024*1024)
     fields={'schema','platform','status','reason','installation','receipt','source_root','python','python_site','worker','pipeline','guard','files'}
-    if (set(context)!=fields or type(context['schema']) is not int or context['schema']!=1 or
+    # The separately bound optional management executable is never imported or
+    # started by this worker. Moving it must not disable model preparation.
+    if (set(context) not in (fields,fields|{'manager'}) or type(context['schema']) is not int or context['schema']!=1 or
         context['platform']!='windows-amd64' or context['status'] not in ('available','unavailable') or
         not isinstance(context['reason'],str)):
         raise PreparationError('Unrecognized build preparation context')

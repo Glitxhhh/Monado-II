@@ -7,6 +7,7 @@
 #include <string.h>
 #include "../../runtime/kernel.h"
 #include "../../runtime/gamelib.h"
+#include "../../runtime/platform/window_launch_hint_windows.h"
 #include "../../runtime/settings.h"
 
 // Authored host settings storage; actual parsing is separately qualified by the
@@ -104,6 +105,16 @@ int main(int argc, char **argv) {
     if(!strcmp(argv[1],"fsr4")||!strcmp(argv[1],"fsr4-missing")) {
         char *configured[]={argv[0],"--fsr4-assets","C:/authored models/雪","--fsr4-component","C:/authored component.dll",input,NULL};
         return authored_boot_main(!strcmp(argv[1],"fsr4")?6:3,configured);
+    }
+    if(!strncmp(argv[1],"monitor-",8)){
+        char *configured[]={argv[0],"--launch-monitor","\\\\.\\DISPLAY2","--precompile",input,
+            "--session","bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","--identity","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",NULL};
+        if(!strcmp(argv[1],"monitor-invalid"))configured[2]="\\\\.\\DISPLAY2;anything";
+        if(!strcmp(argv[1],"monitor-missing"))return authored_boot_main(2,configured);
+        if(!strcmp(argv[1],"monitor-duplicate"))configured[3]="--launch-monitor";
+        int result=authored_boot_main(9,configured);
+        if(!strcmp(argv[1],"monitor-valid"))assert(!strcmp(g_window_launch_monitor,"\\\\.\\DISPLAY2"));
+        return result;
     }
     if(!strncmp(argv[1],"precompile",10)) {
         char *prepared[]={argv[0],"--precompile",input,"--session","bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",

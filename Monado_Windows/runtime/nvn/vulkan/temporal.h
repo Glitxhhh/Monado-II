@@ -49,6 +49,8 @@ void tmp_fg_idle(VkCommandBuffer cb);
 VkImageView tmp_fg_hudless_target(void);
 #ifdef _WIN32
 bool tmp_fg_supported(void); // checked local component/API, not hardware/gameplay qualification
+void tmp_fg_drain(void); // native SDK host presents must retire before resources/device idle
+void tmp_fg_before_present(VkCommandBuffer cb); // no stale inputs for unprepared/spatial frames
 bool tmp_fg_inputs_ready(void); // successful current preparation plus recent successful generation dispatch
 bool tmp_fg_present_count(uint64_t *count); // SDK reported total; no generated/native identity
 void tmp_fg_invalidate(void);

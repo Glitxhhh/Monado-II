@@ -217,6 +217,32 @@ def python_archives(directory, members):
     return opened
 
 
+def provider_exclusions(build_root, receipt):
+    """Bind private optional outputs before excluding them from public tools."""
+    provider = receipt.get("providers")
+    if provider is None:
+        return set()
+    files = provider.get("files", {})
+    if not files:
+        if provider.get("selection"):
+            raise ValueError("Provider selection lacks exact staged outputs")
+        return set()
+    for relative, identity in files.items():
+        name(relative)
+        if receipt["outputs"].get(relative) != identity.get("sha256"):
+            raise ValueError("Private provider output is not bound by the native receipt")
+        data = ordinary(build_root / relative)
+        if len(data) != identity.get("bytes") or digest(data) != identity.get("sha256"):
+            raise ValueError("Private provider output changed; no packaging performed")
+    raw = ordinary(build_root / "windows-providers.json", 4 * 1024 * 1024)
+    document = json.loads(raw)
+    expected = dict(provider)
+    expected["files"] = {key: value for key, value in files.items() if key != "windows-providers.json"}
+    if document != expected or "windows-providers.json" not in files:
+        raise ValueError("Private provider metadata differs from its exact native receipt")
+    return set(files)
+
+
 def native_dependencies(prefix, build_receipt, members):
     config = document(PORT / ".deps/windows-deps.json")
     if (Path(config["prefix"]).resolve() != prefix or
@@ -228,6 +254,7 @@ def native_dependencies(prefix, build_receipt, members):
     receipt = document(build_receipt)
     if receipt.get("status") != "success" or receipt.get("implementation") != "windows-parity-development":
         raise ValueError("A successful native Windows build receipt is required")
+    private_providers = provider_exclusions(build_receipt.parent, receipt)
     selected = {p for p in inventory if p.startswith(("include/", "share/licenses/"))}
     for path, sha in receipt["import_libraries"].items():
         path = Path(path)
@@ -236,6 +263,8 @@ def native_dependencies(prefix, build_receipt, members):
             raise ValueError("Import library does not match locked dependency inventory")
         selected.add(relative)
     for relative, sha in receipt["outputs"].items():
+        if relative in private_providers:
+            continue
         leaf = Path(relative).name
         if not leaf.lower().endswith(".dll") or leaf.lower() == "lasgame.dll":
             continue

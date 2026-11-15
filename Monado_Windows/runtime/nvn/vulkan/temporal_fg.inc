@@ -11,6 +11,8 @@
 // (ffx_api/vk/ffx_api_vk.h is C++-only: the declarations used here, as there)
 #define FFX_API_CREATE_CONTEXT_DESC_TYPE_FGSWAPCHAIN_VK 0x40001u
 #define FFX_API_QUERY_DESC_TYPE_FGSWAPCHAIN_FUNCTIONS_VK 0x40005u
+#define FFX_API_DISPATCH_DESC_TYPE_FGSWAPCHAIN_WAIT_FOR_PRESENTS_VK 0x40007u
+struct ffxDispatchDescFrameGenerationSwapChainWaitForPresentsVK { ffxDispatchDescHeader header; };
 typedef VkResult (*PFN_vkQueueSubmitFFXAPI)(uint32_t submitCount, const VkSubmitInfo *pSubmits, VkFence fence);
 struct VkQueueInfoFFXAPI { VkQueue queue; uint32_t familyIndex; PFN_vkQueueSubmitFFXAPI submitFunc; };
 struct ffxCreateContextDescFrameGenerationSwapChainVK {
@@ -41,6 +43,7 @@ static PFN_vkCreateSwapchainFFXAPI fg_create_fn;
 static PFN_vkDestroySwapchainFFXAPI fg_destroy_fn;
 static PFN_getLastPresentCountFFXAPI fg_present_count;
 static uint64_t fg_frame_id;
+static uint64_t fg_prepared_renderer_frame = UINT64_MAX;
 static atomic_uint_fast64_t fg_generation_floor;
 static Img fg_hl;      // the frame without the HUD (window size, swapchain format)
 static bool fg_hl_ok;  // filled for the frame being configured
@@ -50,8 +53,19 @@ static bool fg_inputs_ready;
 static atomic_bool fg_generated_ready;
 static atomic_uint_fast64_t fg_reset_serial,fg_reset_ack;
 static atomic_uint_fast64_t fg_last_generated_frame;
+void tmp_fg_drain(void) {
+    if (!fgsc_ctx) return;
+    // Official native FFX Vulkan swapchain wait descriptor, not a GPU-idle
+    // substitute: its presentation worker can otherwise submit after idle.
+    struct ffxDispatchDescFrameGenerationSwapChainWaitForPresentsVK wait = {
+        .header = {.type = FFX_API_DISPATCH_DESC_TYPE_FGSWAPCHAIN_WAIT_FOR_PRESENTS_VK}};
+    ffxReturnCode_t result = ffx_dispatch(&fgsc_ctx, &wait.header);
+    if (result != FFX_API_RETURN_OK)
+        FATAL("[tmp] native frame-generation presentation drain failed: %u\n", result);
+}
 static void fg_reset(void) {
     fg_inputs_ready=fg_hl_ok=false;
+    fg_prepared_renderer_frame = UINT64_MAX;
     atomic_store_explicit(&fg_generated_ready,false,memory_order_release);
     atomic_fetch_add_explicit(&fg_reset_serial,1,memory_order_release);
     atomic_store_explicit(&fg_generation_floor,++fg_frame_id,memory_order_release); // history discontinuity; scratch images remain owned
@@ -92,7 +106,19 @@ static void VKAPI_PTR fg_destroy_sc(VkDevice d, VkSwapchainKHR sc, const VkAlloc
 
 static bool fg_context(uint32_t w, uint32_t h) {
     if (fg_ctx && fg_w == w && fg_h == h) return true;
-    if (fg_ctx) { vkDeviceWaitIdle(g_vk.dev); ffx_destroy(&fg_ctx, NULL); fg_ctx = NULL; }
+    if (fg_ctx) {
+        tmp_fg_drain();
+        struct ffxConfigureDescFrameGeneration disable = {0};
+        disable.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATION;
+        disable.swapChain = (void *)g_vk.swapchain;
+        disable.frameGenerationEnabled = false;
+        if (ffx_configure(&fg_ctx, &disable.header) != FFX_API_RETURN_OK)
+            FATAL("[tmp] native generation could not be disabled before context replacement\n");
+        VK_CHECK(vkDeviceWaitIdle(g_vk.dev));
+        if (ffx_destroy(&fg_ctx, NULL) != FFX_API_RETURN_OK)
+            FATAL("[tmp] native generation context destruction failed\n");
+        fg_ctx = NULL;
+    }
     fg_reset();
     struct ffxCreateBackendVKDesc be = {.header = {.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK},
                                         .vkDevice = g_vk.dev, .vkPhysicalDevice = g_vk.phys, .vkDeviceProcAddr = ffx_proc};
@@ -186,6 +212,7 @@ static void fg_frame(VkCommandBuffer cb, bool enabled, const TmpCamera *cam, con
     fg_inputs_ready=false;
     if (!fg_active) return;
     if (!fg_context(g_vk.sc_extent.width, g_vk.sc_extent.height)) return;
+    fg_prepared_renderer_frame = renderer_present_count();
     enabled = enabled && fg_on();
     if(reset||!enabled) {atomic_store_explicit(&fg_generation_floor,fg_frame_id,memory_order_release);atomic_store_explicit(&fg_generated_ready,false,memory_order_release);atomic_fetch_add_explicit(&fg_reset_serial,1,memory_order_release);}
     //  // (the F1 menu can turn it off; the swapchain stays)
@@ -247,6 +274,13 @@ static void fg_frame(VkCommandBuffer cb, bool enabled, const TmpCamera *cam, con
     }
 }
 void tmp_fg_idle(VkCommandBuffer cb) { fg_frame(cb, false, NULL, NULL, 0, 0, 0, false); }
+void tmp_fg_before_present(VkCommandBuffer cb) {
+    // Switching to spatial scaling bypasses tmp_upscale. Menus or invalid
+    // sources can also reach presentation without any temporal preparation.
+    // Disable last frame's SDK configuration instead of reusing stale inputs.
+    if (fg_active && (fg_prepared_renderer_frame != renderer_present_count() || !tmp_frame_gen_wanted()))
+        tmp_fg_idle(cb);
+}
 
 // exec.c vk_present_draw: where to render this frame without its HUD (NULL: frame generation off, or
 // XCDE_FG_NO_HUDLESS=1). The copy is used from the next configure on: frames keep the same HUD layout from one to the next.

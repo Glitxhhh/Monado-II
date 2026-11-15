@@ -53,6 +53,9 @@
 #ifndef MONADO_FSR4_CONTEXT_SHA256
 #define MONADO_FSR4_CONTEXT_SHA256 ""
 #endif
+#ifndef MONADO_WINDOWS_PROVIDER_STATUS
+#define MONADO_WINDOWS_PROVIDER_STATUS "Optional graphics SDKs are checked when the game starts."
+#endif
 #endif
 
 #ifdef _WIN32
@@ -514,8 +517,8 @@ static monado_preparation::Selection g_fsr4_selection;
 static monado_preparation::ToolSelection g_fsr4_tool_selection;
 static HWND g_native_window=nullptr;
 static std::vector<std::wstring> windows_game_arguments(bool precompile) {
-    std::vector<std::wstring> args;
-    if(!g_fsr4_assets.empty())args={L"--fsr4-assets",monado_launcher_windows::wide(g_fsr4_assets),L"--fsr4-component",monado_launcher_windows::wide(g_fsr4_component)};
+    std::vector<std::wstring> args=precompile?std::vector<std::wstring>{}:monado_launcher_windows::launch_monitor_arguments(g_native_window);
+    if(!g_fsr4_assets.empty())args.insert(args.end(),{L"--fsr4-assets",monado_launcher_windows::wide(g_fsr4_assets),L"--fsr4-component",monado_launcher_windows::wide(g_fsr4_component)});
     if(precompile)args.push_back(L"--precompile");args.push_back(L"targets");return args;
 }
 #endif
@@ -948,6 +951,12 @@ static void tab_gpu_configuration() {
 static void tab_graphics() {
 #ifdef _WIN32
     ImGui::TextDisabled("%s",MONADO_WINDOWS_BUILD_IDENTITY);
+    ImGui::TextWrapped("%s",MONADO_WINDOWS_PROVIDER_STATUS);
+    if(ImGui::Button("Manage local graphics SDKs and updates...")){
+        try{monado_preparation::Manager manager;manager.load(g_runtime_root,MONADO_FSR4_CONTEXT_SHA256);manager.open();}
+        catch(const std::exception &error){g_status=std::string("Portable manager unavailable: ")+error.what()+". Open the portable setup directly, or rebuild from source with --fidelityfx / --streamline local SDK folders.";}
+    }
+    ImGui::TextDisabled("Close the game and settings window before applying provider or update changes in the manager.");
 #endif
 #if defined(__linux__) || defined(_WIN32)
     Settings quality_before=quality_settings(),quality=quality_before;
@@ -962,7 +971,7 @@ static void tab_graphics() {
     launcher_theme::section(T("Pantalla"));
     launcher_theme::checkbox(T("Pantalla completa"), &g.fullscreen);
     ImGui::SetNextItemWidth(260 * g_scale);
-#ifdef __linux__
+#if defined(__linux__) || defined(_WIN32)
     if (launcher_theme::combo(T("Tamaño de la ventana"), &g.win, k_wins, N_WINS)) g_custom.erase("window");
     custom_note("window");
 #else
@@ -976,7 +985,7 @@ static void tab_graphics() {
     ImGui::TextDisabled("%s", T("Las proporciones fijas añaden bandas cuando no coinciden con la ventana o pantalla."));
     launcher_theme::section(T("Resolución y escalado"));
     ImGui::SetNextItemWidth(360 * g_scale);
-#ifdef __linux__
+#if defined(__linux__) || defined(_WIN32)
     if (launcher_theme::combo(T("Resolución interna"), &g.res, TL(k_res_ui, 7).p, 7)) g_custom.erase("resolution");
     custom_note("resolution");
 #else
@@ -1158,7 +1167,7 @@ static void tab_graphics() {
     launcher_theme::combo(T("Velocidad de navegación en menús"), &g.menu_navigation_speed, TL(navigation_ui, 2).p, 2);
     ImGui::SetItemTooltip("%s", T("Controla las direcciones mantenidas en los menús y la selección de artes.\n"
                           "Rápida repite al doble de velocidad. La velocidad del juego y las animaciones de los menús no cambian."));
-#ifdef __linux__
+#if defined(__linux__) || defined(_WIN32)
     // [XCDE] LINUX-097: integrated FG uses FIFO at all selected base rates.
     bool fsr_pacing = g.frame_gen || g.cut_fg;
     launcher_theme::checkbox(fsr_pacing ? "V-Sync (FSR 3 frame generation)" : T("V-Sync (con 30 / 60 FPS)"), &g.vsync);
@@ -1339,7 +1348,7 @@ static void make_report() {
 }
 
 static void tab_mods() {
-#ifdef __linux__
+#if defined(__linux__) || defined(_WIN32)
     // [XCDE] LINUX-039: authored built-in option; does not require a romfs mod.
     launcher_theme::section(T("Monado II"));
     launcher_theme::checkbox(T("Ranura exclusiva de Paso rápido"), &g.quickstep_slot);
@@ -1427,7 +1436,7 @@ static void tab_audio() {
     launcher_theme::checkbox(T("Sonido de los vídeos"), &g.movie_audio);
     launcher_theme::section(T("Idioma del juego"));
     ImGui::SetNextItemWidth(260 * g_scale);
-#ifdef __linux__
+#if defined(__linux__) || defined(_WIN32)
     if (launcher_theme::combo(T("Idioma"), &g.lang, TL(k_lang_ui, 7).p, 7)) g_custom.erase("language");
     custom_note("language");
 #else
@@ -1680,7 +1689,7 @@ int main(int argc, char **argv) {
     bool have_exe = access(launcher_linux::game.c_str(), X_OK) == 0;
 #else
     bool have_game = exists("targets/exefs/main") || exists("targets/exefs");
-    bool have_exe = exists("build/xcde.exe");
+    bool have_exe = monado_launcher_windows::runtime_available(g_runtime_root);
 #endif
     bool run = true, launched = false;
     if (shot_pc) pc_start(false);
@@ -1838,7 +1847,7 @@ int main(int argc, char **argv) {
         if (launcher_theme::heading_font) ImGui::PopFont();
         ImGui::PopStyleColor(3);
         launcher_theme::footer_button(layout, 1);
-#ifdef __linux__
+#if defined(__linux__) || defined(_WIN32)
         if (ImGui::Button(T("Precompilar shaders"), layout.button_sizes[1])) pc_start(false);
         if (ImGui::IsItemHovered()) {
             ImGui::BeginTooltip();

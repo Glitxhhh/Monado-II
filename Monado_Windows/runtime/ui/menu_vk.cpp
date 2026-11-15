@@ -9,6 +9,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <mutex>
+#include <atomic>
 #include <string.h>
 
 #include "imgui.h"
@@ -36,6 +37,7 @@ void input_reset(void);
 void vk_request_swapchain_recreate(void);
 bool dlss_available(void);
 bool tmp_fg_supported(void);
+bool ui_window_set_fullscreen(bool fullscreen);
 #ifndef _WIN32
 bool vk_external_fps(double *rate,bool *ready);
 #endif
@@ -47,8 +49,9 @@ bool vk_external_fps_snapshot(MonadoPresentObserverSnapshot *snapshot,uint64_t *
 static std::mutex q_lock;
 static SDL_Event q[256];
 static int q_n;
-static volatile bool open_, want_window;
-static bool fs_applied = false, fs_init;
+static volatile bool open_;
+static std::atomic<int> window_request{-1};
+static std::atomic<bool> window_failed{false};
 
 // [XCDE] LINUX-094: the FPS display owns a separate, noninteractive context.
 // Device presentation calls it after interpolation, so it never enters FG history.
@@ -276,13 +279,14 @@ extern "C" bool menu_handle_event(const SDL_Event *e) {
 extern "C" bool menu_is_open(void) { return open_; }
 
 extern "C" void menu_apply_window_requests(void *sdl_window) {
-    if (!fs_init) { fs_init = true; fs_applied = g_settings.fullscreen; }
-    if (!want_window || !sdl_window) return;
-    want_window = false;
-    if (fs_applied != g_settings.fullscreen) {
-        SDL_SetWindowFullscreen((SDL_Window *)sdl_window, g_settings.fullscreen);
-        fs_applied = g_settings.fullscreen;
-    }
+    if(!sdl_window)return;
+    static int pending=-1,attempts=0;static uint64_t next_try=0;
+    int requested=window_request.exchange(-1,std::memory_order_acquire);
+    if(requested>=0){pending=requested;attempts=0;next_try=0;window_failed.store(false,std::memory_order_release);}
+    if(pending<0||SDL_GetTicksNS()<next_try)return;
+    if(ui_window_set_fullscreen(pending!=0)){pending=-1;window_failed.store(false,std::memory_order_release);}
+    else if(++attempts>=3){pending=-1;window_failed.store(true,std::memory_order_release);}
+    else next_try=SDL_GetTicksNS()+250000000ull;
 }
 
 extern "C" void menu_test_open(void) { open_ = true; }
@@ -419,7 +423,11 @@ static void ui(void) {
             if(monado_quality_controls_linux(&g_settings,g_settings.ui_lang==1))xcde_graphics_publish(&g_settings.graphics);
 #endif
             ImGui::SeparatorText(T("Pantalla"));
-            if (ImGui::Checkbox(T("Pantalla completa"), &g_settings.fullscreen)) want_window = true;
+            if (ImGui::Checkbox(T("Pantalla completa"), &g_settings.fullscreen))window_request.store(g_settings.fullscreen?1:0,std::memory_order_release);
+            if(window_failed.load(std::memory_order_acquire)){
+                ImGui::TextWrapped("The window change failed; see the game log. Your saved preference is unchanged.");
+                if(ImGui::Button("Retry window change"))window_request.store(g_settings.fullscreen?1:0,std::memory_order_release);
+            }
             ImGui::SeparatorText(T("Resolución y escalado"));
             int ri = 0;
             for (int i = 0; i < 7; i++) if (k_res_mode[i] == g_settings.res_mode) ri = i;

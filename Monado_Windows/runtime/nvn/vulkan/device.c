@@ -19,6 +19,7 @@ extern float xcde_effective_present_fps(void);
 #include "../../gpu_selection.h"
 #include "../../gpu_requirements_vk.h"
 #include "../../ui/menu.h"
+#include "../../ui/window_windows.h"
 #include "vk.h"
 #include "../../platform/windows_cache_transaction.h"
 #include "present_policy_windows.h"
@@ -35,8 +36,15 @@ extern float xcde_effective_present_fps(void);
 
 VkG g_vk;
 static SDL_Window *window;
+static WindowsWindowState native_window_state;
+bool ui_window_set_fullscreen(bool fullscreen) {
+    bool ok=windows_window_fullscreen(&native_window_state,fullscreen);
+    if(!ok)LOG("[window] could not apply %s: %s\n",fullscreen?"fullscreen":"windowed",SDL_GetError());
+    return ok;
+}
 static atomic_bool ui_ready;
 static VkDebugUtilsMessengerEXT messenger;
+#include "aspect_output_diagnostics.inc"
 
 // ================================================================== instance / device
 static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBitsEXT sev, VkDebugUtilsMessageTypeFlagsEXT type,
@@ -634,6 +642,7 @@ static void create_swapchain(void) {
 }
 
 static void recreate_swapchain(void) {
+    tmp_fg_drain();
     sc_wait_idle(g_vk.dev);
     tmp_fg_invalidate();
     fps_overlay_reset();
@@ -761,6 +770,7 @@ static void save_window_image(VkCommandBuffer cb, VkSpan *out) {
 void vk_frame_end(const char *shot_path) {
     if (!cur_frame.ok) return;
     VkCommandBuffer cb = vk_cmd();
+    tmp_fg_before_present(cb);
     if(fps_game_output)fps_overlay_render((void *)cb,g_vk.sc_extent.width,g_vk.sc_extent.height);
     vkCmdEndRendering(cb);
     VkSpan shot = {0};
@@ -1177,6 +1187,7 @@ void backend_present(NvnTexture *t) {
         extern float xcde_effective_present_fps(void);
         output_scale_set_native_fps(xcde_effective_present_fps());
         output_scale(dw, dh, widescreen_allowed(), SDL_GetTicksNS() / 1e9, -1, &os);
+        aspect_output_note(&os);
         double sx = os.sx, sy = os.sy, shape = os.shape;
         vx = os.vx, vy = os.vy, vw = os.vw, vh = os.vh;
         // interiors / dungeons: their 16:9 centre, or the part inside a room wider than one screen
@@ -1382,6 +1393,7 @@ static void quick_exit_handler(void) {
     if (trace < 0) trace = getenv("LARECOMP_VK_TRACE") != NULL;
     if (trace) LOG("[vk] exit: waiting for the GPU\n");
     if (g_vk.dev) {
+        tmp_fg_drain();
         sc_wait_idle(g_vk.dev);
         tmp_reset();
         dlss_shutdown();
@@ -1417,8 +1429,7 @@ void ui_window_init(void) {
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) FATAL("SDL_Init: %s\n", SDL_GetError());
     int win_w = g_window_w, win_h = g_window_h;  // [XCDE] xcde.ini
     if (getenv("LARECOMP_WINDOW")) sscanf(getenv("LARECOMP_WINDOW"), "%dx%d", &win_w, &win_h);
-    SDL_WindowFlags wflags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
-    if (getenv("LARECOMP_HIDDEN")) wflags |= SDL_WINDOW_HIDDEN;
+    SDL_WindowFlags wflags = SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY | SDL_WINDOW_HIDDEN;
     {   // scripted test runs (user input ignored: runtime/hle/input.c input_user_blocked) open without taking the
         // keyboard focus from whatever the player is doing
         const char *v = getenv("LARECOMP_NO_USER_INPUT");
@@ -1430,7 +1441,10 @@ void ui_window_init(void) {
     if (!window) FATAL("SDL_CreateWindow: %s\n", SDL_GetError());
     rt_window_icon(window);
     // the Fullscreen setting applies from the start screen on (not only once the game runs); test windows stay windows
-    if (g_settings.fullscreen && !getenv("LARECOMP_WINDOW") && !getenv("LARECOMP_HIDDEN")) SDL_SetWindowFullscreen(window, true);
+    bool startup_fullscreen=g_settings.fullscreen&&!getenv("LARECOMP_WINDOW")&&!getenv("LARECOMP_HIDDEN");
+    if(!windows_window_initialize(&native_window_state,window,win_w,win_h,g_window_launch_monitor,startup_fullscreen))
+        FATAL("Native window setup: %s\n",SDL_GetError());
+    if(!getenv("LARECOMP_HIDDEN")&&!SDL_ShowWindow(window))FATAL("SDL_ShowWindow: %s\n",SDL_GetError());
     {   // [XCDE] DLSS: Streamline must be loaded before the Vulkan instance (dlss.cpp)
         extern bool dlss_init_early(void);
         dlss_init_early();
@@ -1454,24 +1468,8 @@ void backend_init(void) {
     LOG("[vk] %s, swapchain %ux%u\n", g_vk.props.deviceName, g_vk.sc_extent.width, g_vk.sc_extent.height);
 }
 
-// ---- in-place reboot (runtime/main.c teardown; main thread, guest threads stopped)
-void backend_reset(void) {
-    output_scale_reset_dynamic();
-    if (!g_vk.dev) return;
-    sc_wait_idle(g_vk.dev);
-    tmp_reset();
-    fps_overlay_reset();atomic_store_explicit(&g_framegen_cap_fps,0.f,memory_order_release);
-    extern void vk_textures_reset(void);
-    extern void vk_exec_reset(void);
-    vk_textures_reset();
-    vk_exec_reset();
-    g_last_presented = NULL;
-}
-void backend_guest_memory_reset(void) {}  // (exec.c re-imports the heap on first use)
-void backend_clear_window(void) {
-    static const float black[4] = {0, 0, 0, 1};
-    if (g_vk.dev && vk_frame_begin(black)) vk_frame_end(NULL);
-}
+// Native reset/clear lifecycle is also exercised by the authored fixture.
+#include "device_lifecycle_windows.inc"
 
 int ui_run(void) {
     ui_window_init();

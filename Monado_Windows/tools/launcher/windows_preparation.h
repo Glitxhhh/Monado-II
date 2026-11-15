@@ -39,6 +39,22 @@ struct Context {
         for(auto key:{"python","worker","pipeline","guard"})require(files.fields.count(value.text(key))==1,"Preparation executable or helper is outside its checked closure");
     }
 };
+struct Manager {
+    monado_builder::PayloadLease lease;std::wstring executable,installation;
+    void load(const std::string &runtime,const std::string &identity){
+        using namespace monado_builder;auto root=absolute(wide(runtime));lease.begin(root);
+        auto value=JsonReader(lease.capture(root+L"\\fsr4-preparation-context.json",16*1024*1024,checksum(identity))).read();
+        require(value.at("schema").integer()==1&&value.text("platform")=="windows-amd64","Unrecognized local manager context");
+        installation=absolute(wide(value.text("installation")));
+        auto &manager=value.at("manager");executable=absolute(wide(manager.text("path")));auto bytes=manager.at("bytes").integer();require(bytes>=4152&&bytes<=2304ULL*1024*1024,"Invalid checked manager size");
+        lease.member(executable,bytes,checksum(manager.text("sha256")));Handle file(CreateFileW(native(executable).c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));require(file.value!=INVALID_HANDLE_VALUE,"Checked manager is unavailable");
+        require(inspect(file.value).sha==checksum(manager.text("payload_sha256")),"Checked manager payload identity changed");checksum(manager.text("manifest_sha256"));
+    }
+    void open(){
+        using namespace monado_builder;require(!executable.empty(),"No checked portable manager is available");auto command=quote(executable)+L" --manage --installation "+quote(installation);std::vector<wchar_t> line(command.begin(),command.end());line.push_back(0);auto slash=executable.find_last_of(L'\\');auto directory=executable.substr(0,slash);STARTUPINFOW startup{};startup.cb=sizeof startup;PROCESS_INFORMATION process{};
+        require(CreateProcessW(executable.c_str(),line.data(),nullptr,nullptr,FALSE,0,nullptr,directory.c_str(),&startup,&process),"Cannot open the checked portable manager");CloseHandle(process.hThread);CloseHandle(process.hProcess);
+    }
+};
 struct Snapshot {bool busy=false;std::string status,message,assets,component,sdk,tools,log,archives,support,cmake,ninja,compiler,vulkan_prefix;uint64_t done=0,total=0;};
 class Worker {
     mutable std::mutex mutex;Snapshot state;bool completion_pending=false;std::thread thread;std::atomic<bool> cancel{false},closing{false};std::wstring cancel_path;

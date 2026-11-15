@@ -14,9 +14,16 @@ class RendererNativeContracts(unittest.TestCase):
         if PORT.name!="Monado_Windows":
             self.skipTest("Native Windows FidelityFX adapter")
         source=(PORT/"runtime/nvn/vulkan/temporal_fg.inc").read_text(encoding="utf8")
-        body="\n".join(extract(source,name) for name in ["tmp_frame_gen_wanted","fg_reset","tmp_fg_inputs_ready","fg_dispatch_cb","fg_frame"])
+        body="\n".join(extract(source,name) for name in ["tmp_frame_gen_wanted","fg_reset","tmp_fg_inputs_ready","fg_dispatch_cb","fg_frame","tmp_fg_idle","tmp_fg_before_present"])
         result=self.graphics_fixture("fg-qualification","test_fg_qualification_windows.c",{"fg_qualification_source.h":body})
         self.assertIn("PASS actual native FG",result)
+
+    def test_windows_fg_presentation_drain_and_context_lifetime(self):
+        if PORT.name!="Monado_Windows":self.skipTest("Native Windows FidelityFX adapter")
+        source=(PORT/"runtime/nvn/vulkan/temporal_fg.inc").read_text(encoding="utf8")
+        body="\n".join(extract(source,name) for name in ["tmp_fg_drain","fg_context"])
+        result=self.graphics_fixture("fg-lifecycle","test_fg_lifecycle_windows.c",{"fg_lifecycle_source.h":body})
+        self.assertIn("PASS native SDK presentation drain/context ownership",result)
 
     def test_windows_provider_output_counter(self):
         if PORT.name!="Monado_Windows":

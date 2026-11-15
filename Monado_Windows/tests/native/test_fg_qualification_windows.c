@@ -21,6 +21,8 @@ typedef struct {TexBackend b;VkImageView v;} Img;
 static Img img[6],fg_hl;
 static bool fg_active,fg_inputs_ready,fg_hl_ok;
 static uint64_t fg_frame_id;
+static uint64_t fg_prepared_renderer_frame=UINT64_MAX,rendered_frame=42;
+uint64_t renderer_present_count(void){return rendered_frame;}
 static atomic_uint_fast64_t fg_generation_floor;
 static atomic_bool fg_generated_ready;
 static atomic_uint_fast64_t fg_reset_serial,fg_reset_ack;
@@ -66,6 +68,14 @@ int main(void){
  context_available=true;configure_result=FFX_API_RETURN_ERROR;
  if(!setjmp(fatal_environment)){fg_frame(VK_NULL_HANDLE,true,&camera,jitter,640,360,16.f,false);assert(!"failed provider disable must be fatal");}
  assert(fatal_calls==1&&configures>=5);
+ configure_result=FFX_API_RETURN_OK;configure_failures=0;g_settings.upscaler=UPSCALE_FSR3;g_settings.frame_gen=true;
+ generation_on=true;fg_active=true;context_available=true;dispatch_result=prepare_result=FFX_API_RETURN_OK;
+ fg_frame(VK_NULL_HANDLE,true,&camera,jitter,640,360,16.f,false);assert(fg_prepared_renderer_frame==rendered_frame);
+ unsigned configuration_before=configures;tmp_fg_before_present(VK_NULL_HANDLE);assert(configures==configuration_before&&fg_inputs_ready);
+ rendered_frame++;tmp_fg_before_present(VK_NULL_HANDLE);assert(configures==configuration_before+1&&!fg_inputs_ready&&fg_prepared_renderer_frame==rendered_frame);
+ fg_frame(VK_NULL_HANDLE,true,&camera,jitter,640,360,16.f,false);g_settings.upscaler=UPSCALE_FSR1;
+ configuration_before=configures;tmp_fg_before_present(VK_NULL_HANDLE);assert(configures==configuration_before+1&&!fg_inputs_ready);
+ fg_active=false;configuration_before=configures;rendered_frame++;tmp_fg_before_present(VK_NULL_HANDLE);assert(configures==configuration_before);
  assert(fabsf(fg_policy_base_fps(120,179.88f,true)-89.94f)<.001f);
  assert(fg_policy_base_fps(30,179.88f,true)==30.f);
  assert(fg_policy_base_fps(0,60.f,true)==30.f);

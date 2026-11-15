@@ -15,6 +15,8 @@
 #include "../rt.h"
 #ifdef XCDE_GFX
 #include "../nvn/vulkan/precompile_status.h"
+#include "../platform/window_launch_hint_windows.h"
+char g_window_launch_monitor[32];
 #endif
 
 const char *g_romfs_dir;
@@ -126,7 +128,13 @@ int main(int argc, char **argv) {
     int argument=1;
 #ifdef XCDE_GFX
     const char *fsr4_assets=NULL,*fsr4_component=NULL;
-    while(argument<argc && (!strcmp(argv[argument],"--fsr4-assets") || !strcmp(argv[argument],"--fsr4-component"))) {
+    while(argument<argc && (!strcmp(argv[argument],"--fsr4-assets") || !strcmp(argv[argument],"--fsr4-component") || !strcmp(argv[argument],"--launch-monitor"))) {
+        if(!strcmp(argv[argument],"--launch-monitor")){
+            if(*g_window_launch_monitor||argument+1>=argc||!window_launch_monitor_valid(argv[argument+1])){
+                fprintf(stderr,"--launch-monitor requires one native display device identity\n");return 2;
+            }
+            memcpy(g_window_launch_monitor,argv[argument+1],strlen(argv[argument+1])+1);argument+=2;continue;
+        }
         const char **slot=!strcmp(argv[argument],"--fsr4-assets")?&fsr4_assets:&fsr4_component;
         if(*slot || argument+1>=argc || !*argv[argument+1]) {fprintf(stderr,"FSR4 options require one explicit path each\n");return 2;}
         *slot=argv[argument+1];argument+=2;

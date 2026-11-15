@@ -270,4 +270,14 @@ class Native(unittest.TestCase):
             with self.assertRaisesRegex(W.PreparationError,'receipt does not bind'):
                 with W.verified_context(path,digest):pass
 
+    def test_missing_optional_manager_does_not_disable_checked_preparation(self):
+        context,path,_=self.context()
+        context['manager']={'path':str(self.root/'missing portable manager.exe'),'bytes':100,
+            'sha256':'a'*64,'payload_sha256':'b'*64,'manifest_sha256':'c'*64}
+        raw=W.encoded(context);path.write_bytes(raw);digest=sha(raw)
+        Path(context['receipt']).write_bytes(W.encoded({'schema':1,'status':'success',
+            'preparation_context':str(path),'preparation_context_sha256':digest}))
+        with patch.object(W.sys,'executable',context['python']),patch.object(W,'__file__',context['worker']):
+            with W.verified_context(path,digest) as (_,_,pipeline,_):self.assertTrue(pipeline.CHECKED_AUTHORED_CONTEXT_FIXTURE)
+
 if __name__=='__main__':unittest.main(verbosity=2)

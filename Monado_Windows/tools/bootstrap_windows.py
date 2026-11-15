@@ -18,6 +18,7 @@ from pathlib import Path, PurePosixPath
 import queue
 import re
 import stat
+import struct
 import subprocess
 import sys
 import threading
@@ -505,6 +506,108 @@ class Backend:
         put_json(self.state_guard,'checked-installations.json',updated)
         self.registry=updated
 
+    def provider_module(self):
+        for name in ('source/Monado_Windows/tools/windows_provider_selection.py',
+                     'source/Monado_Windows/tools/pe_symbols_windows.py','source/tools/windows_file_guard.py'):
+            if name not in self.payload:
+                raise BootstrapError('This checked source kit lacks the local Windows provider verifier')
+        return import_checked(self.cache/'source/Monado_Windows/tools/windows_provider_selection.py',
+                              'monado_trusted_provider_selection')
+
+    def manager_choice(self,previous=None):
+        explicit=getattr(self.args,'manager_executable',None)
+        known=(previous or {}).get('manager')
+        if explicit is None and not known:return None,[]
+        try:
+            path=Path(self.guard_module.canonical_path(explicit if explicit is not None else known['path']))
+            expected=getattr(self.args,'manager_sha256',None) if explicit is not None else known['sha256']
+            payload=self.args.payload_sha256 if explicit is not None else known['payload_sha256']
+            manifest=self.args.manifest_sha256 if explicit is not None else known['manifest_sha256']
+            if not all(isinstance(value,str) and HASH.fullmatch(value) for value in (expected,payload,manifest)):
+                raise BootstrapError('Portable management executable identity is invalid')
+            # The native frontend already holds this member before starting
+            # Python. Repeat the full-file/footer/payload check and retain an
+            # owned ordinary lease until the new immutable context is emitted.
+            stream=self.stack.enter_context(self.guard_module.open_regular(path,max_bytes=2*1024**3+64*1024**2,owner=True))
+            stream.seek(0,2);size=stream.tell()
+            if size<4152:raise BootstrapError('Portable management executable has no checked payload')
+            stream.seek(size-56);magic,offset,length,raw_hash=struct.unpack('<8sQQ32s',stream.read(56))
+            if magic!=b'M2BNDL01' or offset<4096 or not 24<=length<=2*1024**3 or offset+length+56!=size or raw_hash.hex()!=payload:
+                raise BootstrapError('Portable management executable payload identity differs')
+            stream.seek(0)
+            if digest_stream(stream)!=expected:raise BootstrapError('Portable management executable changed')
+            stream.seek(offset);digest=hashlib.sha256();remaining=length
+            while remaining:
+                self.checkpoint();block=stream.read(min(1024*1024,remaining))
+                if not block:raise BootstrapError('Portable management payload was truncated')
+                digest.update(block);remaining-=len(block)
+            if digest.hexdigest()!=payload:raise BootstrapError('Portable management payload hash differs')
+            value={'path':str(path),'bytes':size,'sha256':expected,'payload_sha256':payload,'manifest_sha256':manifest}
+            return value,['--preparation-manager',path,'--preparation-manager-sha256',expected,
+                          '--preparation-manager-payload-sha256',payload,'--preparation-manager-manifest-sha256',manifest]
+        except (OSError,ValueError,KeyError,TypeError):
+            if explicit is not None:raise
+            self.progress.emit('manager-unavailable','The original optional portable manager moved or changed; ordinary build and preparation remain available')
+            return None,[]
+
+    @staticmethod
+    def provider_fields(record):
+        return {'provider_'+kind:value['root'] for kind,value in record.get('providers',{}).items()
+                if kind in ('fidelityfx','streamline') and isinstance(value,dict) and isinstance(value.get('root'),str)}
+
+    def provider_choice(self,previous=None):
+        saved=(previous or {}).get('providers',{})
+        if not isinstance(saved,dict) or set(saved)-{'fidelityfx','streamline'}:
+            raise BootstrapError('Malformed saved local provider selection')
+        roots={kind:value['root'] for kind,value in saved.items()}
+        explicit={kind:getattr(self.args,kind,None) for kind in ('fidelityfx','streamline') if getattr(self.args,kind,None) is not None}
+        roots.update(explicit)
+        if not roots:return {},[]
+        verifier=self.provider_module()
+        self.progress.emit('providers','Checking your explicitly selected local provider files')
+        selected,_=self.stack.enter_context(verifier.checked(roots,cancel=self.checkpoint))
+        # An explicit re-selection may update that source. Retained selections
+        # must still have their original complete identity; missing/changed
+        # local originals never silently remove a provider on rebuild/update.
+        for kind,prior in saved.items():
+            if kind not in explicit and not verifier.same_source(prior,selected[kind]):
+                raise BootstrapError('Saved local provider source changed; select its folder again explicitly or restore its original files')
+        argv=[]
+        for kind,value in sorted(selected.items()):argv+=['--'+kind,value['root']]
+        return selected,argv
+
+    def checked_providers(self,receipt,selection,output):
+        actual=receipt.get('providers',{})
+        if not selection:
+            if actual and actual.get('selection'):
+                raise BootstrapError('Fresh build staged an unrequested optional provider')
+            return
+        expected={'windows-providers.json'}
+        for kind,value in selection.items():
+            expected.update('build/'+name for name in value['stage'])
+            expected.update('providers/'+kind+'/'+Path(name).name for name in value['licenses'])
+        if (set(actual)!={'schema','platform','selection','qualification','files'} or
+                actual.get('schema')!=1 or actual.get('platform')!=PLATFORM or
+                actual.get('qualification')!='local-integrity-only' or actual.get('selection')!=selection or
+                not isinstance(actual.get('files'),dict) or set(actual['files'])!=expected):
+            raise BootstrapError('Completed build provider source identity differs from the checked selection')
+        for name,item in actual['files'].items():
+            if (not isinstance(item,dict) or set(item)!={'bytes','sha256'} or type(item['bytes']) is not int or
+                    not 0<=item['bytes']<=512*1024*1024 or not isinstance(item['sha256'],str) or
+                    not HASH.fullmatch(item['sha256']) or receipt.get('outputs',{}).get(name)!=item['sha256']):
+                raise BootstrapError('Completed provider file is absent from the immutable build receipt')
+        with self.guard_module.locked_directory(output,owner=True) as completed:
+            raw=completed.read_regular('windows-providers.json',max_bytes=MAX_JSON,owner=True)
+        sidecar=decode(raw)
+        bound=dict(actual,files={name:item for name,item in actual['files'].items() if name!='windows-providers.json'})
+        if sidecar!=bound or actual['files']['windows-providers.json']!={'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()}:
+            raise BootstrapError('Completed provider sidecar differs from its immutable build receipt')
+
+    def select_providers(self):
+        if not any(getattr(self.args,kind,None) is not None for kind in ('fidelityfx','streamline')):
+            raise BootstrapError('Choose at least one local FidelityFX or Streamline SDK folder')
+        self.update(True,local_providers=True)
+
     def fsr4_modules(self):
         result=[]
         for leaf,name in (('fsr4_prepare_worker_windows.py','monado_trusted_fsr4_worker'),
@@ -707,6 +810,9 @@ class Backend:
             raise BootstrapError('Build needs your extracted input and a chosen installation folder')
         identity=self.input_identity(self.args.input)
         destination,marker=self.stage_source(self.args.destination)
+        previous=self.registry['installations'].get(marker['id'])
+        providers,provider_argv=self.provider_choice(previous)
+        manager,manager_argv=self.manager_choice(previous)
         port=destination/'source/Monado_Windows'
         output=port/'build'/('native-'+str(time.time_ns())+'-'+uuid.uuid4().hex[:8])
         self.stack.enter_context(self.guard_module.locked_directory(destination,owner=True))
@@ -715,12 +821,12 @@ class Backend:
                         '--split-game','--input',identity['path'],'--output',output,'--prefix',self.cache/'native/ucrt64',
                         '--jobs',str(self.args.jobs),'--preparation-python-manifest',self.cache/'payload-manifest.json',
                         '--preparation-python-manifest-sha256',self.args.manifest_sha256,
-                        '--preparation-installation',destination],cwd=port,phase='build',output=output)
+                        '--preparation-installation',destination]+provider_argv+manager_argv,cwd=port,phase='build',output=output)
         receipt,receipt_hash=self.checked_build(output)
+        self.checked_providers(receipt,providers,output)
         self.known_targets(output,receipt,identity)
         if receipt.get('input',{}).get('exefs')!={n:{'sha256':identity['exefs'][n]['sha256'],'bytes':identity['exefs'][n]['bytes']} for n in EXPECTED_NSO}:
             raise BootstrapError('Completed build input identity changed')
-        previous=self.registry['installations'].get(marker['id'])
         profile=previous.get('profile',previous['root']) if previous else str(output)
         if previous and identity['exefs']!=previous['input']['exefs']:
             raise BootstrapError('Existing profile requires its original full exefs inventory; use a new empty folder')
@@ -730,7 +836,7 @@ class Backend:
                 'source_root':str(port),'source_id':self.source_id,'receipt_sha256':receipt_hash,
                 'profile_receipt_sha256':previous['profile_receipt_sha256'] if previous else receipt_hash,
                 'runtime_history':list(dict.fromkeys(previous.get('runtime_history',[])+[previous['root']]))[-128:] if previous else [],
-                'input':identity,'managed':True,'version':self.source_manifest.get('version','0.0.0')}
+                'input':identity,'managed':True,'version':self.source_manifest.get('version','0.0.0'),'providers':providers,'manager':manager}
         if self.args.precompile:
             if previous:self.require_idle(previous)
             self.prepare_shaders(output,Path(profile))
@@ -738,7 +844,8 @@ class Backend:
         if previous: self.require_idle(previous)
         self.save_selection(record)
         self.progress.emit('complete','Native game and settings launcher built and checked',status='success',
-                           launcher=str(output/'build/xcde_launcher.exe'),launcher_args=['--profile-root',profile],profile=profile)
+                           launcher=str(output/'build/xcde_launcher.exe'),launcher_args=self.launcher_arguments(profile),profile=profile,
+                           **self.provider_fields(record),**self.fsr4_fields(profile))
 
     def adopt(self):
         if not self.args.destination:
@@ -753,15 +860,17 @@ class Backend:
         if receipt.get('input',{}).get('exefs')!={n:identity['exefs'][n] for n in EXPECTED_NSO}:
             raise BootstrapError('Original input differs from the completed native build receipt')
         self.known_targets(root,receipt,identity)
+        manager,_=self.manager_choice()
         record={'schema':SCHEMA,'id':uuid.uuid4().hex,'destination':str(root),'root':str(root),'profile':str(root),
                 'source_root':None,'source_id':None,'receipt_sha256':receipt_hash,'input':identity,
                 'profile_receipt_sha256':receipt_hash,
                 'runtime_history':[],
-                'managed':False,'version':'0.0.0'}
+                'managed':False,'version':'0.0.0','providers':receipt.get('providers',{}).get('selection',{}),'manager':manager}
         self.require_idle(record)
         self.save_selection(record); self.progress.installation=str(root)
         self.progress.emit('complete','Existing native installation checked; settings are ready',status='success',
-                           launcher=str(root/'build/xcde_launcher.exe'),launcher_args=self.launcher_arguments(root),profile=str(root),**self.fsr4_fields(root))
+                           launcher=str(root/'build/xcde_launcher.exe'),launcher_args=self.launcher_arguments(root),profile=str(root),
+                           **self.provider_fields(record),**self.fsr4_fields(root))
 
     def known_targets(self,root,receipt,identity,*,missing=False):
         target=root/'targets'; plain(target,directory=True)
@@ -800,7 +909,8 @@ class Backend:
             raise BootstrapError('Original extracted RomFS inventory changed')
         self.save_selection(record)
         self.progress.emit('complete','Checked native settings launcher is ready',status='success',
-                           launcher=str(Path(record['root'])/'build/xcde_launcher.exe'),launcher_args=self.launcher_arguments(profile),profile=str(profile),**self.fsr4_fields(profile))
+                           launcher=str(Path(record['root'])/'build/xcde_launcher.exe'),launcher_args=self.launcher_arguments(profile),profile=str(profile),
+                           **self.provider_fields(record),**self.fsr4_fields(profile))
 
     def locate(self):
         record=self.selected()
@@ -846,18 +956,22 @@ class Backend:
         self.progress.emit('complete','Moved original input checked and located; settings are ready',status='success',
                            launcher=str(Path(record['root'])/'build/xcde_launcher.exe'),launcher_args=['--profile-root',str(root)],profile=str(root))
 
-    def update(self,execute=False):
+    def update(self,execute=False,*,local_providers=False):
         record=self.selected()
         if not record:
             raise BootstrapError('Select a checked native installation before checking updates')
-        if 'setup/update_windows_release.py' not in self.payload:
+        if not local_providers and 'setup/update_windows_release.py' not in self.payload:
             raise BootstrapError('This checked builder has no Windows update verifier; no update was attempted')
-        for name in ('publication_guard','update_release'):
-            if 'setup/'+name+'.py' not in self.payload:
-                raise BootstrapError('Checked update dependency is missing: '+name)
-            import_checked(self.cache/'setup'/(name+'.py'),name)
-        updater=import_checked(self.cache/'setup/update_windows_release.py','monado_trusted_windows_updater')
-        offer=updater.discover(record.get('version','0.0.0'))
+        updater=None
+        if local_providers:
+            offer={'version':record.get('version','0.0.0'),'source_manifest_sha256':self.source_id}
+        else:
+            for name in ('publication_guard','update_release'):
+                if 'setup/'+name+'.py' not in self.payload:
+                    raise BootstrapError('Checked update dependency is missing: '+name)
+                import_checked(self.cache/'setup'/(name+'.py'),name)
+            updater=import_checked(self.cache/'setup/update_windows_release.py','monado_trusted_windows_updater')
+            offer=updater.discover(record.get('version','0.0.0'))
         self.progress.installation=record['destination']
         if not offer:
             self.progress.emit('update','No newer supported Windows release is available',status='up-to-date'); return
@@ -868,6 +982,8 @@ class Backend:
         profile=Path(record.get('profile',record['root'])); profile_receipt,_=self.checked_build(profile,record['profile_receipt_sha256'])
         self.known_targets(profile,profile_receipt,record['input'])
         identity=self.input_identity(record['input']['path'],record['input'])
+        providers,provider_argv=self.provider_choice(record)
+        manager,manager_argv=self.manager_choice(record)
         # A fresh verified source/build lives outside the stable profile. Only
         # the small owned selection registry changes at activation; existing
         # binaries, receipts, settings, saves and unknown profile files stay.
@@ -877,13 +993,29 @@ class Backend:
         with self.guard_module.locked_directory(destination,owner=True) as installation:
             with installation.child('updates',create=True,owner=True): pass
         candidate=destination/'updates'/('windows-'+str(time.time_ns())+'-'+uuid.uuid4().hex[:8])
-        try:
-            source=updater.fetch_and_extract(offer,candidate,
-                        progress=lambda phase,done,total:self.progress.emit(phase,'Checking Windows source update',done=done,total=total),
-                        cancel=self.cancelled)
-        except updater.UpdateCancelled as error:
-            raise Cancelled(str(error)) from error
-        manifest=updater.verified_source(source,offer)  # Installed guards; candidate code is still not imported.
+        if local_providers:
+            if 'publication-manifest.json' not in self.source_files:
+                raise BootstrapError('Checked local source kit lacks its publication manifest; original installation is unchanged')
+            with self.guard_module.locked_directory(destination/'updates',owner=True) as updates:
+                with updates.child(candidate.name,create=True,owner=True) as attempt:
+                    with attempt.child('source',create=True,owner=True) as authored:
+                        for index,(name,item) in enumerate(sorted(self.source_files.items()),1):
+                            self.checkpoint()
+                            data=self.guard.read_regular('source/'+name,max_bytes=MAX_SOURCE_FILE,owner=True)
+                            with parents(authored,PurePosixPath(name).parts[:-1],create=True) as parent:
+                                parent.write_new(PurePosixPath(name).name,data,owner=True)
+                            if index%64==0 or index==len(self.source_files):
+                                self.progress.emit('source','Preparing reviewed source for the local provider build',done=index,total=len(self.source_files))
+            source=candidate/'source';self.verify_source(source,self.source_files,allow_state=True)
+            manifest={'files':self.source_files}
+        else:
+            try:
+                source=updater.fetch_and_extract(offer,candidate,
+                            progress=lambda phase,done,total:self.progress.emit(phase,'Checking Windows source update',done=done,total=total),
+                            cancel=self.cancelled)
+            except updater.UpdateCancelled as error:
+                raise Cancelled(str(error)) from error
+            manifest=updater.verified_source(source,offer)  # Installed guards; candidate code is still not imported.
         # Retention authority is bound to the verified source BEFORE any
         # candidate script executes. Its later native snapshot checks these
         # same identities again, including the publication manifest itself.
@@ -891,11 +1023,12 @@ class Backend:
             raise BootstrapError('This checked builder lacks the native update retention guard; current selection is unchanged')
         retention=import_checked(self.cache/'setup/update_windows_retention.py','monado_trusted_windows_retention')
         source_files=dict(manifest['files'])
-        with self.guard_module.locked_directory(source,owner=True) as source_guard:
-            publication=source_guard.read_regular('publication-manifest.json',max_bytes=MAX_JSON,owner=True)
-        if hashlib.sha256(publication).hexdigest()!=offer['source_manifest_sha256']:
-            raise BootstrapError('Verified update publication identity changed before building')
-        source_files['publication-manifest.json']={'bytes':len(publication),'sha256':hashlib.sha256(publication).hexdigest()}
+        if not local_providers:
+            with self.guard_module.locked_directory(source,owner=True) as source_guard:
+                publication=source_guard.read_regular('publication-manifest.json',max_bytes=MAX_JSON,owner=True)
+            if hashlib.sha256(publication).hexdigest()!=offer['source_manifest_sha256']:
+                raise BootstrapError('Verified update publication identity changed before building')
+            source_files['publication-manifest.json']={'bytes':len(publication),'sha256':hashlib.sha256(publication).hexdigest()}
         port=source/'Monado_Windows'
         if not (port/'scripts/build_windows.py').is_file():
             raise BootstrapError('Verified Windows update lacks the native builder entry')
@@ -904,7 +1037,7 @@ class Backend:
             argv=[self.cache/'python/python.exe','-B',port/'scripts/build_windows.py','--stage','all','--split-game',
                   '--input',identity['path'],'--output',output,'--prefix',self.cache/'native/ucrt64','--jobs',str(self.args.jobs),
                   '--preparation-python-manifest',self.cache/'payload-manifest.json',
-                  '--preparation-python-manifest-sha256',self.args.manifest_sha256,'--preparation-installation',destination]
+                  '--preparation-python-manifest-sha256',self.args.manifest_sha256,'--preparation-installation',destination]+provider_argv+manager_argv
             if reuse:argv+=['--reuse-game-library',record['root']]
             self.run_child(argv,cwd=port,phase='update-build',output=output)
         reuse=bool(previous_receipt.get('split_game'))
@@ -918,6 +1051,7 @@ class Backend:
             output=port/'build'/('native-'+str(time.time_ns())+'-'+uuid.uuid4().hex[:8])
             compile_update(False)
         receipt,receipt_hash=self.checked_build(output)
+        self.checked_providers(receipt,providers,output)
         self.known_targets(output,receipt,identity)
         if receipt.get('input',{}).get('exefs')!={n:identity['exefs'][n] for n in EXPECTED_NSO}:
             raise BootstrapError('Completed update input differs from the checked original inventory')
@@ -926,7 +1060,7 @@ class Backend:
             self.prepare_shaders(output,profile)
         result=dict(record,root=str(output),source_root=str(port),source_id=offer['source_manifest_sha256'],
                     receipt_sha256=receipt_hash,version=offer['version'],
-                    runtime_history=list(dict.fromkeys(record.get('runtime_history',[])+[record['root']]))[-128:])
+                    runtime_history=list(dict.fromkeys(record.get('runtime_history',[])+[record['root']]))[-128:],providers=providers,manager=manager)
         self.checkpoint(); self.checked_build(output,receipt_hash); self.require_idle(record)
         self.progress.emit('retention','Checking the completed update inventory before activation')
         build_files=dict(receipt.get('retention_files',{}))
@@ -955,7 +1089,7 @@ class Backend:
         def selection_unchanged():
             if self.state_guard.read_regular('checked-installations.json',max_bytes=MAX_JSON,owner=True)!=selected:
                 raise BootstrapError('Selected installation changed during obsolete-update cleanup')
-        message='Windows update built and checked; existing profile preserved'
+        message=('Local Windows providers staged in a fresh checked runtime' if local_providers else 'Windows update built and checked')+'; existing profile preserved'
         try:
             self.progress.emit('cleanup','Checking obsolete verified update files')
             report=retention.cleanup(destination,current=candidate,
@@ -972,7 +1106,8 @@ class Backend:
             self.log.write(('Deferred obsolete-update cleanup: '+str(error)+'\n').encode('utf-8',errors='replace'));self.log.flush()
             message+='; obsolete-file cleanup is deferred'
         self.progress.emit('complete',message,status='success',
-                           launcher=str(output/'build/xcde_launcher.exe'),launcher_args=['--profile-root',str(profile)],profile=str(profile))
+                           launcher=str(output/'build/xcde_launcher.exe'),launcher_args=self.launcher_arguments(profile),profile=str(profile),
+                           **self.provider_fields(result),**self.fsr4_fields(profile))
 
 
 def busy_resources(paths):
@@ -1068,7 +1203,7 @@ def validate_input(exefs,romfs,profile,expected_nso,*,checkpoint=lambda:None,pro
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--action',required=True,choices=('build','resume','adopt','locate-input','check-update','update','prepare-fsr4','select-fsr4','build-fsr4-tools'))
+    parser.add_argument('--action',required=True,choices=('build','resume','adopt','locate-input','check-update','update','prepare-fsr4','select-fsr4','build-fsr4-tools','select-providers'))
     parser.add_argument('--cache',required=True,type=Path)
     parser.add_argument('--payload-sha256',required=True)
     parser.add_argument('--manifest-sha256',required=True)
@@ -1082,6 +1217,10 @@ def main(argv=None):
     parser.add_argument('--tools',type=Path)
     parser.add_argument('--component',type=Path)
     parser.add_argument('--assets',type=Path)
+    parser.add_argument('--fidelityfx',type=Path)
+    parser.add_argument('--streamline',type=Path)
+    parser.add_argument('--manager-executable',type=Path)
+    parser.add_argument('--manager-sha256')
     for name in ('archives','support','cmake','ninja','compiler','vulkan-prefix'):parser.add_argument('--'+name,type=Path)
     args=parser.parse_args(argv)
     backend=None
@@ -1090,6 +1229,7 @@ def main(argv=None):
         backend=Backend(args); backend.verify(); backend.checkpoint()
         {'build':backend.build,'resume':backend.resume,'adopt':backend.adopt,'locate-input':backend.locate,
          'check-update':backend.update,'update':lambda:backend.update(True),
+         'select-providers':backend.select_providers,
          'prepare-fsr4':backend.prepare_fsr4,'select-fsr4':lambda:backend.prepare_fsr4(True),'build-fsr4-tools':backend.build_fsr4_tools}[args.action]()
         return 0
     except Cancelled as error:

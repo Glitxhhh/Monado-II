@@ -50,6 +50,15 @@ static std::wstring quote(const std::wstring &arg) {
     }
     result.append(slashes*2,L'\\');result+=L'\"';return result;
 }
+static std::vector<std::wstring> launch_monitor_arguments(HWND window) {
+    // Win32 device identity survives the fresh SDL session in the child and
+    // avoids mixing logical/DPI coordinates or process-local SDL display IDs.
+    if(!window || !IsWindow(window))return {};
+    HMONITOR monitor=MonitorFromWindow(window,MONITOR_DEFAULTTONEAREST);
+    MONITORINFOEXW info{};info.cbSize=sizeof info;
+    if(!monitor || !GetMonitorInfoW(monitor,&info) || !*info.szDevice)return {};
+    return {L"--launch-monitor",info.szDevice};
+}
 static HANDLE start(const std::string &runtime_root,const std::string &profile_root,const std::vector<std::wstring> &arguments,
                     const char *log_name,DWORD priority=0) {
     std::wstring directory=wide(profile_root),exe=wide(runtime_root+"/build/xcde.exe"),log=wide(profile_root+"/"+log_name);

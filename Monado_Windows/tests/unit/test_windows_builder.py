@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 import zipfile
 
 PORT = Path(__file__).resolve().parents[2]
@@ -50,6 +51,12 @@ int wmain(int argc, wchar_t **argv) {
             auto root=builder_cache_root(std::wstring(env.data(),n));std::wstring leaf=argv[3];require(leaf.rfind(L"authored-msix-cache-",0)==0&&leaf.find_first_of(L"\\/:")==std::wstring::npos,"authored cache leaf");root+=L"\\"+leaf;directory(root);
             Handle input(CreateFileW(native(argv[2]).c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));require(input.value!=INVALID_HANDLE_VALUE,"authored payload input");
             auto payload=inspect(input.value);PayloadLease lease;materialize(input.value,payload,root,nullptr,&lease);auto physical=utf8(payload.cache);write(GetStdHandle(STD_OUTPUT_HANDLE),physical.data(),physical.size());return 0;
+        }
+        if (argc == 3 && !wcscmp(argv[1], L"--canonical-created-appdata-fixture")) {
+            std::vector<wchar_t> env(32768);DWORD n=GetEnvironmentVariableW(L"LOCALAPPDATA",env.data(),(DWORD)env.size());require(n&&n<env.size(),"authored LocalAppData unavailable");auto root=builder_cache_root(std::wstring(env.data(),n));
+            auto fixture=final_directory(argv[2]);auto slash=fixture.find_last_of(L'\\');require(slash!=std::wstring::npos&&fixture.substr(slash+1).rfind(L"authored-msix-cache-",0)==0,"authored fixture root");auto parent=fixture.substr(0,slash);
+            Handle actual(CreateFileW(native(parent).c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));Handle expected(CreateFileW(native(root).c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));BY_HANDLE_FILE_INFORMATION a{},b{};
+            require(actual.value!=INVALID_HANDLE_VALUE&&expected.value!=INVALID_HANDLE_VALUE&&GetFileInformationByHandle(actual.value,&a)&&GetFileInformationByHandle(expected.value,&b)&&a.dwVolumeSerialNumber==b.dwVolumeSerialNumber&&a.nFileIndexHigh==b.nFileIndexHigh&&a.nFileIndexLow==b.nFileIndexLow,"Authored cleanup parent differs from the actual native BuilderCache directory");PayloadLease lease;lease.begin(fixture);auto physical=utf8(fixture);write(GetStdHandle(STD_OUTPUT_HANDLE),physical.data(),physical.size());return 0;
         }
         if (argc == 2 && !wcscmp(argv[1], L"--check-fast-preparation-completion")) {
             monado_preparation::Worker worker;monado_preparation::Selection selection;
@@ -96,6 +103,9 @@ int wmain(int argc, wchar_t **argv) {
             monado_preparation::Context context;
             context.load(utf8(argv[2]), utf8(argv[3]), [](size_t,size_t){});
             return 0;
+        }
+        if (argc == 4 && !wcscmp(argv[1], L"--check-manager-context")) {
+            monado_preparation::Manager manager;manager.load(utf8(argv[2]),utf8(argv[3]));return 0;
         }
         if (argc == 6 && !wcscmp(argv[1], L"--run-preparation-worker")) {
             monado_preparation::Worker worker;monado_preparation::Selection selection;
@@ -366,23 +376,26 @@ int wmain(int argc, wchar_t **argv) {
         target, sha = self.fixture()
         leaf = 'authored-msix-cache-' + uuid.uuid4().hex
         logical = Path(os.environ['LOCALAPPDATA']) / 'MonadoII/BuilderCache' / leaf
+        physical = None
         result = subprocess.run([str(self.cancel_exe), '--materialize-created-appdata',
                                  str(target), leaf], capture_output=True, timeout=30)
         try:
             self.assertEqual(result.returncode, 0, result.stderr)
             physical = Path(result.stdout.decode('utf-8'))
-            self.assertEqual(physical, (logical / sha).resolve(strict=True))
             self.assertEqual(physical, physical.resolve(strict=True))
+            self.assertEqual(physical.name,sha)
             self.assertEqual((physical / 'python/authored.txt').read_bytes(), b'payload fixture\n' * 500)
             self.assertEqual((physical / '.complete').read_text(encoding='ascii'), sha)
         finally:
             # Only this uniquely named authored fixture is removed. All real
             # content-addressed caches, including failed package runs, remain.
-            if logical.is_dir():
-                cleanup = logical.resolve(strict=True)
-                self.assertFalse(logical.is_junction() or logical.is_symlink())
+            if physical is not None and physical.parent.is_dir():
+                checked = subprocess.run([str(self.cancel_exe),'--canonical-created-appdata-fixture',str(physical.parent)],capture_output=True,timeout=30)
+                self.assertEqual(checked.returncode,0,checked.stderr)
+                cleanup = Path(checked.stdout.decode('utf-8'))
+                self.assertEqual(cleanup,physical.parent)
+                self.assertFalse(cleanup.is_junction() or cleanup.is_symlink())
                 self.assertEqual(cleanup.name, leaf)
-                self.assertEqual(cleanup.parent, logical.parent.resolve(strict=True))
                 shutil.rmtree(cleanup)
 
     def test_actual_native_final_directory_rejects_reparse_leaf(self):
@@ -428,6 +441,51 @@ int wmain(int argc, wchar_t **argv) {
     def test_hidden_native_setup_window_defaults_and_controls(self):
         result = subprocess.run([str(self.exe), "--hidden-ui-fixture"], timeout=30)
         self.assertEqual(result.returncode, 0)
+
+    def test_hidden_local_dlss_license_requires_explicit_use_and_preserves_cancel(self):
+        sdk=self.root/'authored SDK 雪';sdk.mkdir()
+        license=sdk/'nvngx_dlss.license.txt';data=b'Authored license fixture; no vendor terms or SDK use.\n';license.write_bytes(data)
+        result=subprocess.run([str(self.exe),'--hidden-license-fixture',str(sdk)],timeout=30)
+        self.assertEqual(result.returncode,0)
+        alias=sdk/'authored-hardlink.txt';os.link(license,alias)
+        try:self.assertNotEqual(subprocess.run([str(self.exe),'--hidden-license-fixture',str(sdk)],timeout=30).returncode,0)
+        finally:alias.unlink()
+        self.assertEqual(license.read_bytes(),data)
+
+    def test_native_manager_binding_is_optional_and_rejects_changed_executable(self):
+        target,sha=self.fixture();runtime=self.root/'manager runtime';runtime.mkdir()
+        record={'schema':1,'platform':'windows-amd64','status':'unavailable','files':{},'installation':str(self.root),'manager':{
+            'path':str(target),'bytes':target.stat().st_size,'sha256':hashlib.sha256(target.read_bytes()).hexdigest(),
+            'payload_sha256':sha,'manifest_sha256':hashlib.sha256(b'{"authored":true}\n').hexdigest()}}
+        raw=json.dumps(record).encode('utf-8');(runtime/'fsr4-preparation-context.json').write_bytes(raw);identity=hashlib.sha256(raw).hexdigest()
+        args=[str(self.cancel_exe),'--check-manager-context',str(runtime),identity]
+        self.assertEqual(subprocess.run(args,timeout=30).returncode,0)
+        changed=bytearray(target.read_bytes());changed[0]^=1;target.write_bytes(changed)
+        self.assertNotEqual(subprocess.run(args,timeout=30).returncode,0)
+
+    def test_private_provider_outputs_are_bound_then_excluded_from_portable_payload(self):
+        def identity(data):return {'bytes':len(data),'sha256':hashlib.sha256(data).hexdigest()}
+        port=self.root/'authored-port';prefix=self.root/'native-prefix';build=self.root/'native-build'
+        (port/'tools').mkdir(parents=True);(port/'.deps').mkdir();(prefix/'bin').mkdir(parents=True);build.mkdir()
+        lock=b'{"authored":"dependency lock"}\n';(port/'tools/windows-deps.lock.json').write_bytes(lock);(prefix/'receipt.json').write_bytes(lock)
+        native=b'MZauthored native dependency fixture; never executed';(prefix/'bin/authored-native.dll').write_bytes(native)
+        inventory={'bin/authored-native.dll':identity(native)};raw=json.dumps(inventory).encode();(prefix/'content-inventory.json').write_bytes(raw)
+        (port/'.deps/windows-deps.json').write_text(json.dumps({'prefix':str(prefix),'lock_sha256':hashlib.sha256(lock).hexdigest(),'inventory_sha256':hashlib.sha256(raw).hexdigest()}),encoding='utf-8')
+        files={'build/authored-vendor.dll':b'MZprivate provider fixture; never executed','providers/authored/LICENSE':b'Authored private license fixture'}
+        for name,data in files.items():
+            path=build/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(data)
+        provider={'schema':1,'platform':'windows-amd64','selection':{'authored':{}},'qualification':'local-integrity-only','files':{name:identity(data) for name,data in files.items()}}
+        raw=pack.encoded(provider);(build/'windows-providers.json').write_bytes(raw)
+        provider=dict(provider,files=dict(provider['files'],**{'windows-providers.json':identity(raw)}))
+        receipt={'status':'success','implementation':'windows-parity-development','import_libraries':{},'providers':provider,'outputs':{'build/authored-native.dll':hashlib.sha256(native).hexdigest(),**{name:value['sha256'] for name,value in provider['files'].items()}}}
+        receipt_path=build/'build-receipt.json';receipt_path.write_bytes(pack.encoded(receipt))
+        with mock.patch.object(pack,'PORT',port):
+            members=pack.Members();pack.native_dependencies(prefix,receipt_path,members)
+            self.assertIn('native/ucrt64/bin/authored-native.dll',members)
+            self.assertFalse(any('vendor' in key or 'providers/' in key for key in members))
+            (build/'build/authored-vendor.dll').write_bytes(b'changed private provider')
+            with self.assertRaisesRegex(ValueError,'provider output changed'):
+                pack.native_dependencies(prefix,receipt_path,pack.Members())
 
 
 if __name__ == "__main__":

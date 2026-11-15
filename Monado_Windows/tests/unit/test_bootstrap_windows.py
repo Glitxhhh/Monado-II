@@ -88,6 +88,14 @@ class NativeContracts(unittest.TestCase):
         (cls.evidence/'compile.log').write_text(result.stdout+result.stderr)
         if result.returncode:raise RuntimeError('Authored fixture compile failed: '+result.stderr)
         cls.exe_bytes=cls.exe.read_bytes()
+        provider=cls.evidence/'authored-provider.c'
+        provider.write_text('\n'.join('__declspec(dllexport) int '+name+'(void){return 0;}' for name in
+            ('ffxCreateContext','ffxDestroyContext','ffxDispatch','ffxQuery','ffxConfigure'))+'\n')
+        binary=cls.evidence/'authored-provider.dll'
+        result=subprocess.run([sys.executable,'-B','-m','ziglang','cc','-shared','-O1',str(provider),'-o',str(binary)],env=env,capture_output=True,text=True,timeout=120)
+        (cls.evidence/'provider-compile.log').write_text(result.stdout+result.stderr)
+        if result.returncode:raise RuntimeError('Authored provider compile failed: '+result.stderr)
+        cls.provider_bytes=binary.read_bytes()
         cls.results=[]
 
     @classmethod
@@ -119,6 +127,10 @@ class NativeContracts(unittest.TestCase):
             'setup/update_release.py':(ROOT/'tools/update_release.py').read_bytes(),
             'setup/publication_guard.py':(ROOT/'tools/publication_guard.py').read_bytes(),
             'source/Monado_Windows/scripts/build_windows.py':(PORT/'scripts/build_windows.py').read_bytes(),
+            'source/Monado_Windows/tools/windows_provider_selection.py':(PORT/'tools/windows_provider_selection.py').read_bytes(),
+            'source/Monado_Windows/tools/pe_symbols_windows.py':(PORT/'tools/pe_symbols_windows.py').read_bytes(),
+            'source/tools/windows_file_guard.py':(ROOT/'tools/windows_file_guard.py').read_bytes(),
+            'source/publication-manifest.json':B.encoded({'schema':1,'scope':'authored source publication boundary; no game code'}),
             'source/Monado_Windows/games/xcde/profile.json':B.encoded(self.profile),
             'python/python.exe':self.exe_bytes,
             'native/ucrt64/authored-marker.txt':b'authored dependency boundary; no real game build',
@@ -165,13 +177,93 @@ class NativeContracts(unittest.TestCase):
     def fake_build(self,argv,*,cwd,phase,output=None):
         self.assertNotIn('--launch-current',list(map(str,argv)))
         if output:
-            self.assertIn('--split-game',argv);self.make_install(output)
+            self.assertIn('--split-game',argv);record=self.make_install(output)
+            choices={kind:argv[argv.index('--'+kind)+1] for kind in ('fidelityfx','streamline') if '--'+kind in argv}
+            if choices:
+                staged=self.backend.provider_module().stage(output,**choices)
+                record['providers']=staged
+                record['outputs'].update({name:item['sha256'] for name,item in staged['files'].items()})
+                record['retention_files'].update(staged['files'])
+                (output/'build-receipt.json').write_bytes(B.encoded(record))
         self.backend.progress.emit(phase,'Authored compiler boundary completed',done=1,total=1)
 
     def build_managed(self):
         destination=self.folder/'chosen install 測試'
         backend=self.backend_open('build',destination);backend.run_child=self.fake_build;backend.build()
         return backend.registry['installations'][backend.registry['last']]
+
+    def local_provider(self):
+        root=self.folder/'local MIT provider fixture 測試';root.mkdir()
+        (root/'amd_fidelityfx_vk.dll').write_bytes(self.provider_bytes)
+        (root/'LICENSE.txt').write_text('Authored synthetic DLL fixture, no vendor execution.\n')
+        return root
+
+    def test_selected_local_provider_is_receipted_persisted_and_reopened(self):
+        root=self.local_provider();backend=self.backend_open('build',self.folder/'provider installation')
+        backend.args.fidelityfx=root;backend.run_child=self.fake_build;backend.build();record=backend.selected()
+        runtime=Path(record['root']);receipt=json.loads((runtime/'build-receipt.json').read_text())
+        self.assertEqual(record['providers'],receipt['providers']['selection'])
+        self.assertEqual((runtime/'build/amd_fidelityfx_vk.dll').read_bytes(),self.provider_bytes)
+        self.close();backend=self.backend_open();backend.resume()
+        last=json.loads(Path(backend.args.progress).read_text().splitlines()[-1])
+        self.assertEqual(last['provider_fidelityfx'],str(root));self.assertEqual(last['launcher_args'],['--profile-root',record['profile']])
+
+    def test_provider_apply_builds_fresh_runtime_and_preserves_profile(self):
+        initial=self.build_managed();profile=Path(initial['profile']);before=(profile/'build-receipt.json').read_bytes()
+        (profile/'human-save').write_bytes(b'preserve existing profile')
+        self.backend.args.fidelityfx=self.local_provider();commands=[]
+        def compile(argv,**kwargs):commands.append(list(argv));self.fake_build(argv,**kwargs)
+        self.backend.run_child=compile;self.backend.select_providers();selected=self.backend.selected()
+        self.assertNotEqual(selected['root'],initial['root']);self.assertEqual(selected['profile'],initial['profile'])
+        self.assertTrue(selected['retention_authorities']);self.assertEqual((profile/'build-receipt.json').read_bytes(),before)
+        self.assertFalse((profile/'build/amd_fidelityfx_vk.dll').exists());self.assertEqual((profile/'human-save').read_bytes(),b'preserve existing profile')
+        self.assertIn('--fidelityfx',commands[0]);self.assertEqual(Path(commands[0][commands[0].index('--fidelityfx')+1]),self.backend.args.fidelityfx)
+
+    def test_provider_missing_changed_or_failed_activation_preserves_selection(self):
+        initial=self.build_managed();before=self.backend.state_guard.read_regular('checked-installations.json')
+        root=self.local_provider();self.backend.args.fidelityfx=root
+        original_put=B.put_json
+        def refuse(guard,name,value):
+            if name=='checked-installations.json':raise OSError('authored provider activation lock')
+            return original_put(guard,name,value)
+        with patch.object(B,'put_json',side_effect=refuse):
+            with self.assertRaisesRegex(OSError,'activation lock'):self.backend.select_providers()
+        self.assertEqual(self.backend.state_guard.read_regular('checked-installations.json'),before)
+        self.assertEqual(self.backend.selected()['root'],initial['root'])
+        self.close();backend=self.backend_open();backend.args.fidelityfx=root;backend.run_child=self.fake_build;backend.select_providers()
+        selected=backend.selected();before=backend.state_guard.read_regular('checked-installations.json')
+        self.close();(root/'LICENSE.txt').write_text('changed original license')
+        backend=self.backend_open('build',Path(selected['destination']));backend.run_child=self.fake_build
+        # Same source-kit rebuild retains its original provider source identity.
+        with self.assertRaisesRegex(B.BootstrapError,'provider source changed'):backend.build()
+        self.assertEqual(backend.state_guard.read_regular('checked-installations.json'),before)
+
+    def test_provider_empty_inventory_and_mismatched_sidecar_refused(self):
+        root=self.local_provider();backend=self.backend_open('build',self.folder/'provider inventory installation')
+        backend.args.fidelityfx=root;backend.run_child=self.fake_build;backend.build();record=backend.selected();output=Path(record['root'])
+        receipt=json.loads((output/'build-receipt.json').read_text());selection=record['providers']
+        broken=json.loads(B.encoded(receipt));broken['providers']['files']={}
+        with self.assertRaises(B.BootstrapError):backend.checked_providers(broken,selection,output)
+        sidecar=output/'windows-providers.json';raw=sidecar.read_bytes();value=json.loads(raw);value['selection']={}
+        changed=B.encoded(value);sidecar.write_bytes(changed)
+        receipt['providers']['files']['windows-providers.json']={'bytes':len(changed),'sha256':sha(changed)}
+        receipt['outputs']['windows-providers.json']=sha(changed)
+        with self.assertRaisesRegex(B.BootstrapError,'sidecar differs'):backend.checked_providers(receipt,selection,output)
+
+    def test_manager_footer_payload_binding_and_missing_optional_manager(self):
+        import struct
+        backend=self.backend_open();payload=b'authored embedded payload boundary';digest=sha(payload)
+        manager=self.folder/'authored portable manager 測試.exe'
+        raw=self.exe_bytes+payload+struct.pack('<8sQQ32s',b'M2BNDL01',len(self.exe_bytes),len(payload),bytes.fromhex(digest))
+        manager.write_bytes(raw);backend.args.payload_sha256=digest
+        backend.args.manager_executable=manager;backend.args.manager_sha256=sha(raw)
+        checked,args=backend.manager_choice();self.assertEqual(checked['sha256'],sha(raw));self.assertIn('--preparation-manager',args)
+        with self.assertRaises(OSError):manager.write_bytes(b'changed while held')
+        self.close();manager.unlink();backend=self.backend_open()
+        self.assertEqual(backend.manager_choice({'manager':checked}),(None,[]))
+        broken=bytearray(raw);broken[len(self.exe_bytes)]^=1;manager.write_bytes(broken)
+        backend.args.payload_sha256=digest;backend.args.manager_executable=manager;backend.args.manager_sha256=sha(broken)
+        with self.assertRaisesRegex(B.BootstrapError,'payload hash differs'):backend.manager_choice()
 
     def test_verify_cold_resume_and_bounded_progress(self):
         backend=self.backend_open();backend.resume();backend.progress.emit('test','x'*100000,done=1,total=2)
