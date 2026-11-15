@@ -2792,13 +2792,17 @@
       "bytes": 320,
       "sha256": "ca1ae3fb12a8a6cc75a3b3e24a8b1a24e7ad023d73060bd12e6bd97b29098caf"
     },
+    "Monado_Windows/docs/hle_audit.md": {
+      "bytes": 13055,
+      "sha256": "29ee5ca129b0f0d869ac03c6889d7dc73f7bf0179cc3a061e636fc0038829dc9"
+    },
     "Monado_Windows/fsr4-preparation-windows.lock.json": {
-      "bytes": 6135,
-      "sha256": "c8f7333bb786c80289dc56b54f0e28b46b73893cf0c9103ba9752261fb4dc097"
+      "bytes": 6294,
+      "sha256": "adfff091c395a08e784ed0d34a3c9674c4afa87b0929f7d0100b9abe1127769d"
     },
     "Monado_Windows/fsr4-windows.lock.json": {
       "bytes": 3284,
-      "sha256": "87ccf6711f5618514910c099ef83909997d00cd79f754de1f1237421ba3edac9"
+      "sha256": "0006972a8e0ad1829e7093159cedc97a371afd5cf613c57cbe437ba26c86bc76"
     },
     "Monado_Windows/games/xcde/hle_classes.tsv": {
       "bytes": 3027,

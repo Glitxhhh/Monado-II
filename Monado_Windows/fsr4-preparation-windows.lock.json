@@ -132,8 +132,8 @@
       "sha256": "84a4ff3a2aae9b0c78bdc3d7f31641bf0f1effcb8452333e22155ea8c547a53f"
     },
     "tools/fsr4_process_windows.py": {
-      "bytes": 6518,
-      "sha256": "8031921cc3184a9b9454e9ed19e689ddf4753400295e8a1a3944df66dab3c892"
+      "bytes": 7008,
+      "sha256": "f971c64feac4f36927ecca1baa52ad93fe275895fe3f1e6870591be627396fee"
     },
     "runtime/platform/windows_save_io.h": {
       "bytes": 13001,
@@ -144,8 +144,12 @@
       "sha256": "e58f599863b7f7cf3dc492653d39b808267a642554feedd5adff61705407b134"
     },
     "runtime/platform/windows_optional_library.h": {
-      "bytes": 3775,
-      "sha256": "cd50ade5899e6d7db43557210e3de8324fca112deefb1b32f559f21ebbfcd064"
+      "bytes": 3912,
+      "sha256": "7b08fc06a43a70d755daa3a80c8e3ac657ae932b07d567f018cebef129a13274"
+    },
+    "runtime/platform/windows_module_path.h": {
+      "bytes": 4426,
+      "sha256": "830c33f8513db2ad717d3dc2dc93eb034efea2e94f7b56f7eef1cac8f6030735"
     }
   }
 }

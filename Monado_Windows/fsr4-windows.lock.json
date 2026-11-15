@@ -89,8 +89,8 @@
       "sha256": "faa0f61b91f5abab08a0d1e172e23963d62d1d8484a23d4f0d11a77f18993515"
     },
     "tools/fsr4_process_windows.py": {
-      "bytes": 6518,
-      "sha256": "8031921cc3184a9b9454e9ed19e689ddf4753400295e8a1a3944df66dab3c892"
+      "bytes": 7008,
+      "sha256": "f971c64feac4f36927ecca1baa52ad93fe275895fe3f1e6870591be627396fee"
     }
   }
 }
