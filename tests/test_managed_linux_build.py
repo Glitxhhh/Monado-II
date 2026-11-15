@@ -99,6 +99,12 @@ class ManagedBuild(unittest.TestCase):
             patch = mock.patch.object(build.run_linux.runtime_check, 'library_path',
                 side_effect=lambda sysroot, policy=None: str(Path(sysroot) / 'usr/lib/x86_64-linux-gnu'))
             patch.start(); self.addCleanup(patch.stop)
+            # Keep receipt/companion/namespace-plan assertions on Windows while
+            # replacing the Linux-only O_NOFOLLOW profile-reader boundary. This
+            # fixture selects no external driver generation; Linux still runs
+            # the real secure reader against the authored INI above.
+            patch = mock.patch.object(build.run_linux, 'smooth_motion_requested', return_value=False)
+            patch.start(); self.addCleanup(patch.stop)
 
     def marker(self, sysroot, lock):
         (sysroot / 'usr/lib/x86_64-linux-gnu').mkdir(parents=True)

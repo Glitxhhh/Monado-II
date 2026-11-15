@@ -4065,8 +4065,8 @@
       "sha256": "90a0ba8258a7bf3c0fd11b9cc7dafe8114a71588ce547de07c446bd8ec9cfad9"
     },
     "docs/WINDOWS_PORT_HANDOFF.md": {
-      "bytes": 48720,
-      "sha256": "17ad5d69da25882d6a3bada8224604135c6ecf403deab2d95a057f7948dc3e53"
+      "bytes": 49133,
+      "sha256": "8ca8a8c0653e40afe5a312a798e8e7daf747ec2abb89917eb55c4481f595f361"
     },
     "docs/windows-parity/DEFERRED_NOTES.md": {
       "bytes": 5544,
@@ -4369,8 +4369,8 @@
       "sha256": "5a88cb6bc4584e46f9bdf83125bcbebeec8838f904001faf2a2a34502e880031"
     },
     "tests/test_dynamic_resolution_output.py": {
-      "bytes": 2325,
-      "sha256": "446a4a9c899d1a87eb0ce4c6c3cc69abeea45869f1bfda3b26f83f802e855f8f"
+      "bytes": 2455,
+      "sha256": "6b6e1a28a13e7c598f6a90ac55bf2053ca27b9c938b82814e5ed30b4d4e90fd4"
     },
     "tests/test_expanded_saves.py": {
       "bytes": 2581,
@@ -4397,16 +4397,16 @@
       "sha256": "c99e5971b29125a7e8dbfbada4cce88e8202a9de673513e7154a90d6a177a958"
     },
     "tests/test_frame_threshold.py": {
-      "bytes": 1679,
-      "sha256": "0c5d97e4d10c322cfa4f97f1ac4b3f2e96f9ddce172b9d81403911089db8275c"
+      "bytes": 1858,
+      "sha256": "726bee919c7a9886616fb2c51e5108e7ef92cb216806e32988e977a15c73abcf"
     },
     "tests/test_framegen_async.py": {
-      "bytes": 4032,
-      "sha256": "bc97c999ad84eb6061da856af0170aeb30dfb99bda7b28fb52f4dbef2089cbb2"
+      "bytes": 4735,
+      "sha256": "892bd6cfad9e045e1375db49323f15a5cdd89a68b348496b59644fdcb277e6bf"
     },
     "tests/test_framegen_build_flags.py": {
-      "bytes": 8016,
-      "sha256": "996c4fbfabde14ded74e9e959725fa39c27412c533b6579441ec0d35ea459109"
+      "bytes": 9198,
+      "sha256": "909e8d500799af4eeaf182d70edbfa05a10d6c2ff3743fd6619eb6bdbd94cd18"
     },
     "tests/test_framegen_drain_policy.py": {
       "bytes": 5324,
@@ -4425,12 +4425,12 @@
       "sha256": "2b12698b8ceb21493814d22c20c0f8c818babb3f26d32a11c9ea4912b8daa6fb"
     },
     "tests/test_fsr4_launcher_linux.py": {
-      "bytes": 5130,
-      "sha256": "fd6345526923b14da41dcdfcd2388c0a131dd77fffdc9a1db8cecf3822a4189a"
+      "bytes": 5346,
+      "sha256": "c07d49cba0040476202a6445dd715edfa1ebc6dd46220b8c65866ac84db97e92"
     },
     "tests/test_fsr4_preparation.py": {
-      "bytes": 11702,
-      "sha256": "8cb9d5498e2956cc2626a07e508f0e68d79699499c9e9f84e13b8885b23e78ce"
+      "bytes": 12043,
+      "sha256": "e3dd3f938eeb7f8d8ec7978fcf1bc5d01ef09ae0110980bd38bb6f969a7d095c"
     },
     "tests/test_function_entries.py": {
       "bytes": 12024,
@@ -4545,8 +4545,8 @@
       "sha256": "6497b8936bdfaef18a1c6c3d2cd3830386308ae6c33d64f2e395d59959ac36f1"
     },
     "tests/test_managed_linux_build.py": {
-      "bytes": 22213,
-      "sha256": "78bbd223c8b413a32206b826fde9b325461e0807dc352527e7511ed3a287513c"
+      "bytes": 22677,
+      "sha256": "3ac9bf2f7bd036c2a890071c53754ae6e9b0fe654c9a74812150a18d1c8e08e4"
     },
     "tests/test_nvn_program_binding.py": {
       "bytes": 4564,
@@ -4573,8 +4573,8 @@
       "sha256": "e1f4001e10f5453c1ce29a32c584429a9c65090520513650119e3a4a115c4677"
     },
     "tests/test_portable_python_paths.py": {
-      "bytes": 4775,
-      "sha256": "b281457218cdfdee124e07f2e625b1712f54f411860923fce93e9e26a38d42cc"
+      "bytes": 5004,
+      "sha256": "d003441f89e93ccdef5791da099e586356f1abf1274e989ed016bb95d1a18304"
     },
     "tests/test_portable_runtime.py": {
       "bytes": 5433,
@@ -4597,8 +4597,8 @@
       "sha256": "6af2443e3b068094fd5a8ea57a9707631f973696a6550c8d597914aaf324a803"
     },
     "tests/test_present_observer_manifest.py": {
-      "bytes": 6104,
-      "sha256": "439c8c69c9b9dc6334eeb43ca281eb9c4f71ff639001b9fd74d194e00d969fb5"
+      "bytes": 6233,
+      "sha256": "d1adb94f9b22a6d392665a98d0bbabf30a0b008f828cae2482ef85ce68f87380"
     },
     "tests/test_public_font_source.py": {
       "bytes": 11354,

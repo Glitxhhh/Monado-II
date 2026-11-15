@@ -30,8 +30,13 @@ change the accepted reference or promise to eliminate its reported 5–10 FPS co
 | Windows evidence at this refresh | Original implementation only; no new native Windows build or gameplay validation |
 
 The private reference hash identifies the accepted pre-refresh source freeze.
-This branch adds preparation documentation and its own publication manifest, so
-do not describe that old hash as the final branch manifest. The checked-in
+This branch adds preparation documentation, root test-harness corrections and its
+own publication manifest, so do not describe that old hash as the final branch
+manifest. Both port implementation trees remain byte-identical to the R5
+reference. The test-only follow-up scopes Linux providers to Linux, lets native
+fixtures use stock Clang without local dependency directories, and provides
+authored Vulkan types for the callback-only worker test. All existing assertions
+and negative controls remain; Windows source CI is not Windows gameplay evidence. The checked-in
 [source inventory](WINDOWS_PARITY_INVENTORY.json) records **654 Linux / 330 Windows
 files, 330 common paths, 58 changed common paths and 324 Linux-only paths**. These
 are source-path counts, not implementation estimates or test results. Linux-only

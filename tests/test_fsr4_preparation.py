@@ -15,9 +15,22 @@ SCRIPTS = REPO / 'Monado_Linux/scripts'
 sys.path.insert(0, str(SCRIPTS))
 import setup_linux_fsr4 as component
 import setup_linux_fsr4_tools as tools
-import prepare_linux_fsr4 as prepare
+# The preparation provider uses Unix accounts, Proton, private POSIX modes and
+# Linux mount/process ownership. Native Windows needs its own provider/fixtures.
+if sys.platform == 'linux':
+    import prepare_linux_fsr4 as prepare
 
 
+class Fsr4SourceIdentity(unittest.TestCase):
+    def test_source_lock_matches_actual_imported_files(self):
+        lock = component.verify_source()
+        self.assertEqual(lock['abi'], 2)
+        self.assertGreater(len(lock['files']), 20)
+        self.assertEqual(len(lock['dependencies']), 5)
+        self.assertEqual(lock['sdk']['sha256'], 'aad4fccccb29084a655f9a4f9f613bd22c8c03fb4a0f8840148cc6543b4ccace')
+
+
+@unittest.skipUnless(sys.platform == 'linux', 'Linux FSR4 dependency and Proton preparation provider')
 class Fsr4Preparation(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory(prefix='monado-fsr4-')
@@ -34,13 +47,6 @@ class Fsr4Preparation(unittest.TestCase):
                 else:
                     info.linkname = data.decode(); tf.addfile(info)
         return path
-
-    def test_source_lock_matches_actual_imported_files(self):
-        lock = component.verify_source()
-        self.assertEqual(lock['abi'], 2)
-        self.assertGreater(len(lock['files']), 20)
-        self.assertEqual(len(lock['dependencies']), 5)
-        self.assertEqual(lock['sdk']['sha256'], 'aad4fccccb29084a655f9a4f9f613bd22c8c03fb4a0f8840148cc6543b4ccace')
 
     def test_model_identity_survives_unrelated_native_docs_updates(self):
         lock=component.verify_source();changed=json.loads(json.dumps(lock))

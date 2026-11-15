@@ -20,6 +20,7 @@ spec.loader.exec_module(recipe)
 
 
 class PortablePythonPaths(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux executable compiler wrapper and shell argument boundary')
     def test_compiler_command_preserves_path_and_arguments(self):
         with tempfile.TemporaryDirectory(prefix='monado-python-path-test-') as temporary:
             root = Path(temporary)
@@ -34,6 +35,7 @@ class PortablePythonPaths(unittest.TestCase):
             self.assertEqual(json.loads(result.stdout), arguments)
             self.assertFalse((root / 'unused').exists())
 
+    @unittest.skipUnless(sys.platform == 'linux', 'Linux private /tmp workspace and POSIX directory permissions')
     def test_build_uses_private_physical_tmp_despite_spaced_destination_and_tmpdir(self):
         with tempfile.TemporaryDirectory(prefix='monado-python-build-test-') as temporary:
             root = Path(temporary) / 'My Games' / 'Monado II'

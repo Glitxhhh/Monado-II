@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 import unittest
 from unittest import mock
@@ -12,6 +13,7 @@ SPEC = importlib.util.spec_from_file_location('test_present_manifest', ROOT / 'M
 manifest = importlib.util.module_from_spec(SPEC); SPEC.loader.exec_module(manifest)
 
 
+@unittest.skipUnless(sys.platform == 'linux', 'Linux ELF observer identity and POSIX ownership/manifest permissions')
 class ObserverManifest(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory(prefix='monado-observer-manifest-'); self.addCleanup(tmp.cleanup)

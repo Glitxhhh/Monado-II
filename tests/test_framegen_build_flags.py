@@ -3,6 +3,7 @@ from pathlib import Path
 import importlib.util
 import os
 import re
+import shlex
 import shutil
 import signal
 import subprocess
@@ -33,6 +34,23 @@ class FramegenBuildFlags(unittest.TestCase):
         cls.directory = tempfile.TemporaryDirectory(prefix='monado-framegen-flags-')
         cls.addClassCleanup(cls.directory.cleanup)
         cls.output = Path(cls.directory.name)
+        # The real build recipe uses Zig's x86_64_v2 CPU spelling. Keep that
+        # production argv intact in receipts while allowing source CI's stock
+        # Clang to compile the same x86-64-v2 target via a fixture-only adapter.
+        compiler = str(Path(shutil.which(compiler) or compiler).resolve())
+        version = subprocess.run([compiler, '--version'], capture_output=True, text=True, timeout=60)
+        if version.returncode:
+            raise AssertionError(version.stdout + version.stderr)
+        cpu = '-march=x86_64_v2' if 'ziglang' in version.stdout else '-march=x86-64-v2'
+        adapter = cls.output / 'compiler.py'
+        adapter.write_text('import os,sys\n'
+            'args=[' + repr(cpu) + ' if arg=="-march=x86_64_v2" else arg for arg in sys.argv[1:]]\n'
+            'os.execv(' + repr(compiler) + ',[' + repr(compiler) + ',*args])\n')
+        driver = cls.output / 'clang-cc'
+        driver.write_text('#!/bin/sh\nexec ' + shlex.quote(sys.executable) + ' ' +
+                          shlex.quote(str(adapter)) + ' "$@"\n')
+        driver.chmod(0o755)
+        compiler = str(driver)
         cls.source = PORT / 'runtime/hle/framepace.c'
         cls.fixture = PORT / 'tests/native/test_framepace_linux.c'
         cls.binaries, cls.objects, cls.commands = {}, {}, {}
@@ -101,6 +119,7 @@ class FramegenBuildFlags(unittest.TestCase):
 
     def test_real_framepace_compile_uses_shared_feature_not_entry_only_gfx(self):
         command = self.commands[True][0]['argv']
+        self.assertIn('-march=x86_64_v2', command)
         self.assertIn('-DXCDE_LINUX_FRAMEGEN=1', command)
         self.assertNotIn('-DXCDE_GFX', command)
         symbols = subprocess.check_output(['nm', '-u', str(self.objects[True])], text=True)

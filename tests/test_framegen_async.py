@@ -7,20 +7,40 @@ import subprocess
 import tempfile
 import unittest
 ROOT=Path(__file__).resolve().parents[1]
+
+# This fixture exercises the actual pthread worker with authored wait/present
+# callbacks. It neither calls Vulkan nor validates a driver ABI. Supply only the
+# public types/constants stored by that worker so clean source CI needs no SDK.
+# Real Vulkan integration and WSI behavior have separate header-backed fixtures.
+VULKAN_TYPES = '''\
+#pragma once
+#include <stdint.h>
+typedef struct VkDevice_T *VkDevice;
+typedef struct VkQueue_T *VkQueue;
+typedef struct VkSwapchainKHR_T *VkSwapchainKHR;
+typedef struct VkSemaphore_T *VkSemaphore;
+typedef int32_t VkResult;
+typedef struct VkPresentInfoKHR VkPresentInfoKHR;
+typedef VkResult (*PFN_vkQueuePresentKHR)(VkQueue, const VkPresentInfoKHR *);
+#define VK_SUCCESS 0
+#define VK_ERROR_DEVICE_LOST (-4)
+#define VK_SUBOPTIMAL_KHR 1000001003
+#define VK_ERROR_OUT_OF_DATE_KHR (-1000001004)
+'''
+
 @unittest.skipUnless(sys.platform == "linux", "Linux pthread presentation worker")
 class AsyncPresenter(unittest.TestCase):
     def setUp(self):
         import resource
         resource.setrlimit(resource.RLIMIT_CORE,(0,0))
-        self.cc=os.environ.get('MONADO_TEST_CC') or str(ROOT/'Monado_Linux/.deps/bin/clang-cc')
-        if not Path(self.cc).is_file():self.cc=shutil.which('clang')
+        private=ROOT/'Monado_Linux/.deps/bin/clang-cc'
+        self.cc=os.environ.get('MONADO_TEST_CC') or (str(private) if private.is_file() else shutil.which('clang'))
         if not self.cc:self.skipTest('Clang required')
-        sysroot=ROOT/'Monado_Linux/.deps/graphics/active-sysroot.txt'
-        self.include=os.environ.get('MONADO_TEST_SDL_INCLUDE') or (str(Path(sysroot.read_text().strip())/'usr/include') if sysroot.is_file() else None)
         self.temp=tempfile.TemporaryDirectory(prefix='monado-fg-worker-');self.addCleanup(self.temp.cleanup);self.directory=Path(self.temp.name)
+        (self.directory/'vulkan').mkdir()
+        (self.directory/'vulkan/vulkan.h').write_text(VULKAN_TYPES)
     def compile(self,header=None):
-        binary=self.directory/'worker';flags=['-O1','-UNDEBUG','-pthread','-lm','-I'+str(ROOT/'Monado_Linux/runtime/nvn/vulkan')]
-        if self.include:flags+=['-I'+self.include]
+        binary=self.directory/'worker';flags=['-O1','-UNDEBUG','-pthread','-lm','-I'+str(self.directory),'-I'+str(ROOT/'Monado_Linux/runtime/nvn/vulkan')]
         if os.environ.get('MONADO_TEST_UBSAN'):flags+=['-fsanitize=undefined','-fno-sanitize-recover=all']
         if header:
             path=self.directory/'authored-negative.h';path.write_text(header);flags+=['-DFRAMEGEN_ASYNC_HEADER="'+str(path)+'"']

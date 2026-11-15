@@ -17,13 +17,16 @@ def load(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
     module = importlib.util.module_from_spec(spec); spec.loader.exec_module(module); return module
 
-sys.path.insert(0, str(PORT / 'scripts'))
-try:
-    worker = load('fixture_fsr4_worker', PORT / 'scripts/launcher_fsr4_worker.py')
-    prep = load('fixture_fsr4_broker', PORT / 'scripts/launcher_fsr4_broker.py')
-    host = load('fixture_fsr4_game_broker', PORT / 'scripts/launcher_game_broker.py')
-finally:
-    sys.path.pop(0)
+# These brokers import Unix account lookup and supervise Linux /proc identities.
+# Guard imports as well as tests; a Windows discovery run must not import pwd.
+if sys.platform == 'linux':
+    sys.path.insert(0, str(PORT / 'scripts'))
+    try:
+        worker = load('fixture_fsr4_worker', PORT / 'scripts/launcher_fsr4_worker.py')
+        prep = load('fixture_fsr4_broker', PORT / 'scripts/launcher_fsr4_broker.py')
+        host = load('fixture_fsr4_game_broker', PORT / 'scripts/launcher_game_broker.py')
+    finally:
+        sys.path.pop(0)
 
 @unittest.skipUnless(sys.platform == 'linux', 'Linux process lifecycle fixture')
 class Fsr4Launcher(unittest.TestCase):

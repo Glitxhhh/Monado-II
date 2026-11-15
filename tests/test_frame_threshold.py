@@ -1,6 +1,7 @@
 """Threshold timing at fractional native cadence, with no GPU/game session."""
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import tempfile
 import unittest
@@ -14,7 +15,10 @@ class FrameThreshold(unittest.TestCase):
         cls.temp = tempfile.TemporaryDirectory(prefix='monado-frame-threshold-')
         cls.addClassCleanup(cls.temp.cleanup)
         cls.binary = Path(cls.temp.name) / 'test'
-        cc = os.environ.get('MONADO_TEST_CC') or str(ROOT / 'Monado_Linux/.deps/bin/clang-cc')
+        private = ROOT / 'Monado_Linux/.deps/bin/clang-cc'
+        cc = os.environ.get('MONADO_TEST_CC') or (str(private) if private.is_file() else shutil.which('clang'))
+        if not cc:
+            raise unittest.SkipTest('native Clang compiler required')
         cmd = [cc, '-std=gnu11', '-O1', '-UNDEBUG', '-ffp-contract=off', '-fno-strict-aliasing',
                '-ffunction-sections', '-fdata-sections', '-I' + str(ROOT / 'Monado_Linux/runtime'),
                str(ROOT / 'tests/native/test_frame_threshold.c'), '-Wl,--gc-sections', '-pthread', '-lm', '-o', str(cls.binary)]

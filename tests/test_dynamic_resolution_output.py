@@ -3,12 +3,14 @@ from pathlib import Path
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@unittest.skipUnless(sys.platform == 'linux', 'Actual Linux output-scale translation unit requires the POSIX runtime')
 class DynamicResolutionOutput(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
