@@ -116,13 +116,24 @@ static CmdRec *record_copy(Cpu *c, uint32_t op, int arg, uint32_t len) {
 // ---- state binding
 NVN(nvnCommandBufferBindProgram) {
     Snap s = snap(c);
-    CmdRec *r = record(c, CMD_BIND_PROGRAM, 0, &s);
-    // [XCDE] T240: the program's frozen copy, not the object: the Switch's command buffer holds the shader addresses
-    // bound, and the game sets other shaders on a program object (or finalizes it and a new one gets its memory) while
-    // the render worker still has draws of the old ones to record - those drew with the new shaders (a face with
-    // another material's textures / black, Reyn's body as his weapon; more often the further the worker lags behind)
-    const NvnProgram *p = HOST(NvnProgram, s.x[1]);
-    r->x[0] = (uint64_t)(uintptr_t)(p && p->frozen ? p->frozen : p);  // host program
+    // [XCDE] LINUX-046: capture before record() can yield into the guest command
+    // memory callback, which may reset/finalize the original program. A frozen
+    // registration is immutable for the run and keeps the ordinary record small.
+    // Otherwise metadata belongs to this command record, never a mutable object.
+    const NvnProgram *p = s.x[1] ? HOST(NvnProgram, s.x[1]) : NULL;
+    const NvnProgram *frozen = p ? p->frozen : NULL;
+    NvnProgram captured;
+    bool inline_program = p && !frozen;
+    if (inline_program) {
+        captured = *p;
+        captured.backend = NULL; captured.frozen = NULL;
+        for (unsigned i = 0; i < 6; ++i) captured.stages[i].backend = NULL;
+    }
+    CmdRec *r = record(c, CMD_BIND_PROGRAM, inline_program ? sizeof captured : 0, &s);
+    if (inline_program) {
+        memcpy(r->extra, &captured, sizeof captured);
+        r->x[0] = (uint64_t)(uintptr_t)r->extra;
+    } else r->x[0] = (uint64_t)(uintptr_t)frozen; // NULL explicitly unbinds the selected stages.
 }
 NVN(nvnCommandBufferBindBlendState) { record_copy(c, CMD_BIND_BLEND, 1, 8); }
 NVN(nvnCommandBufferBindChannelMaskState) { record_copy(c, CMD_BIND_CHANNEL_MASK, 1, 4); }

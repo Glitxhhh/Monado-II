@@ -16,6 +16,25 @@ typedef union SDL_Event SDL_Event;
 // Main (UI) thread: returns true if the event was consumed by the menu (the game must not see it).
 bool menu_handle_event(const SDL_Event *e);
 bool menu_is_open(void);
+// [XCDE] LINUX-097: all calls belong to the render thread. Real game frames
+// feed frame once. The presenter reports only successfully accepted game output
+// images, excluding clear/startup UI; repeats are never labeled generated.
+// generation means the selected FG mode, including warmup/fallback frames.
+// External driver generation is unobservable here and is labeled explicitly.
+void fps_overlay_frame(uint64_t now_ns);
+// LINUX-101: render-thread diagnostic tick in the SDL nanosecond clock.
+// Method: 0 ordinary, 1 integrated FSR selected, 2 NVIDIA driver selected.
+// Measurement continues while the on-screen display is hidden.
+void fps_overlay_diagnostics(uint64_t now_ns, unsigned method, bool fsr_inputs_ready);
+void fps_overlay_generation(bool active, bool external);
+#ifdef _WIN32
+// Exact SDK total only; this API supplies no native/generated identity.
+void fps_overlay_provider_output(uint64_t now_ns, uint64_t count, bool available);
+#endif
+void fps_overlay_present(uint64_t now_ns, bool generated, bool repeated);
+void fps_overlay_reset(void);
+bool fps_overlay_visible(void);
+void fps_overlay_render(void *cmd, uint32_t target_w, uint32_t target_h);
 // Main thread: apply window requests (fullscreen) made from the menu.
 void menu_apply_window_requests(void *sdl_window);
 

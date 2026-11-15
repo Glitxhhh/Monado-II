@@ -9,9 +9,14 @@
 #include <shellapi.h>
 #include <timeapi.h>
 #include <io.h>
+#include <limits.h>
 #include <signal.h>
 
 #include "../platform.h"
+#include "guest_fp_windows.h"
+
+// [XCDE] WINPARITY-001: portable guest helpers require a known host FP baseline.
+bool plat_guest_fp_init(void) { return monado_windows_guest_fp_init(); }
 
 // ---- guest address space
 // The window is reserved up front and committed per region (plat_commit from the loader / kernel). Anything
@@ -430,8 +435,10 @@ int plat_cpu_count(void) {
 }
 
 bool plat_exe_path(char *buf, size_t size) {
-    DWORD n = GetModuleFileNameA(NULL, buf, (DWORD)size);
-    return n > 0 && n < size;
+    wchar_t path[32768];
+    DWORD n = GetModuleFileNameW(NULL, path, 32768);
+    return n > 0 && n < 32768 && size <= INT_MAX &&
+        WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, path, -1, buf, (int)size, NULL, NULL) > 0;
 }
 
 // Quote one argument the way CommandLineToArgvW / the CRT parse it back.

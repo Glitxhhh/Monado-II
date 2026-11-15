@@ -11,10 +11,19 @@
 #include <unistd.h>
 
 #include "../../paths.h"
+#include "../../host/applet_lifecycle_ui.h"
+#include "../../host/xcde_aspect.h"
 #include "../../settings.h"
+#include "../../gpu_selection.h"
+#include "../../gpu_requirements_vk.h"
 #include "../../ui/menu.h"
 #include "vk.h"
+#include "dlss.h"
 #include "../output_scale.h"
+#ifdef _WIN32
+#include "../repeat_present_policy_windows.h"
+#include "../framegen_policy.h"
+#endif
 #include "../renderer.h"
 #include "../../env_cache.h"  // (last: cached getenv)
 
@@ -99,41 +108,63 @@ static bool has_ext(VkExtensionProperties *e, uint32_t n, const char *name) {
     return false;
 }
 
-// Discrete GPU first (LARECOMP_GPU=<index> picks one), needs Vulkan 1.3 and a queue that can present.
+// [XCDE] WINPARITY-004 / LINUX-103: stable UUID preference, validated legacy override and
+// usable-device fallback. The actual surface is checked here, unlike the UI probe.
 static void pick_device(void) {
-    uint32_t n = 0;
-    vkEnumeratePhysicalDevices(g_vk.inst, &n, NULL);
-    if (!n) FATAL("no Vulkan device\n");
-    VkPhysicalDevice *pd = calloc(n, sizeof *pd);
-    vkEnumeratePhysicalDevices(g_vk.inst, &n, pd);
-    int want = getenv("LARECOMP_GPU") ? atoi(getenv("LARECOMP_GPU")) : -1, best = -1, best_score = -1;
-    for (uint32_t i = 0; i < n; i++) {
-        VkPhysicalDeviceProperties p;
-        vkGetPhysicalDeviceProperties(pd[i], &p);
-        LOG("[vk] gpu %u: %s (api %u.%u.%u)\n", i, p.deviceName, VK_API_VERSION_MAJOR(p.apiVersion),
-            VK_API_VERSION_MINOR(p.apiVersion), VK_API_VERSION_PATCH(p.apiVersion));
-        if (p.apiVersion < VK_API_VERSION_1_3) continue;
-        int score = p.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU ? 3 : p.deviceType == VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU ? 2 : 1;
-        if ((int)i == want) score = 100;
-        if (score > best_score) { best_score = score; best = (int)i; }
+    uint32_t n=0;VK_CHECK(vkEnumeratePhysicalDevices(g_vk.inst,&n,NULL));
+    if(!n || n>1024)FATAL("no usable Vulkan physical-device list (%u)\n",n);
+    VkPhysicalDevice *devices=calloc(n,sizeof *devices);
+    MonadoGpuChoice *choices=calloc(n,sizeof *choices);uint32_t *families=calloc(n,sizeof *families);
+    if(!devices || !choices || !families)FATAL("could not allocate GPU selection information\n");
+    VK_CHECK(vkEnumeratePhysicalDevices(g_vk.inst,&n,devices));
+    for(uint32_t i=0;i<n;i++) {
+        families[i]=UINT32_MAX;
+        VkPhysicalDeviceIDProperties id={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES};
+        VkPhysicalDeviceProperties2 properties={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,.pNext=&id};
+        vkGetPhysicalDeviceProperties2(devices[i],&properties);VkPhysicalDeviceProperties *p=&properties.properties;
+        monado_gpu_uuid_format(id.deviceUUID,choices[i].uuid);
+        choices[i].rank=p->deviceType==VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU?3:p->deviceType==VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU?2:1;
+        const char *reason="available";
+        if(p->apiVersion<VK_API_VERSION_1_3)reason="Vulkan 1.3 required";
+        else if(p->limits.maxStorageBufferRange<HEAP_MAX)reason="complete guest-heap storage range unavailable";
+        else {
+            VkPhysicalDeviceVulkan13Features f13={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+            VkPhysicalDeviceVulkan12Features f12={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,.pNext=&f13};
+            VkPhysicalDeviceVulkan11Features f11={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,.pNext=&f12};
+            VkPhysicalDeviceFeatures2 f={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,.pNext=&f11};vkGetPhysicalDeviceFeatures2(devices[i],&f);
+            if(!monado_gpu_required_features(&f11,&f12,&f13))reason="required renderer features unavailable";
+            else {
+                uint32_t ne=0;VkResult status=vkEnumerateDeviceExtensionProperties(devices[i],NULL,&ne,NULL);bool swapchain=false;
+                if(status==VK_SUCCESS && ne<=4096) {
+                    VkExtensionProperties *e=calloc(ne?ne:1,sizeof *e);
+                    if(e){if(vkEnumerateDeviceExtensionProperties(devices[i],NULL,&ne,e)==VK_SUCCESS)swapchain=has_ext(e,ne,VK_KHR_SWAPCHAIN_EXTENSION_NAME);free(e);}
+                }
+                if(!swapchain)reason="swapchain extension unavailable";
+                else {
+                    uint32_t nq=0;vkGetPhysicalDeviceQueueFamilyProperties(devices[i],&nq,NULL);
+                    if(nq && nq<=128) {
+                        VkQueueFamilyProperties queues[128];vkGetPhysicalDeviceQueueFamilyProperties(devices[i],&nq,queues);
+                        for(uint32_t j=0;j<nq && j<128;j++) {
+                            VkBool32 present=VK_FALSE;VkResult surface=vkGetPhysicalDeviceSurfaceSupportKHR(devices[i],j,g_vk.surface,&present);
+                            if(surface==VK_SUCCESS && present && queues[j].queueCount &&
+                               (queues[j].queueFlags&(VK_QUEUE_GRAPHICS_BIT|VK_QUEUE_COMPUTE_BIT))==(VK_QUEUE_GRAPHICS_BIT|VK_QUEUE_COMPUTE_BIT)){families[i]=j;break;}
+                        }
+                    }
+                    if(families[i]==UINT32_MAX)reason="no graphics/compute queue for this surface";
+                    else choices[i].eligible=true;
+                }
+            }
+        }
+        LOG("[vk] gpu %u: %s (api %u.%u.%u, uuid=%s): %s\n",i,p->deviceName,VK_API_VERSION_MAJOR(p->apiVersion),VK_API_VERSION_MINOR(p->apiVersion),VK_API_VERSION_PATCH(p->apiVersion),choices[i].uuid,reason);
     }
-    if (best < 0) FATAL("no Vulkan 1.3 device\n");
-    g_vk.phys = pd[best];
-    free(pd);
-    vkGetPhysicalDeviceProperties(g_vk.phys, &g_vk.props);
-    uint32_t nq = 0;
-    vkGetPhysicalDeviceQueueFamilyProperties(g_vk.phys, &nq, NULL);
-    VkQueueFamilyProperties *qp = calloc(nq, sizeof *qp);
-    vkGetPhysicalDeviceQueueFamilyProperties(g_vk.phys, &nq, qp);
-    g_vk.qfam = UINT32_MAX;
-    for (uint32_t i = 0; i < nq; i++) {
-        VkBool32 present = VK_FALSE;
-        vkGetPhysicalDeviceSurfaceSupportKHR(g_vk.phys, i, g_vk.surface, &present);
-        if ((qp[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) && (qp[i].queueFlags & VK_QUEUE_COMPUTE_BIT) && present) { g_vk.qfam = i; break; }
-    }
-    free(qp);
-    if (g_vk.qfam == UINT32_MAX) FATAL("no graphics+present queue\n");
-    LOG("[vk] using %s\n", g_vk.props.deviceName);
+    int legacy=-1;const char *value=getenv("LARECOMP_GPU");
+    if(value && *value) {char *end;errno=0;long index=strtol(value,&end,10);if(!errno && !*end && index>=0 && (unsigned long)index<n)legacy=(int)index;else LOG("[vk] invalid LARECOMP_GPU override; using saved/automatic selection\n");}
+    int selected=monado_gpu_select(choices,n,g_settings.gpu_uuid,legacy);
+    if(selected<0)FATAL("no Vulkan adapter meets the complete renderer and presentation requirements; see [vk] GPU diagnostics\n");
+    if(*g_settings.gpu_uuid && strcmp(g_settings.gpu_uuid,choices[selected].uuid) && !(legacy>=0 && selected==legacy))LOG("[vk] requested GPU UUID unavailable or unsuitable; selected usable fallback %s\n",choices[selected].uuid);
+    g_vk.phys=devices[selected];g_vk.qfam=families[selected];vkGetPhysicalDeviceProperties(g_vk.phys,&g_vk.props);
+    LOG("[vk] using %s (uuid=%s, family=%u)\n",g_vk.props.deviceName,choices[selected].uuid,g_vk.qfam);
+    free(families);free(choices);free(devices);
 }
 
 static bool g_fault_ext;
@@ -267,6 +298,7 @@ static void create_device(void) {
     b->dualSrcBlend = h->dualSrcBlend;
     b->fillModeNonSolid = h->fillModeNonSolid;
     b->samplerAnisotropy = h->samplerAnisotropy;
+    g_vk.sampler_anisotropy = b->samplerAnisotropy;
     b->textureCompressionBC = h->textureCompressionBC;
     b->shaderInt64 = h->shaderInt64;
     b->depthBiasClamp = h->depthBiasClamp;
@@ -288,9 +320,7 @@ static void create_device(void) {
     // [XCDE] DLSS (dlss.cpp): Streamline's device extensions, features and queues (after ours, same family)
     uint32_t extra_g = 0, extra_c = 0;
     {
-        extern void dlss_device_requirements(const char **ext, uint32_t *n, uint32_t max, VkPhysicalDeviceVulkan12Features *f12,
-                                             VkPhysicalDeviceVulkan13Features *f13, uint32_t *extra_gfx, uint32_t *extra_compute);
-        dlss_device_requirements(ext, &n_ext, 48, &f12, &f13, &extra_g, &extra_c);
+        dlss_device_requirements(g_vk.inst, g_vk.phys, ext, &n_ext, 48, &f12, &f13, &extra_g, &extra_c);
     }
     // Queues: ours (index 0 of qfam), Streamline's after it in the same family, and [XCDE] FSR 3 frame generation's
     // present / image-acquire / async-compute queues (temporal.c), picked as AMD's sample does: each from a family
@@ -429,6 +459,10 @@ void vk_pipeline_cache_save(void) {
 }
 
 // ================================================================== swapchain
+// Render-thread presentation timings. GPU-wait totals in renderer_stats may
+// include several game threads; these CPU boundaries isolate the actual presenter.
+static struct {uint64_t slot_ns, acquire_ns, submit_ns, present_ns, calls, acquires, accepted, failed;} present_diag;
+static VkPresentModeKHR actual_present_mode;
 static bool g_vsync_fifo;  // FIFO chosen by the V-Sync option (backend_present's repeat presents)
 static VkPresentModeKHR present_mode(void) {
     // MAILBOX by default: the game paces itself (vi.c's emulated 60 Hz vsync), and with FIFO every submission
@@ -464,8 +498,10 @@ static VkPresentModeKHR present_mode(void) {
 // XCDE_REPEAT_PRESENT=0: off.
 // the window's display refresh (Hz; 0: unknown), checked every 2 s (the window may move to another monitor). Render
 // thread only (SDL); other threads read vk_display_hz_cached.
-static volatile float g_display_hz;
-float vk_display_hz_cached(void) { return g_display_hz; }
+static _Atomic float g_display_hz;
+static _Atomic float g_framegen_cap_fps;
+float vk_framegen_cap_fps(void) {return atomic_load_explicit(&g_framegen_cap_fps,memory_order_acquire);}
+float vk_display_hz_cached(void) { return atomic_load_explicit(&g_display_hz,memory_order_acquire); }
 float vk_display_hz(void) {
     static float hz = -1;
     static uint64_t checked;
@@ -474,12 +510,29 @@ float vk_display_hz(void) {
         checked = SDL_GetTicksNS();
         const SDL_DisplayMode *dm = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
         hz = dm ? dm->refresh_rate : 0;
-        g_display_hz = hz;
+        atomic_store_explicit(&g_display_hz,hz,memory_order_release);
     }
     return hz;
 }
 
 static int repeat_presents(void) {
+#ifdef _WIN32
+    // SDL reports nominal display Hz; DWM/driver FIFO can accept at another
+    // cadence. Multiplying duplicate submissions by that nominal ratio slowed
+    // 30 real FPS to 10 on a 179.88-Hz mixed-display Windows desktop. Preserve
+    // one presentation for each real frame; the compositor owns repetition.
+    // Explicit =1 retains the inherited nominal-Hz diagnostic path only.
+    const char *request=getenv("XCDE_REPEAT_PRESENT");
+    bool legacy=request&&!strcmp(request,"1");
+    extern bool tmp_fg_active(void);
+    extern int xcde_present_fps(void);
+    int fps=xcde_present_fps();
+    float hz=vk_display_hz();
+    int count=monado_windows_repeat_count(legacy,g_vsync_fifo,tmp_fg_active(),hz,(float)fps);
+    static bool logged;
+    if(!logged) {logged=true;LOG("[vk] Windows presentation: one output per real frame; nominal display %.3f Hz; legacy duplicate diagnostic %s\n",hz,legacy?"requested":"off");}
+    return count;
+#else
     static int off = -1;
     if (off < 0) off = getenv("XCDE_REPEAT_PRESENT") && atoi(getenv("XCDE_REPEAT_PRESENT")) == 0;
     extern bool tmp_fg_active(void);
@@ -494,6 +547,7 @@ static int repeat_presents(void) {
     static int logged_fps;
     if (logged_fps != fps) { logged_fps = fps; LOG("[vk] V-Sync at %d fps on a %.2f Hz display: each frame presented %d times\n", fps, hz, n); }
     return n;
+#endif
 }
 
 static void create_swapchain(void) {
@@ -523,6 +577,7 @@ static void create_swapchain(void) {
         .imageSharingMode = VK_SHARING_MODE_EXCLUSIVE, .preTransform = caps.currentTransform,
         .compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR, .presentMode = present_mode(), .clipped = VK_TRUE,
         .oldSwapchain = old};
+    actual_present_mode=ci.presentMode;
     VK_CHECK(sc_create(g_vk.dev, &ci, NULL, &g_vk.swapchain));
     for (uint32_t i = 0; i < g_vk.sc_count; i++) vkDestroyImageView(g_vk.dev, g_vk.sc_views[i], NULL);
     if (old) sc_destroy(g_vk.dev, old, NULL);
@@ -552,6 +607,9 @@ static void create_swapchain(void) {
 
 static void recreate_swapchain(void) {
     sc_wait_idle(g_vk.dev);
+    tmp_fg_invalidate();
+    fps_overlay_reset();
+    atomic_store_explicit(&g_framegen_cap_fps,0.f,memory_order_release);
     create_swapchain();
 }
 
@@ -583,6 +641,7 @@ static void image_barrier(VkCommandBuffer cb, VkImage img, VkImageLayout from, V
 
 typedef struct { uint32_t image; VkSemaphore acquired; bool ok; } Frame;
 static Frame cur_frame;
+static bool fps_game_output,fps_repeated_output;
 
 // Acquire the next window image and begin rendering into it (cleared to `clear`). Returns false when there is
 // nothing to draw into (minimised window).
@@ -601,18 +660,22 @@ bool vk_frame_begin(const float clear[4]) {
     if (trace) LOG("[vk] frame begin %dx%d (swapchain %ux%u)\n", w, h, g_vk.sc_extent.width, g_vk.sc_extent.height);
     slot = (slot + 1) % FRAMES;
     if (!acquire_sem[slot]) acquire_sem[slot] = binary_semaphore();
+    uint64_t boundary_ns=SDL_GetTicksNS();
     vk_wait_seq(slot_seq[slot]);
+    present_diag.slot_ns+=SDL_GetTicksNS()-boundary_ns;
     extern void vk_rq_at(const char *where);
     extern const char *volatile g_rq_where;
     const char *was_at = g_rq_where;
     vk_rq_at("acquiring a swapchain image");
+    boundary_ns=SDL_GetTicksNS();
     VkResult r = sc_acquire(g_vk.dev, g_vk.swapchain, UINT64_MAX, acquire_sem[slot], VK_NULL_HANDLE, &cur_frame.image);
     vk_rq_at(was_at);
     if (r == VK_ERROR_OUT_OF_DATE_KHR) {
         recreate_swapchain();
         r = sc_acquire(g_vk.dev, g_vk.swapchain, UINT64_MAX, acquire_sem[slot], VK_NULL_HANDLE, &cur_frame.image);
     }
-    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) { LOG("[vk] acquire failed: %d\n", r); return false; }
+    present_diag.acquire_ns+=SDL_GetTicksNS()-boundary_ns;present_diag.acquires++;
+    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) {present_diag.failed++; LOG("[vk] acquire failed: %d\n", r); return false; }
     cur_frame.acquired = acquire_sem[slot];
     slot_seq[slot] = vk_pending_seq();
     VkCommandBuffer cb = vk_cmd();
@@ -670,6 +733,7 @@ static void save_window_image(VkCommandBuffer cb, VkSpan *out) {
 void vk_frame_end(const char *shot_path) {
     if (!cur_frame.ok) return;
     VkCommandBuffer cb = vk_cmd();
+    if(fps_game_output)fps_overlay_render((void *)cb,g_vk.sc_extent.width,g_vk.sc_extent.height);
     vkCmdEndRendering(cb);
     VkSpan shot = {0};
     extern bool diag_flicker_wanted(void);
@@ -679,15 +743,24 @@ void vk_frame_end(const char *shot_path) {
     uint32_t img = cur_frame.image;
     if (!done_sem[img]) done_sem[img] = binary_semaphore();
     uint64_t seq = vk_pending_seq();
+    uint64_t boundary_ns=SDL_GetTicksNS();
     vk_submit_extra(cur_frame.acquired, done_sem[img], VK_NULL_HANDLE);
+    present_diag.submit_ns+=SDL_GetTicksNS()-boundary_ns;
     VkPresentInfoKHR pi = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR, .waitSemaphoreCount = 1, .pWaitSemaphores = &done_sem[img],
                            .swapchainCount = 1, .pSwapchains = &g_vk.swapchain, .pImageIndices = &img};
     extern void vk_rq_at(const char *where);
     extern const char *volatile g_rq_where;
     const char *was_pr = g_rq_where;
     vk_rq_at("vkQueuePresentKHR");
+    boundary_ns=SDL_GetTicksNS();
     VkResult r = sc_present(g_vk.queue, &pi);
+    present_diag.present_ns+=SDL_GetTicksNS()-boundary_ns;present_diag.calls++;
+    if(r==VK_SUCCESS||r==VK_SUBOPTIMAL_KHR)present_diag.accepted++;else present_diag.failed++;
     vk_rq_at(was_pr);
+    if(fps_game_output&&(r==VK_SUCCESS||r==VK_SUBOPTIMAL_KHR)) {
+        if(!tmp_fg_active())fps_overlay_present(SDL_GetTicksNS(),false,fps_repeated_output);
+        else {uint64_t count=0;bool available=tmp_fg_present_count(&count);fps_overlay_provider_output(SDL_GetTicksNS(),count,available);}
+    }
     if (r == VK_ERROR_OUT_OF_DATE_KHR || r == VK_SUBOPTIMAL_KHR) recreate_swapchain();
     cur_frame.ok = false;
     if (shot_path || hash_it) {
@@ -1050,6 +1123,12 @@ void backend_present(NvnTexture *t) {
     const char *xshot = diag_shot_path(total_frames + 1);
     extern bool diag_flicker_wanted(void);
     bool want_window = !headless || shot || xshot || diag_hash_wanted() || diag_flicker_wanted();
+    // One real simulation frame, independent of optional provider output.
+    uint64_t meter_now=SDL_GetTicksNS();
+    bool integrated=g_settings.frame_gen||g_settings.cutscene_mode==2;
+    fps_overlay_generation(integrated,false);
+    fps_overlay_frame(meter_now);
+    if(integrated) {uint64_t count=0;bool available=tmp_fg_present_count(&count);fps_overlay_provider_output(meter_now,count,available);}
     bool have = want_window && vk_frame_begin(black);
     uint64_t nd = SDL_GetTicksNS() - t0;
     if (nd > 30000000) {
@@ -1067,6 +1146,8 @@ void backend_present(NvnTexture *t) {
         // render scale + placement in the window: runtime/nvn/output_scale.c (Video tab "Internal resolution");
         // no GPU timer here (-1): dynamic resolution goes by the frame time
         OutScale os;
+        extern float xcde_effective_present_fps(void);
+        output_scale_set_native_fps(xcde_effective_present_fps());
         output_scale(dw, dh, widescreen_allowed(), SDL_GetTicksNS() / 1e9, -1, &os);
         double sx = os.sx, sy = os.sy, shape = os.shape;
         vx = os.vx, vy = os.vy, vw = os.vw, vh = os.vh;
@@ -1085,6 +1166,7 @@ void backend_present(NvnTexture *t) {
         if (menu_at < 0) menu_at = getenv("LARECOMP_MENU_AT") ? atol(getenv("LARECOMP_MENU_AT")) : 0;
         if (menu_at && (long)total_frames + 1 == menu_at) { extern void menu_test_open(void); menu_test_open(); }
         menu_render((void *)cb, g_vk.sc_extent.width, g_vk.sc_extent.height);
+        fps_game_output=true;fps_repeated_output=false;
         vk_frame_end(shot ? "build/window.png" : xshot);
         {   // XCDE_PRESENT_STATS=1: game frame intervals (first present of each), every 120 frames
             static int on = -1;
@@ -1110,12 +1192,21 @@ void backend_present(NvnTexture *t) {
             if (!vk_frame_begin(black)) break;
             vk_present_redraw(vk_cmd());
             menu_render((void *)vk_cmd(), g_vk.sc_extent.width, g_vk.sc_extent.height);
+            fps_repeated_output=true;
             vk_frame_end(NULL);
         }
+        fps_game_output=fps_repeated_output=false;
+        bool ready=tmp_fg_inputs_ready();
+        float cap=g_settings.frame_gen_match_display&&g_settings.frame_gen&&tmp_frame_gen_wanted()&&ready?
+            fg_policy_base_fps(g_settings.fps,vk_display_hz(),true):0.f;
+        atomic_store_explicit(&g_framegen_cap_fps,cap,memory_order_release);
+        fps_overlay_diagnostics(SDL_GetTicksNS(),integrated?1:0,ready);
         extern void vk_gmem_check(uint64_t frame);
         vk_gmem_check(total_frames + 1);
         if (shot && getenv("LARECOMP_EXIT_AFTER_SHOT")) { fflush(stderr); _exit(0); }
     } else {
+        atomic_store_explicit(&g_framegen_cap_fps,0.f,memory_order_release);
+        fps_overlay_reset();
         renderer_submit();
     }
     extern void vk_prof_frame(uint64_t frame, uint64_t present_ns);
@@ -1202,6 +1293,18 @@ void backend_present(NvnTexture *t) {
         if (last_fps_time > 0)
             LOG("[vk] t=%.1f frame %llu %.1f fps max %.0fms level %s (%s)\n", now, (unsigned long long)total_frames,
                 frames / (now - last_fps_time), max_gap * 1000.0, game_level_name(), renderer_stats());
+        if (last_fps_time>0 && (getenv("XCDE_PRESENT_TIMING") || frames/(now-last_fps_time)<20.)) {
+            uint64_t flags=window?SDL_GetWindowFlags(window):0;
+            const char *mode=actual_present_mode==VK_PRESENT_MODE_FIFO_KHR?"fifo":
+                actual_present_mode==VK_PRESENT_MODE_MAILBOX_KHR?"mailbox":"immediate";
+            LOG("[present-timing] %.3f s: real=%llu calls=%llu accepted=%llu failed=%llu; slot=%.3f acquire=%.3f submit=%.3f present=%.3f CPU ms; %ux%u %s display=%.3f Hz cap=%d focus=%d minimized=%d occluded=%d (accepted is not scanout)\n",
+                now-last_fps_time,(unsigned long long)frames,(unsigned long long)present_diag.calls,
+                (unsigned long long)present_diag.accepted,(unsigned long long)present_diag.failed,
+                present_diag.slot_ns/1e6,present_diag.acquire_ns/1e6,present_diag.submit_ns/1e6,present_diag.present_ns/1e6,
+                g_vk.sc_extent.width,g_vk.sc_extent.height,mode,vk_display_hz(),g_settings.fps,
+                (flags&SDL_WINDOW_INPUT_FOCUS)!=0,(flags&SDL_WINDOW_MINIMIZED)!=0,(flags&SDL_WINDOW_OCCLUDED)!=0);
+        }
+        memset(&present_diag,0,sizeof present_diag);
         if (g_settings.show_fps && last_fps_time > 0 && window) {  // [XCDE] launcher option: frame rate in the title bar
             char title[128];
             snprintf(title, sizeof title, "Xenoblade Chronicles: Definitive Edition (Recomp) - %.0f fps", frames / (now - last_fps_time));
@@ -1242,6 +1345,8 @@ static void quick_exit_handler(void) {
     if (trace) LOG("[vk] exit: waiting for the GPU\n");
     if (g_vk.dev) {
         sc_wait_idle(g_vk.dev);
+        tmp_reset();
+        dlss_shutdown();
         if (trace) LOG("[vk] exit: saving the pipeline cache\n");
         for (int i = 0; i < 500 && atomic_load(&pc_saving); i++) SDL_Delay(10);  // (a periodic save still writing)
         vk_pipeline_cache_save();
@@ -1252,6 +1357,18 @@ static void quick_exit_handler(void) {
 #if defined(_WIN32) || defined(__linux__)
     plat_terminate();
 #endif
+    abort();
+}
+
+// [XCDE] WINPARITY-005: stop actuators and all producers before draining the
+// render queue/GPU. Exit requests never imply an autosave.
+static _Noreturn void ui_finish_host_exit(void) {
+    extern void input_rumble_shutdown(void);
+    extern void backend_drain(void);
+    input_rumble_shutdown();
+    LOG("[am] native close permitted; stopping producers and draining renderer\n");
+    applet_ui_finish_exit(backend_drain, quick_exit_handler);
+    abort();
 }
 
 void ui_window_init(void) {
@@ -1285,6 +1402,9 @@ void ui_window_init(void) {
     pick_device();
     create_device();
     create_swapchain();
+    if (g_vk.sc_extent.height)
+        xcde_aspect_set_factor((float)xcde_aspect_target_factor(
+            (double)g_vk.sc_extent.width / g_vk.sc_extent.height / (16.0 / 9.0)));
     vk_exec_init();
     vk_shaders_init();
 }
@@ -1298,8 +1418,11 @@ void backend_init(void) {
 
 // ---- in-place reboot (runtime/main.c teardown; main thread, guest threads stopped)
 void backend_reset(void) {
+    output_scale_reset_dynamic();
     if (!g_vk.dev) return;
     sc_wait_idle(g_vk.dev);
+    tmp_reset();
+    fps_overlay_reset();atomic_store_explicit(&g_framegen_cap_fps,0.f,memory_order_release);
     extern void vk_textures_reset(void);
     extern void vk_exec_reset(void);
     vk_textures_reset();
@@ -1316,18 +1439,24 @@ int ui_run(void) {
     ui_window_init();
     atomic_store(&ui_ready, true);
     for (;;) {
-        if (rt_reboot_requested()) return rt_reboot_requested();  // (runtime/main.c tears the game down)
+        extern void input_poll_controller(void);
+        extern void input_rumble_pump(void);
+        extern void input_rumble_shutdown(void);
+        if (rt_reboot_requested()) { input_rumble_shutdown(); return rt_reboot_requested(); }
+        input_poll_controller();
+        input_rumble_pump();
         SDL_Event e;
         while (SDL_WaitEventTimeout(&e, 16)) {
-            if (e.type == SDL_EVENT_QUIT) {
-                LOG("window closed\n");
-                exit(0);
-            }
+            input_poll_controller();
+            input_rumble_pump();
+            if (applet_ui_should_exit(&e)) ui_finish_host_exit();
+            if (e.type == SDL_EVENT_QUIT) continue;
             extern bool input_user_blocked(const SDL_Event *e);
             if (input_user_blocked(&e)) continue;  // scripted test runs: the real keyboard / mouse / pads do nothing (as metal.m)
             if (menu_handle_event(&e)) continue;
             input_handle_event(&e);
         }
+        if (applet_ui_should_exit(NULL)) ui_finish_host_exit();
         menu_apply_window_requests(window);
     }
 }

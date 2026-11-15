@@ -1,32 +1,25 @@
-# One-time setup of a Windows machine for building Monado (modelled on LASRecomp's tools/setup_windows.ps1).
-# Installs MSYS2 (UCRT64: SDL3, FFmpeg, Vulkan loader / headers, shaderc, Vulkan Memory Allocator, Opus) and
-# Python 3.12, then creates .venv (the recompiler: capstone, unicorn, lz4; the C compiler: ziglang). Safe to re-run.
+# [XCDE] Explicit project-local setup. Never invokes winget/pacman, upgrades the
+# host, accepts vendor terms or changes user/system PATH. Source fallback requires
+# a caller-selected native CPython 3.14; the portable GUI packages its interpreter.
+[CmdletBinding()]
+param([Parameter(Mandatory=$true)][string]$PythonPath, [switch]$DownloadDependencies)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
-
-if (-not (Test-Path C:\msys64\usr\bin\pacman.exe)) {
-    Write-Host 'Installing MSYS2 (winget)...'
-    winget install --id MSYS2.MSYS2 -e --accept-source-agreements --accept-package-agreements --silent
+if (-not (Test-Path -LiteralPath $PythonPath -PathType Leaf)) { throw 'PythonPath must name an existing native CPython executable.' }
+& $PythonPath -c 'import sys; assert sys.platform == "win32" and sys.version_info[:2] == (3,14), "Native CPython 3.14 is required"'
+if ($LASTEXITCODE -ne 0) { throw 'Unsupported Python interpreter.' }
+$venv = Join-Path $root '.venv'
+if (-not (Test-Path -LiteralPath $venv)) {
+    & $PythonPath -m venv $venv
+    if ($LASTEXITCODE -ne 0) { throw 'Creating project-local virtual environment failed.' }
 }
-$env:MSYSTEM = 'UCRT64'
-$env:CHERE_INVOKING = '1'
-$bash = 'C:\msys64\usr\bin\bash.exe'
-Write-Host 'Updating MSYS2 and installing the libraries (pacman)...'
-& $bash -lc 'pacman -Syuu --noconfirm' | Out-Null
-& $bash -lc 'pacman -Syuu --noconfirm' | Out-Null  # second pass after a core update
-$pkgs = 'mingw-w64-ucrt-x86_64-sdl3', 'mingw-w64-ucrt-x86_64-ffmpeg', 'mingw-w64-ucrt-x86_64-vulkan-devel',
-        'mingw-w64-ucrt-x86_64-shaderc', 'mingw-w64-ucrt-x86_64-vulkan-memory-allocator', 'mingw-w64-ucrt-x86_64-opus',
-        'mingw-w64-ucrt-x86_64-vulkan-validation-layers'
-& $bash -lc "pacman -S --needed --noconfirm $($pkgs -join ' ')"
-
-# Python for the tools: the python.org build (prebuilt unicorn / capstone wheels; MSYS2's Python can't build them)
-$py = "$env:LOCALAPPDATA\Programs\Python\Python312\python.exe"
-if (-not (Test-Path $py)) {
-    Write-Host 'Installing Python 3.12 (winget)...'
-    winget install --id Python.Python.3.12 -e --scope user --accept-source-agreements --accept-package-agreements --silent
+$projectPython = Join-Path $venv 'Scripts\python.exe'
+& $projectPython -c 'import sys; assert sys.version_info[:2] == (3,14), "Existing venv uses another interpreter; preserve it and select a fresh development installation"'
+if ($LASTEXITCODE -ne 0) { throw 'Existing virtual environment was preserved.' }
+& $projectPython -m pip install --disable-pip-version-check --require-hashes -r (Join-Path $root 'tools\windows-python.lock.txt')
+if ($LASTEXITCODE -ne 0) { throw 'Installing pinned project-local Python tools failed.' }
+if ($DownloadDependencies) {
+    & $projectPython -B (Join-Path $root 'tools\windows_deps.py') install
+    if ($LASTEXITCODE -ne 0) { throw 'Project-local native dependency preparation failed.' }
 }
-if (-not (Test-Path "$root\.venv\Scripts\python.exe")) { & $py -m venv "$root\.venv" }
-Write-Host 'Installing the recompiler packages (pip)...'
-& "$root\.venv\Scripts\python.exe" -m pip install -q --disable-pip-version-check lz4 capstone unicorn ziglang
-
-Write-Host 'Done. Next: "Build Monado.bat" (or, in Git Bash: scripts/build_all.sh once targets\ holds your game files).'
+Write-Host 'Local tool setup complete. Run the root Build_Monado_II.bat; it never starts the game.'

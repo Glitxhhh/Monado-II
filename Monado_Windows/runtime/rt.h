@@ -72,8 +72,9 @@ uint32_t ipc_connect_named_port(const char *name);
 enum { RT_REBOOT_NONE, RT_REBOOT_GAME, RT_REBOOT_TITLE };  // GAME: boot again at once (new seed); TITLE: start screen
 void rt_request_reboot(int kind);  // any thread; the window loop (ui_run) returns it and main() carries it out
 int rt_reboot_requested(void);
-extern volatile int g_rt_unwind;   // set while guest threads are being stopped (kernel.c)
+extern int g_rt_unwind;  // [XCDE] LINUX-003: access only with atomic builtins (kernel.c stop/reset)
 void rt_unwind_point(void);        // guest threads: unwind to thread_main if a reboot is stopping them
+void kernel_fiber_unwind(void) __attribute__((noreturn)); // restored Win32 root resumes the thread cleanup boundary
 
 // ---- ui (runtime/nvn/metal.m)
 int ui_run(void);  // window loop; returns the reboot kind requested (the window stays open)

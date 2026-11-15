@@ -72,3 +72,6 @@ xcde.ini
 # Local immutable update workspaces, downloads, journals and activation records.
 updates/
 installation.json
+
+# Private Windows development ledger (never part of publication).
+PROJECT_MEMORY.md

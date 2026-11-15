@@ -17,6 +17,33 @@
 #include "../hle.h"
 #include "../platform.h"
 #include "../settings.h"
+#ifdef __linux__
+#include "../host/run_diagnostics_linux.h"
+#endif
+
+// [XCDE] LINUX-013: passive hooks; compile-time disabled in ordinary builds.
+#include "foley_trace.inc"
+
+// [XCDE] LINUX-013: a phase-preserving clip change seeks the new selected
+// control to old_time * new_duration / old_duration. The loop detector otherwise
+// compares that new clock with the previous clip's time and can invent a wrap.
+// Rebase only after this seek, on the same animation update thread. Keep the
+// existing generation, marker history, forced outgoing events and playback state.
+void xcde_animation_phase_rebase(uint64_t animation, uint32_t layer) {
+    if (!animation || layer >= 2) return;
+    uint64_t state = animation + 0x20 + 0x50 * layer;
+    uint8_t selected;
+    uint64_t entries, count, control;
+    memcpy(&selected, (const void *)(uintptr_t)(state + 0x18), sizeof selected);
+    memcpy(&entries, (const void *)(uintptr_t)(state + 0x20), sizeof entries);
+    memcpy(&count, (const void *)(uintptr_t)(state + 0x28), sizeof count);
+    if (!entries || selected >= count) return;
+    memcpy(&control, (const void *)(uintptr_t)(entries + 0x30 * selected + 0x18), sizeof control);
+    if (!control) return;
+    uint32_t cursor;
+    memcpy(&cursor, (const void *)(uintptr_t)(control + 0x80), sizeof cursor);
+    memcpy((void *)(uintptr_t)(state + 0x10), &cursor, sizeof cursor);
+}
 
 extern volatile uint64_t g_vsync_count;  // runtime/hle/vi.c
 uint64_t g_frame_steps_late;             // (stats) frames that advanced more than one step
@@ -102,7 +129,105 @@ bool xcde_in_cutscene(void) {
 static bool g_cut30;
 bool xcde_cutscene_30(void) { return g_cut30; }
 // the frame rate the window is presented at (device.c repeat presents): 30 while a cutscene is held at 30
-int xcde_present_fps(void) { return g_cut30 ? 30 : g_settings.fps; }
+// [XCDE] LINUX-097: the render thread publishes a cap only after the native
+// provider has accepted current inputs. Missing/failed FG retains the user's
+// native cap. Keep fractional refresh (59.94 etc.) rather than rounding it.
+float xcde_effective_present_fps(void) {
+    if (g_cut30) return 30.f;
+// [XCDE] LINUX-101: XCDE_GFX belongs only to the entry file. The renderer
+// publishes this optional cap when the shared native frame-generation feature
+// is linked; headless/non-FG translation units must keep no Vulkan reference.
+#if (defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)) || (defined(_WIN32) && defined(XCDE_WINDOWS_FRAMEGEN))
+    if (g_settings.frame_gen && g_settings.frame_gen_match_display &&
+        !g_settings.frame_gen_smooth_motion && !diag_deterministic() &&
+        !ENV("XCDE_FPS_PERIOD_SCALE") && !ENV("XCDE_FPS_INTERVAL")) {
+        extern float vk_framegen_cap_fps(void);
+        float cap = vk_framegen_cap_fps();
+        if (isfinite(cap) && cap >= 29.f && cap <= 500.f)
+            return g_settings.fps > 0 && g_settings.fps < cap ? (float)g_settings.fps : cap;
+    }
+#endif
+    return (float)g_settings.fps;
+}
+int xcde_present_fps(void) {
+    return (int)lroundf(xcde_effective_present_fps());
+}
+
+// [XCDE] LINUX-011: MPGUI initialized its animation step to 1/30 second and
+// never updated it, so 165 GUI updates advanced 5.5 seconds of animation. The
+// checked hook at the GUI's own update callback runs before its child traversal,
+// on the same thread that already applies the GUI's pending speed changes.
+// Use the game's frame clock (the source used by f_70005ea460), not a host timer,
+// requested FPS, present count, or the paused/scaled world-layer UpdateInfo.
+// Match the framework's existing two-reference-period hitch cap. Keep the
+// global GUI speed, per-node speed and pause checks in the original consumer.
+void xcde_gui_frame_delta(uint64_t gui) {
+    if (!gui) return;
+    uint64_t slot, clock = 0;
+    memcpy(&slot, (const void *)(uintptr_t)0x7000b93458ull, sizeof slot);
+    if (slot) memcpy(&clock, (const void *)(uintptr_t)slot, sizeof clock);
+    float seconds = 0, reference_fps;
+    if (clock) memcpy(&seconds, (const void *)(uintptr_t)(clock + 0x2034), sizeof seconds);
+    memcpy(&reference_fps, (const void *)(uintptr_t)(gui + 0x6c), sizeof reference_fps);
+    if (!isfinite(seconds) || seconds < 0 || !isfinite(reference_fps) || reference_fps <= 0) {
+        LOG("[timing] invalid GUI frame clock: seconds=%g reference_fps=%g\n",
+            (double)seconds, (double)reference_fps);
+        abort();
+    }
+    float maximum = 2.0f / reference_fps;
+    if (seconds > maximum) seconds = maximum;
+    memcpy((void *)(uintptr_t)(gui + 0x70), &seconds, sizeof seconds);
+    static bool logged;
+    if (!logged && clock) {
+        logged = true;
+        LOG("[timing] GUI animation uses engine elapsed time (reference %g Hz)\n", (double)reference_fps);
+    }
+}
+
+// [XCDE] LINUX-012: navigation's held-duration updater reads UpdateInfo's
+// reference period (+4), which stays 1/30 even at high FPS. Its repeat consumer
+// already compares durations in seconds; supply the existing engine elapsed
+// seconds at just those reads. Raw HID, press/release masks and borrowed
+// UpdateInfo stay intact. Use the same two-reference-period cap as the framework
+// and GUI, independently of world-layer pause/speed. Bits in/out preserve the
+// original scalar LDR's complete 128-bit destination clearing in generated code.
+uint32_t xcde_repeat_delta_bits(uint32_t reference_bits) {
+    float reference, seconds = 0;
+    memcpy(&reference, &reference_bits, sizeof reference);
+    uint64_t slot, clock = 0;
+    memcpy(&slot, (const void *)(uintptr_t)0x7000b93458ull, sizeof slot);
+    if (slot) memcpy(&clock, (const void *)(uintptr_t)slot, sizeof clock);
+    if (clock) memcpy(&seconds, (const void *)(uintptr_t)(clock + 0x2034), sizeof seconds);
+    if (!isfinite(reference) || reference <= 0 || !isfinite(seconds) || seconds < 0) {
+        LOG("[timing] invalid repeat frame clock: seconds=%g reference=%g\n",
+            (double)seconds, (double)reference);
+        abort();
+    }
+    float maximum = 2.0f * reference;
+    if (seconds > maximum) seconds = maximum;
+    uint32_t result;
+    memcpy(&result, &seconds, sizeof result);
+    static unsigned logged;
+    if (clock && !__atomic_load_n(&logged, __ATOMIC_RELAXED) &&
+        !__atomic_exchange_n(&logged, 1, __ATOMIC_RELAXED)) {
+        LOG("[timing] input repeat uses engine elapsed time\n");
+    }
+    return result;
+}
+
+// [XCDE] LINUX-014: speed up only the repeat consumers' local duration views.
+// The shared held timers keep real elapsed seconds for all other hold queries;
+// raw input, tap/release edges, GUI/world/animation clocks remain unchanged.
+uint32_t xcde_navigation_duration_bits(uint32_t duration_bits) {
+    if (g_settings.menu_navigation_speed != MENU_NAV_FAST) return duration_bits;
+    float duration;
+    memcpy(&duration, &duration_bits, sizeof duration);
+    // Inactive/sentinel values retain their original bits and comparison policy.
+    if (!isfinite(duration) || duration <= 0) return duration_bits;
+    duration *= 2.0f;
+    memcpy(&duration_bits, &duration, sizeof duration_bits);
+    return duration_bits;
+}
 
 static void fps_interval_force(void) {
     static int want = -2;
@@ -119,34 +244,75 @@ static void fps_interval_force(void) {
     }
     frames++;
     g_cut30 = g_settings.cutscene_mode && !ENV("XCDE_FPS_INTERVAL") && xcde_in_cutscene();
-    if (want < 0 || plat_now_ns() < after || frames < after_frames) return;
+#ifdef __linux__
+    run_diag_pacing(xcde_effective_present_fps(), g_cut30);
+#endif
+    // A qualified fractional cap can cross the native 30-FPS early-return
+    // boundary. Remember only our own override so failure/off/cutscene restores
+    // the original period+interval pair rather than leaving a stale 29.97 cap.
+    static bool refresh_applied;
+    bool refresh_override = false;
+    int frame_want = want;
+    float effective_scale = scale;
+#if (defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)) || (defined(_WIN32) && defined(XCDE_WINDOWS_FRAMEGEN))
+    if (!g_cut30 && !ENV("XCDE_FPS_PERIOD_SCALE") && !ENV("XCDE_FPS_INTERVAL") &&
+        g_settings.frame_gen && g_settings.frame_gen_match_display && !g_settings.frame_gen_smooth_motion) {
+        float effective = xcde_effective_present_fps();
+        if (effective > 0.f && effective != (float)g_settings.fps) {
+            effective_scale = 60.f / effective;
+            refresh_override = true;
+            frame_want = 1;
+        }
+    }
+#endif
+    if ((want < 0 && !refresh_override && !refresh_applied) || plat_now_ns() < after || frames < after_frames) return;
+    if (frame_want < 0) frame_want = 2; // Restore a native30 override we own.
     uint32_t *p = (uint32_t *)(uintptr_t)*(volatile uint64_t *)(uintptr_t)0x7000b92ea0ull;
     if (!p) return;
-    if (g_cut30) {  // 30 fps: two display periods (the limiter's constant may be scaled for above 60)
-        int iv = (int)lroundf(2.0f / (scale > 0 ? scale : 1.0f));
-        *p = (uint32_t)(iv < 2 ? 2 : iv);
+    // [XCDE] LINUX-011: a fractional high-FPS period cannot represent the native
+    // cutscene period by rounding an integer interval (165 gave nominal 27.5 Hz).
+    // Keep the original constant and select the exact pair for each mode. This
+    // also handles entering a cutscene before the first high-FPS constant write.
+    volatile float *k = (volatile float *)(uintptr_t)0x70009d3dccull;
+    static float original_period;
+    static bool have_period;
+    if (!have_period) { original_period = *k; have_period = true; }
+    float period = original_period * (!g_cut30 && effective_scale > 0 ? effective_scale : 1.0f);
+    if (*k != period) {
+        uint64_t page = (uint64_t)(uintptr_t)k & ~0xFFFull;
+        float previous = *k;
+        if (plat_protect(page, 0x1000, PLAT_PROT_RW) != 0) {
+            LOG("[fps] cannot make limiter constant writable\n");
+            abort();
+        }
+        *k = period;
+        if (plat_protect(page, 0x1000, PLAT_PROT_READ) != 0) {
+            LOG("[fps] cannot restore limiter constant protection\n");
+            abort();
+        }
+        LOG("[fps] limiter period constant %g -> %g\n", (double)previous, (double)period);
+    }
+    if (g_cut30) {
+        *p = 2;  // native 30 Hz: two unscaled display periods
+        refresh_applied = false;
+#ifdef __linux__
+        run_diag_limiter(2, original_period, *k);
+#endif
         return;
     }
     static int logged;
-    if (!logged && *p != (uint32_t)want) { logged = 1; LOG("[fps] frame interval %u -> %d\n", *p, want); }
+    if (!logged && *p != (uint32_t)frame_want) { logged = 1; LOG("[fps] frame interval %u -> %d\n", *p, frame_want); }
     {   // XCDE_FPS_LOG=1: how often the game set its interval back since the last frame (per 120 frames)
         static int lg = -1, reset;
         static uint64_t n;
         if (lg < 0) lg = ENV("XCDE_FPS_LOG") != NULL;
         if (lg) { reset += *p != (uint32_t)want; if (++n % 120 == 0) { LOG("[fps] frame %llu: interval set back %d of 120 frames\n", (unsigned long long)n, reset); reset = 0; } }
     }
-    *p = (uint32_t)want;
-    if (scale > 0) {
-        volatile float *k = (volatile float *)(uintptr_t)0x70009d3dccull;
-        static int done;
-        if (!done) {
-            done = 1;
-            float orig = *k;
-            plat_protect((uint64_t)(uintptr_t)k & ~0xFFFull, 0x1000, PLAT_PROT_RW);
-            *k = orig * scale;
-            LOG("[fps] limiter period constant %g -> %g\n", (double)orig, (double)*k);
-        }
-    }
+    *p = (uint32_t)frame_want;
+    refresh_applied = refresh_override;
+#ifdef __linux__
+    run_diag_limiter(frame_want, original_period, *k);
+#endif
 }
 
 // [XCDE] T224 research: XCDE_MEMWATCH=<frame>:<lo hex>-<hi hex>[,<lo>-<hi>...] - at 8 consecutive frame boundaries from
@@ -697,4 +863,3 @@ void xcde_limiter_spin(void) {
     g_limiter_slept_ns += plat_now_ns() - now;
     lim_turns_since_sleep = 0;
 }
-

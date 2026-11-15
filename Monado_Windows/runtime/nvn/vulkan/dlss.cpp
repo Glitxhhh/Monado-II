@@ -20,13 +20,18 @@
 
 extern "C" {
 #include "temporal.h"
+#include "dlss.h"
+#include "temporal_camera.h"
 #include "../../settings.h"
 
 }
 #define DLOG(...) fprintf(stderr, __VA_ARGS__)
 
 static HMODULE sl_mod;
-static bool sl_ok, dlss_ok;
+static bool sl_ok, dlss_ok, sl_initialized;
+static uint32_t sl_frame;
+static PFun_slFreeResources *p_slFreeResources;
+static PFun_slShutdown *p_slShutdown;
 static PFun_slInit *p_slInit;
 static PFun_slGetFeatureRequirements *p_slGetFeatureRequirements;
 static PFun_slSetVulkanInfo *p_slSetVulkanInfo;
@@ -46,21 +51,23 @@ static void sl_log(sl::LogType type, const char *msg) {
 
 // Before the Vulkan instance: load Streamline with the DLSS plugin (only when DLSS is the chosen upscaler).
 extern "C" bool dlss_init_early(void) {
-    if (g_settings.upscaler != UPSCALE_DLSS || getenv("XCDE_TMP_OFF")) return false;
-    wchar_t dir[MAX_PATH];
-    DWORD n = GetModuleFileNameW(NULL, dir, MAX_PATH);
+    if (g_settings.upscaler != UPSCALE_DLSS || getenv("XCDE_TMP_OFF") || getenv("XCDE_PRECOMPILING")) return false;
+    static wchar_t dir[4096];
+    DWORD n = GetModuleFileNameW(NULL, dir, 4096);
+    if(!n || n>=4096)return false;
     while (n && dir[n - 1] != L'\\' && dir[n - 1] != L'/') n--;
     dir[n] = 0;
-    wchar_t path[MAX_PATH + 32];
-    swprintf(path, MAX_PATH + 32, L"%lssl.interposer.dll", dir);
-    sl_mod = LoadLibraryW(path);
+    wchar_t path[4096 + 32];
+    swprintf(path, 4096 + 32, L"%lssl.interposer.dll", dir);
+    sl_mod = LoadLibraryExW(path,nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
     if (!sl_mod) { DLOG("[dlss] sl.interposer.dll not found: DLSS unavailable\n"); return false; }
 #define GET(f) p_##f = (PFun_##f *)(void *)GetProcAddress(sl_mod, #f)
+    GET(slFreeResources); GET(slShutdown);
     GET(slInit); GET(slGetFeatureRequirements); GET(slSetVulkanInfo); GET(slIsFeatureSupported); GET(slGetFeatureFunction);
     GET(slGetNewFrameToken); GET(slSetConstants); GET(slSetTagForFrame); GET(slEvaluateFeature);
 #undef GET
     p_proxyDeviceProcAddr = (PFN_vkGetDeviceProcAddr)(void *)GetProcAddress(sl_mod, "vkGetDeviceProcAddr");
-    if (!p_slInit || !p_slGetFeatureRequirements || !p_slSetVulkanInfo || !p_slEvaluateFeature || !p_proxyDeviceProcAddr) {
+    if (!p_slInit || !p_slGetFeatureRequirements || !p_slSetVulkanInfo || !p_slEvaluateFeature || !p_proxyDeviceProcAddr || !p_slGetNewFrameToken || !p_slSetConstants || !p_slSetTagForFrame || !p_slFreeResources || !p_slShutdown) {
         DLOG("[dlss] sl.interposer.dll: entry points missing\n");
         return false;
     }
@@ -84,6 +91,7 @@ extern "C" bool dlss_init_early(void) {
     pref.renderAPI = sl::RenderAPI::eVulkan;
     sl::Result r = p_slInit(pref, sl::kSDKVersion);
     if (r != sl::Result::eOk) { DLOG("[dlss] slInit failed: %d\n", (int)r); return false; }
+    sl_initialized=true;
     r = p_slGetFeatureRequirements(sl::kFeatureDLSS, reqs);
     if (r != sl::Result::eOk) { DLOG("[dlss] DLSS plugin not loaded: %d\n", (int)r); return false; }
     sl_ok = true;
@@ -99,7 +107,7 @@ extern "C" int dlss_instance_exts(const char **out, int max) {
 }
 
 // The device's extensions (appended to ext[*n]) and features (OR-ed into f12 / f13); extra queues it asks for.
-extern "C" void dlss_device_requirements(const char **ext, uint32_t *n, uint32_t max, VkPhysicalDeviceVulkan12Features *f12,
+extern "C" void dlss_device_requirements(VkInstance inst, VkPhysicalDevice phys, const char **ext, uint32_t *n, uint32_t max, VkPhysicalDeviceVulkan12Features *f12,
                                          VkPhysicalDeviceVulkan13Features *f13, uint32_t *extra_gfx, uint32_t *extra_compute) {
     *extra_gfx = *extra_compute = 0;
     if (!sl_ok) return;
@@ -191,11 +199,11 @@ static bool inv4(const double m[16], double o[16]) {
 // reproj: the previous clip position from this frame's (column vectors), as temporal.c computed it.
 extern "C" bool dlss_evaluate(VkCommandBuffer cb, const TexBackend *color, const TexBackend *mv, const TexBackend *depth,
                               const TexBackend *out, const TexBackend *hud, const float jitter[2], bool reset, const TmpCamera *cam,
-                              const double reproj[16]) {
+                              const double reproj[16], uint64_t recording_seq, uint64_t completed_seq) {
+    (void)recording_seq;(void)completed_seq;
     if (!dlss_ok) return false;
-    static uint32_t frame;
     sl::FrameToken *token = nullptr;
-    uint32_t fi = frame++;
+    uint32_t fi = sl_frame++;
     if (p_slGetNewFrameToken(token, &fi) != sl::Result::eOk || !token) return false;
     sl::ViewportHandle vp(0);
     sl::Constants c{};
@@ -212,7 +220,8 @@ extern "C" bool dlss_evaluate(VkCommandBuffer cb, const TexBackend *color, const
     c.jitterOffset = sl::float2(jitter[0], jitter[1]);
     c.mvecScale = sl::float2(1.0f, 1.0f);  // (motion vectors in UV units)
     c.cameraPinholeOffset = sl::float2(0, 0);
-    c.cameraPos = sl::float3(0, 0, 0);
+    double position[3];if(!tmp_camera_position(cam->view,position))return false;
+    c.cameraPos = sl::float3((float)position[0],(float)position[1],(float)position[2]);
     c.cameraUp = sl::float3(cam->view[4], cam->view[5], cam->view[6]);
     c.cameraRight = sl::float3(cam->view[0], cam->view[1], cam->view[2]);
     c.cameraFwd = sl::float3(-cam->view[8], -cam->view[9], -cam->view[10]);
@@ -256,4 +265,24 @@ extern "C" bool dlss_evaluate(VkCommandBuffer cb, const TexBackend *color, const
     sl::Result r = p_slEvaluateFeature(sl::kFeatureDLSS, *token, inputs, 1, (sl::CommandBuffer *)cb);
     if (r != sl::Result::eOk) { static int n; if (n++ < 5) DLOG("[dlss] evaluate failed: %d\n", (int)r); return false; }
     return true;
+}
+
+// Call only once the device is idle and no producer can submit provider work.
+extern "C" void dlss_reset(void) {
+    if(dlss_ok && p_slFreeResources) {
+        sl::ViewportHandle viewport(0);
+        sl::Result result=p_slFreeResources(sl::kFeatureDLSS,viewport);
+        if(result!=sl::Result::eOk){DLOG("[dlss] resource reset failed: %d\n",(int)result);dlss_ok=false;}
+    }
+    sl_frame=0;
+}
+extern "C" void dlss_shutdown(void) {
+    dlss_reset();
+    if(sl_initialized && p_slShutdown) {
+        sl::Result result=p_slShutdown();
+        if(result!=sl::Result::eOk)DLOG("[dlss] shutdown failed: %d\n",(int)result);
+    }
+    sl_initialized=sl_ok=dlss_ok=false;
+    p_proxyDeviceProcAddr=nullptr;p_slDLSSSetOptions=nullptr;
+    if(sl_mod){FreeLibrary(sl_mod);sl_mod=nullptr;}
 }

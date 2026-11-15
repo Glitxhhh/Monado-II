@@ -1,0 +1,17 @@
+{
+  "origin": "musl generic math source bundled by PyPI ziglang 0.14.1 (pinned project compiler)",
+  "source_files": {
+    "src/math/fma.c": "f15e2db8c727f6cb3886dbc8817bebfcd7afff155b284be409fb961e0b985894",
+    "src/math/fmaf.c": "e5baf54228b74b036da629902d811f9f57de26133a03ce290879b5ec6de04433",
+    "COPYRIGHT": "f9bc4423732350eb0b3f7ed7e91d530298476f8fec0c6c427a1c04ade22655af"
+  },
+  "modifications": [
+    "Combine fma.c and fmaf.c into one Windows-only compatibility translation unit; retain standard fma/fmaf definitions for compiler-lowered calls.",
+    "Replace musl internal a_clz_64 with equivalent Clang __builtin_clzll on proven nonzero values.",
+    "Parenthesize shift arithmetic without changing its precedence.",
+    "For finite nonzero factors with zero addend, return x*y directly: separate +z after multiplication can erase the sign of an underflowed negative zero.",
+    "Refuse fast-math and disable floating-point contraction in this translation unit."
+  ],
+  "license": "fma: musl MIT; fmaf: David Schultz FreeBSD two-clause notice retained in source; complete musl COPYRIGHT included",
+  "windows_source": "runtime/platform/windows_fma.c"
+}

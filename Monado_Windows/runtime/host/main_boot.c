@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #include <windows.h>
 
@@ -37,6 +38,27 @@ static void module_init(Cpu *c, Module *m) {
 }
 static void rtld_init_sdk(Cpu *c) { module_init(c, &g_modules[1]); }
 static void rtld_init_main(Cpu *c) { module_init(c, &g_modules[0]); }
+
+// [XCDE] WINPARITY-006: resolve the selected read-only input junctions separately
+// from writable save/state paths, whose guards continue refusing reparse points.
+static bool selected_input_directory(const char *path, char *out, size_t capacity) {
+    wchar_t input[4096], final[4096];
+    if (!MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, path, -1, input, 4096)) return false;
+    HANDLE directory = CreateFileW(input, FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS, NULL);
+    if (directory == INVALID_HANDLE_VALUE) return false;
+    BY_HANDLE_FILE_INFORMATION info;
+    DWORD length = GetFinalPathNameByHandleW(directory, final, 4096, FILE_NAME_NORMALIZED | VOLUME_NAME_DOS);
+    bool valid = GetFileInformationByHandle(directory, &info) && (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY);
+    CloseHandle(directory);
+    if (!valid || !length || length >= 4096) return false;
+    const wchar_t *resolved = final;
+    if (!wcsncmp(final, L"\\\\?\\UNC\\", 8)) { final[6] = L'\\'; resolved = final + 6; }
+    else if (!wcsncmp(final, L"\\\\?\\", 4)) resolved = final + 4;
+    return capacity <= INT_MAX &&
+        WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, resolved, -1, out, (int)capacity, NULL, NULL) > 0;
+}
 
 __attribute__((constructor(101))) static void reserve_guest_space(void) {
     if (!plat_reserve_guest(GUEST_LO, GUEST_HI)) {
@@ -100,6 +122,28 @@ int main(int argc, char **argv) {
     snprintf(npdm_path, sizeof npdm_path, "%s/main.npdm", exefs);
     g_romfs_dir = strdup(romfs);
 
+    // [XCDE] WINPARITY-002 / R5: the split companion must be validated before
+    // any watchdog, module loader, kernel or dispatch reads its function tables.
+    // Static builds use the same contract through gamelib_static.c.
+    char gamecode_error[512];
+    if (!gamelib_load(root, gamecode_error, sizeof gamecode_error)) {
+        fprintf(stderr, "FATAL: cannot load game code: %s\n", gamecode_error);
+        return 1;
+    }
+    char resolved_exefs[4096], resolved_romfs[4096];
+    if (!selected_input_directory(exefs, resolved_exefs, sizeof resolved_exefs) ||
+        !selected_input_directory(romfs, resolved_romfs, sizeof resolved_romfs)) {
+        fprintf(stderr, "FATAL: selected game input directories are missing or inaccessible\n");
+        return 1;
+    }
+    if (snprintf(exefs, sizeof exefs, "%s", resolved_exefs) >= (int)sizeof exefs ||
+        snprintf(romfs, sizeof romfs, "%s", resolved_romfs) >= (int)sizeof romfs ||
+        snprintf(npdm_path, sizeof npdm_path, "%s/main.npdm", exefs) >= (int)sizeof npdm_path) {
+        fprintf(stderr, "FATAL: selected game input path exceeds the supported runtime bound\n");
+        return 1;
+    }
+    free((void *)g_romfs_dir);
+    g_romfs_dir = strdup(romfs);
     diag_watchdog_start();
     if (getenv("XCDE_WATCHDOG")) CreateThread(NULL, 0, watchdog_main, (LPVOID)(uintptr_t)atoi(getenv("XCDE_WATCHDOG")), 0, NULL);
     loader_load(exefs);

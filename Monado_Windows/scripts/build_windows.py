@@ -1,0 +1,660 @@
+#!/usr/bin/env python3
+"""[XCDE] Native Windows build driver. Never launches the game or installs tools.
+
+Fresh outputs, exact compile/link membership, strict FP/assertions, checked child
+exit codes and private evidence replace the inherited stale-object shell recipe.
+"""
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import ctypes
+from datetime import datetime, timezone
+import hashlib
+import importlib.metadata
+import importlib.util
+import json
+import os
+from pathlib import Path
+import platform
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import threading
+import time
+import uuid
+
+ROOT = Path(__file__).resolve().parents[1]
+RUNTIME = """loader dispatch kernel ipc fnprof platform/windows platform/windows_fma services/fs services/romfs_virtual
+services/am services/acc services/time services/hid_set services/kbicons services/misc services/audio services/hwopus
+hle/heaps hle/pl hle/vi hle/nvn_boot hle/fibers hle/input hle/party hle/bindings hle/movie hle/framepace
+hle/graphics hle/foliage_distance hle/title_exit hle/desktop_exit_caption hle/system_exit hle/expanded_saves hle/expanded_save_scan
+hle/quickstep_slot hle/quickstep_save hle/quickstep_native hle/quickstep_picker hle/quickstep_stats hle/quickstep_stats_ui hle/quickstep_ui_memory
+hle/cheats_rewards hle/cheats_combat host/stubs host/settings_ini host/stubs_gfx host/xcde_aspect host/gamelib_static host/main_boot
+diag/diag diag/sampler diag/watchdog diag/crashdump paths""".split()
+NVN = """astc cmdbuf formats maxwell/translate objects output_scale smaa_data tegra texpatch
+vulkan/device vulkan/exec vulkan/precompile vulkan/shaders vulkan/textures vulkan/temporal""".split()
+IMGUI = ["third_party/imgui/" + n + ".cpp" for n in ("imgui", "imgui_draw", "imgui_tables", "imgui_widgets")]
+CPP = IMGUI + ["third_party/imgui/backends/imgui_impl_vulkan.cpp", "runtime/nvn/vulkan/imgui_glue.cpp",
+               "runtime/ui/menu_vk.cpp", "runtime/nvn/vulkan/dlss.cpp", "runtime/nvn/vulkan/vma.cpp"]
+LAUNCHER = IMGUI + ["third_party/imgui/backends/imgui_impl_sdl3.cpp",
+                    "third_party/imgui/backends/imgui_impl_sdlrenderer3.cpp", "tools/launcher/launcher.cpp"]
+LIBRARIES = ["SDL3", "shaderc_shared", "vulkan-1", "opus", "avcodec", "avformat", "avutil", "swscale", "swresample", "z"]
+FLAGS = ["-O1", "-UNDEBUG", "-march=x86_64_v2", "-ffp-contract=off", "-fno-fast-math", "-fno-strict-aliasing", "-fvisibility=hidden"]
+
+
+def digest(path):
+    with path.open("rb") as f:
+        return hashlib.file_digest(f, "sha256").hexdigest()
+
+
+def ordinary(path):
+    return path.is_file() and not path.is_symlink() and not path.is_junction()
+
+
+def atomic_json(path, value):
+    tmp = path.with_name(path.name + "." + uuid.uuid4().hex + ".tmp")
+    with tmp.open("x", encoding="utf-8", newline="\n") as stream:
+        stream.write(json.dumps(value, indent=2, ensure_ascii=False) + "\n")
+        stream.flush()
+        os.fsync(stream.fileno())
+    tmp.replace(path)
+
+
+def generator_closure():
+    files = list((ROOT / "tools/lifter").glob("*.py"))
+    files += [ROOT / n for n in ("tools/gen_all.py", "games/xcde/profile.json", "games/xcde/patches.py", "games/xcde/hle_symbols.txt")]
+    files.append(ROOT / "runtime/platform/windows_fma.c")
+    # Generated chunks include cpu.h and portable SIMD. Follow every quoted
+    # include recursively, including conditional branches, instead of treating
+    # unrelated launcher/save/renderer headers as guest ABI dependencies.
+    pending, seen = [ROOT / "runtime/cpu.h", ROOT / "runtime/simd.h", ROOT / "runtime/gamelib.h"], set()
+    while pending:
+        header = pending.pop().resolve()
+        if header in seen:
+            continue
+        if not header.is_relative_to(ROOT / "runtime") or not ordinary(header):
+            raise RuntimeError("Invalid guest header dependency: " + str(header))
+        seen.add(header)
+        for name in re.findall(r'^\s*#\s*include\s*"([^"]+)"', header.read_text(encoding="utf-8"), re.MULTILINE):
+            pending.append(header.parent / name)
+    files += list(seen)
+    return {p.relative_to(ROOT).as_posix(): digest(p) for p in sorted(files)}
+
+
+def compatible_generator_closure(old, current):
+    # Legacy development receipts conservatively included every runtime header.
+    # Migration may drop only unrelated header entries; every actual recursive
+    # guest include and every generator/profile/patch/HLE file must still match.
+    return (isinstance(old, dict) and all(old.get(n) == sha for n, sha in current.items()) and
+            all(n in current or n.startswith("runtime/") and n.endswith(".h") for n in old))
+
+
+def pe_imports(path):
+    """Read ordinary PE imports without executing a DLL to check its existence."""
+    data = path.read_bytes()
+    if data[:2] != b"MZ":
+        raise ValueError(f"Not PE: {path}")
+    pe = struct.unpack_from("<I", data, 0x3c)[0]
+    if data[pe:pe+4] != b"PE\0\0":
+        raise ValueError(f"Invalid PE signature: {path}")
+    machine, count = struct.unpack_from("<HH", data, pe+4)
+    if machine != 0x8664:
+        raise ValueError(f"Not x86-64 PE: {path}")
+    opt_size = struct.unpack_from("<H", data, pe+20)[0]
+    opt = pe + 24
+    if struct.unpack_from("<H", data, opt)[0] != 0x20b:
+        raise ValueError(f"Not PE32+: {path}")
+    sections = []
+    for i in range(count):
+        s = opt + opt_size + i * 40
+        virtual_size, address, size, offset = struct.unpack_from("<IIII", data, s+8)
+        sections.append((address, max(virtual_size, size), offset, size))
+    def off(rva):
+        for address, size, offset, rawsize in sections:
+            if address <= rva < address + size and rva - address < rawsize:
+                return offset + rva - address
+        raise ValueError(f"Invalid PE RVA in {path}")
+    rva, size = struct.unpack_from("<II", data, opt+112+8)
+    if not rva:
+        return []
+    base, result = off(rva), []
+    for i in range(min(size // 20 + 1, 4096)):
+        entry = struct.unpack_from("<IIIII", data, base+i*20)
+        if not any(entry):
+            break
+        start = off(entry[3])
+        end = data.find(b"\0", start, start+512)
+        if end == -1:
+            raise ValueError(f"Unbounded PE import in {path}")
+        name = data[start:end].decode("ascii")
+        if Path(name).name != name or "/" in name or "\\" in name or ":" in name:
+            raise ValueError("Unsafe PE import name")
+        result.append(name)
+    return result
+
+
+def dll_closure(paths, prefix, flat=False, own_images=None):
+    available = {p.name.lower(): p for p in (prefix if flat else prefix / "bin").glob("*.dll")}
+    images = {p.name.lower(): p for p in (own_images or [])}
+    system = Path(os.environ.get("SystemRoot", "C:/Windows")) / "System32"
+    found, pending = {}, list(paths)
+    while pending:
+        source = pending.pop()
+        for name in pe_imports(source):
+            key = name.lower()
+            if key in found:
+                continue
+            if key in images:
+                if not ordinary(images[key]):
+                    raise RuntimeError("Missing/nonordinary owned PE host image: " + name)
+                continue
+            if key in available:
+                file = available[key]
+                if not ordinary(file):
+                    raise RuntimeError(f"Nonordinary runtime DLL: {file}")
+                found[key] = file
+                pending.append(file)
+            elif name.lower().startswith(("api-ms-win-", "ext-ms-win-")) or (system / name).is_file():
+                continue
+            else:
+                raise RuntimeError(f"Missing dependency {name} imported by {source}")
+    return sorted(found.values())
+
+
+class OwnedProcesses:
+    """A native kill-on-close job contains only this build's compiler descendants."""
+    def __init__(self):
+        self.job = None
+        if os.name != "nt":
+            return
+        from ctypes import wintypes as w
+        class BASIC(ctypes.Structure):
+            _fields_ = [("ProcessTime", ctypes.c_int64), ("JobTime", ctypes.c_int64), ("LimitFlags", w.DWORD),
+                        ("Min", ctypes.c_size_t), ("Max", ctypes.c_size_t), ("Count", w.DWORD),
+                        ("Affinity", ctypes.c_size_t), ("Priority", w.DWORD), ("Scheduling", w.DWORD)]
+        class IO(ctypes.Structure):
+            _fields_ = [(n, ctypes.c_uint64) for n in ("r", "w", "o", "rb", "wb", "ob")]
+        class LIMIT(ctypes.Structure):
+            _fields_ = [("Basic", BASIC), ("Io", IO), ("ProcMem", ctypes.c_size_t), ("JobMem", ctypes.c_size_t),
+                        ("PeakProc", ctypes.c_size_t), ("PeakJob", ctypes.c_size_t)]
+        self.k32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        self.k32.CreateJobObjectW.restype = w.HANDLE
+        self.k32.CreateJobObjectW.argtypes = [ctypes.c_void_p, w.LPCWSTR]
+        self.k32.SetInformationJobObject.argtypes = [w.HANDLE, ctypes.c_int, ctypes.c_void_p, w.DWORD]
+        self.k32.AssignProcessToJobObject.argtypes = [w.HANDLE, w.HANDLE]
+        self.k32.CloseHandle.argtypes = [w.HANDLE]
+        self.job = self.k32.CreateJobObjectW(None, None)
+        limits = LIMIT()
+        limits.Basic.LimitFlags = 0x2000  # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        if not self.job or not self.k32.SetInformationJobObject(self.job, 9, ctypes.byref(limits), ctypes.sizeof(limits)):
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    def assign(self, process):
+        if self.job and not self.k32.AssignProcessToJobObject(self.job, int(process._handle)):
+            process.terminate()
+            process.wait()
+            raise ctypes.WinError(ctypes.get_last_error())
+
+    def close(self):
+        if self.job:
+            self.k32.CloseHandle(self.job)
+            self.job = None
+
+
+class Builder:
+    def __init__(self, args):
+        self.args = args
+        self.output = args.output.absolute()
+        if self.output.exists():
+            raise RuntimeError(f"Output must be new; existing build preserved: {self.output}")
+        if not self.output.is_relative_to(ROOT / "build"):
+            raise RuntimeError("Build output must be below Monado_Windows/build")
+        if self.output.resolve() != self.output:
+            raise RuntimeError("Build output/ancestors must be ordinary, canonical Windows paths")
+        self.output.mkdir(parents=True)
+        (self.output / "logs").mkdir()
+        self.receipt = {"schema": 1, "implementation": "windows-parity-development", "status": "started",
+                        "python": sys.version, "host": platform.platform(), "flags": FLAGS, "commands": [], "sources": {}}
+        self.guard = OwnedProcesses()
+        self.lock = threading.Lock()
+        self.prefix = args.prefix
+        if self.prefix is None:
+            config = ROOT / ".deps/windows-deps.json"
+            self.prefix = Path(json.loads(config.read_text(encoding="utf-8"))["prefix"]) if config.exists() else Path("C:/msys64/ucrt64")
+        self.prefix = self.prefix.resolve()
+        self.cc = [sys.executable, "-m", "ziglang", "cc"]
+        self.cxx = [sys.executable, "-m", "ziglang", "c++"]
+        self.gamelib_id = "windows-dev"
+        self.includes = ["-I" + str(ROOT / p) for p in ("runtime", "runtime/nvn", "runtime/nvn/vulkan", "third_party", "third_party/imgui", "third_party/imgui/backends", "third_party/streamline/include")]
+        self.includes += ["-I" + str(self.prefix / "include"), "-I" + str(self.output / "inc"), "-I" + str(ROOT / "third_party/smaa/Textures")]
+        self.receipt["prefix"] = str(self.prefix)
+        self.receipt["zig"] = importlib.metadata.version("ziglang")
+        try:
+            self.receipt["git_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
+            self.receipt["git_branch"] = subprocess.check_output(["git", "branch", "--show-current"], cwd=ROOT, text=True).strip()
+        except (OSError, subprocess.CalledProcessError):
+            self.receipt["git_commit"] = None  # a reviewed source-only kit can have no .git
+        if self.receipt["zig"] != "0.14.1":
+            raise RuntimeError("This Windows recipe requires pinned ziglang==0.14.1")
+
+    def run(self, name, command, timeout=900):
+        logname = re.sub(r"[^a-zA-Z0-9_.-]", "_", name)
+        out, err = (self.output / "logs" / (logname + s) for s in (".out", ".err"))
+        record = {"name": name, "argv": list(map(str, command)), "stdout": str(out), "stderr": str(err)}
+        start = time.monotonic()
+        with out.open("wb") as stdout, err.open("wb") as stderr:
+            env = os.environ.copy()
+            env["PYTHONDONTWRITEBYTECODE"] = "1"
+            env["ZIG_GLOBAL_CACHE_DIR"] = str(ROOT / ".deps/zig-cache")
+            process = subprocess.Popen(record["argv"], cwd=ROOT, stdout=stdout, stderr=stderr, env=env)
+            self.guard.assign(process)
+            try:
+                record["exit"] = process.wait(timeout=timeout)
+            except subprocess.TimeoutExpired:
+                process.terminate()
+                process.wait()
+                record["exit"] = -1
+                record["timeout"] = timeout
+        record["seconds"] = round(time.monotonic() - start, 3)
+        with self.lock:
+            self.receipt["commands"].append(record)
+            atomic_json(self.output / "build-receipt.json", self.receipt)
+        if record["exit"]:
+            message = err.read_text(encoding="utf-8", errors="replace")[-10000:]
+            raise RuntimeError(f"{name} failed with exit {record['exit']}\n{message}\nLogs: {self.output / 'logs'}")
+        return out
+
+    def preflight(self):
+        libraries = []
+        for name in LIBRARIES:
+            library = self.prefix / "lib" / ("lib" + name + ".dll.a")
+            if name == "z" and not library.is_file():
+                library = self.prefix / "lib/libz.a"
+            if not ordinary(library):
+                raise RuntimeError(f"Missing native import library: {library}; run tools/windows_deps.py install")
+            libraries.append(str(library))
+        self.libs = libraries
+        self.receipt["import_libraries"] = {str(p): digest(Path(p)) for p in libraries}
+        probe = self.output / "preflight.c"
+        probe.write_text("#include <SDL3/SDL.h>\n#include <libavcodec/avcodec.h>\n#include <shaderc/shaderc.h>\n#include <vulkan/vulkan.h>\n#ifdef NDEBUG\n#error assertions disabled\n#endif\n#ifdef __FAST_MATH__\n#error fast math enabled\n#endif\nint main(void) { return (int)(SDL_GetVersion()+avcodec_version()+vkEnumerateInstanceVersion(0)); }\n", encoding="utf-8")
+        exe = self.output / "dependency-probe.exe"
+        self.run("dependency-preflight", self.cc + FLAGS + self.includes + [str(probe), "-o", str(exe)] + libraries)
+        closure = dll_closure([exe] + [self.prefix / "bin" / p for p in ("SDL3.dll", "libshaderc_shared.dll") if (self.prefix / "bin" / p).exists()], self.prefix)
+        self.receipt["preflight_dlls"] = {p.name: digest(p) for p in closure}
+        self.receipt["dependency_receipt_sha256"] = digest(self.prefix / "receipt.json") if (self.prefix / "receipt.json").exists() else None
+        print(f"Native dependency preflight passed; {len(closure)} runtime DLLs checked", flush=True)
+
+    def compile(self, sources, tag=""):
+        header_paths = sorted((ROOT / "runtime").rglob("*.h"))
+        headers = {str(p): digest(p) for p in header_paths}
+        def one(source):
+            relative = source.relative_to(ROOT).as_posix() if source.is_relative_to(ROOT) else str(source)
+            if not ordinary(source):
+                raise RuntimeError(f"Missing/nonordinary source: {source}")
+            before = digest(source)
+            obj = self.output / "obj" / (hashlib.sha256(relative.encode()).hexdigest()[:12] + "_" + source.stem + tag + ".o")
+            obj.parent.mkdir(exist_ok=True)
+            cmd = (self.cxx + ["-std=c++17"] if source.suffix == ".cpp" else self.cc + ["-std=gnu11"])
+            cmd += FLAGS + self.includes + ['-DGAMELIB_ID="' + self.gamelib_id + '"', "-DXCDE_GFX"]
+            if source.is_relative_to(ROOT / "runtime") and self.args.stage != "boot":
+                cmd.append("-DXCDE_WINDOWS_FRAMEGEN=1")
+            if self.args.stage == "boot" and source == ROOT / "runtime/host/main_boot.c":
+                cmd.remove("-DXCDE_GFX")
+            if source == ROOT / "tools/launcher/launcher.cpp":
+                cmd += ["-I" + str(self.output / "inc/launcher-theme"), "-DMONADO_LAUNCHER_RESOURCES", "-DMONADO_LAUNCHER_ARTWORK"]
+            self.run("compile-" + relative, cmd + ["-c", str(source), "-o", str(obj)])
+            if digest(source) != before:
+                raise RuntimeError(f"Source changed during compile; retry in a new output: {source}")
+            with self.lock:
+                self.receipt["sources"][relative] = before
+            print("Compiled " + relative, flush=True)
+            return obj
+        results, errors = [], []
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.args.jobs) as pool:
+            futures = [pool.submit(one, source) for source in sources]
+            for future in concurrent.futures.as_completed(futures):
+                try:
+                    results.append(future.result())
+                except Exception as error:
+                    errors.append(error)
+                    if not self.args.keep_going:
+                        for pending in futures:
+                            pending.cancel()
+                        break
+        if errors:
+            raise RuntimeError("\n".join(map(str, errors)))
+        if {str(p): digest(p) for p in sorted((ROOT / "runtime").rglob("*.h"))} != headers:
+            raise RuntimeError("Runtime headers changed during compilation; retry in a fresh build output")
+        return sorted(results)
+
+    def link(self, name, objects, launcher=False, extra=None):
+        exe = self.output / "build" / name
+        exe.parent.mkdir(exist_ok=True)
+        resource = self.output / "windows_utf8.res"
+        if not resource.exists():
+            self.run("compile-native-manifest", self.cc[:-1] + ["rc", "/I", str(ROOT / "tools"), "/fo", str(resource), str(ROOT / "tools/windows_utf8.rc")])
+            self.receipt["sources"]["tools/windows_utf8.rc"] = digest(ROOT / "tools/windows_utf8.rc")
+            self.receipt["sources"]["tools/windows_utf8.manifest"] = digest(ROOT / "tools/windows_utf8.manifest")
+        response = self.output / (name + ".rsp")
+        args = [str(p) for p in objects] + [str(resource), "-o", str(exe), "-march=x86_64_v2"]
+        args += [self.libs[0]] if launcher else self.libs + ["-lwinmm", "-ldbghelp", "-Wl,--stack,268435456"]
+        if launcher:
+            args += ["-Wl,--subsystem,windows", "-ladvapi32"]
+        args += extra or []
+        response.write_text("\n".join('"' + a.replace("\\", "/").replace('"', '\\"') + '"' for a in args), encoding="utf-8")
+        self.run("link-" + name, self.cxx + ["@" + str(response)], timeout=1800)
+        for dll in dll_closure([exe], self.prefix):
+            dest = exe.parent / dll.name
+            if dest.exists() and digest(dest) != digest(dll):
+                raise RuntimeError("Conflicting runtime DLL: " + dll.name)
+            shutil.copy2(dll, dest)
+        return exe
+
+    def split_link(self, host_objects, game_objects):
+        spec = importlib.util.spec_from_file_location("monado_coff", ROOT / "tools/coff_symbols.py")
+        coff = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(coff)
+        dll_helpers = [o for o in host_objects if o.name.endswith("_windows_fma.o")]
+        if len(dll_helpers) != 1:
+            raise RuntimeError("Both native images require one explicit baseline Windows fma/fmaf helper")
+        imports = coff.host_imports(game_objects + dll_helpers, host_objects)
+        if not imports or any(not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", n) for n in imports):
+            raise RuntimeError("Unrepresentable/empty native authored host export list")
+        entry = ROOT / "runtime/host/gamelib_entry_windows.c"
+        if not ordinary(entry):
+            raise RuntimeError("Missing authored Windows GameLib entry")
+        compiler = Path(importlib.util.find_spec("ziglang").submodule_search_locations[0]) / "zig.exe"
+        abi = re.search(r"^#define GAMELIB_ABI\s+(\d+)\s*$", (ROOT / "runtime/gamelib.h").read_text(encoding="utf-8"), re.MULTILINE)
+        if not abi:
+            raise RuntimeError("GameLib ABI declaration is not explicit")
+        identity = {"schema": 1, "format": "windows-amd64-pe", "abi": int(abi.group(1)),
+                    "compiler": {"version": self.receipt["zig"], "sha256": digest(compiler)},
+                    "flags": FLAGS, "input": self.receipt["input"]["exefs"],
+                    "generator_closure": generator_closure(), "entry_sha256": digest(entry),
+                    "native_game_helpers": {"runtime/platform/windows_fma.c": digest(ROOT / "runtime/platform/windows_fma.c")},
+                    "host_imports": imports}
+        self.gamelib_id = hashlib.sha256(json.dumps(identity, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+        definition = self.output / "host-game-imports.def"
+        definition.write_text("LIBRARY xcde.exe\nEXPORTS\n" + "".join("  " + n + (" DATA" if k == "data" else "") + "\n" for n, k in imports.items()), encoding="ascii", newline="\n")
+        # The first pass inventories actual authored definitions. Only this TU
+        # consumes GAMELIB_ID; recompile it under the final canonical identity.
+        original_loader = next(o for o in host_objects if o.name.endswith("_gamelib.o"))
+        final_loader = self.compile([ROOT / "runtime/gamelib.c"], tag="_" + self.gamelib_id[:12])[0]
+        host_objects = [o for o in host_objects if o != original_loader] + [final_loader]
+        implib = self.output / "xcde-host.dll.a"
+        host = self.link("xcde.exe", host_objects, extra=[str(definition), "-Wl,--out-implib," + str(implib), "-lbcrypt", "-ladvapi32"])
+        glue = self.compile([entry], tag="_" + self.gamelib_id[:12])
+        dll = host.parent / "lasgame.dll"
+        arguments = [str(p) for p in game_objects + glue + dll_helpers] + [str(implib), "-shared", "-o", str(dll), "-march=x86_64_v2"]
+        response = self.output / "lasgame.dll.rsp"
+        response.write_text("\n".join('"' + a.replace("\\", "/").replace('"', '\\"') + '"' for a in arguments), encoding="utf-8", newline="\n")
+        self.run("link-local-gamecode-dll", self.cxx + ["@" + str(response)], timeout=1800)
+        for dependency in dll_closure([dll], self.prefix, own_images=[host]):
+            dest = host.parent / dependency.name
+            if dest.exists() and digest(dest) != digest(dependency):
+                raise RuntimeError("GameLib dependency conflicts with the authored runtime")
+            shutil.copy2(dependency, dest)
+        for suffix, value in ((".id", self.gamelib_id), (".sha256", digest(dll))):
+            with Path(str(dll) + suffix).open("x", encoding="ascii", newline="\n") as stream:
+                stream.write(value + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+        self.receipt["split_game"] = {"id": self.gamelib_id, "identity": identity,
+                                      "dll_sha256": digest(dll), "host_import_library_sha256": digest(implib),
+                                      "sidecars": {suffix: digest(Path(str(dll) + suffix)) for suffix in (".id", ".sha256")}}
+        self.receipt["sources"]["tools/coff_symbols.py"] = digest(ROOT / "tools/coff_symbols.py")
+        atomic_json(self.output / "gamecode-identity.json", self.receipt["split_game"])
+        print(f"Split authored host and local GameLib linked; {len(imports)} explicit host imports", flush=True)
+
+    def validate_input(self):
+        if self.args.input is None:
+            selected = ROOT / ".deps/selected-input.json"
+            self.args.input = Path(json.loads(selected.read_text(encoding="utf-8"))["path"]) if ordinary(selected) else ROOT.parent / "game_files"
+        self.args.input = self.args.input.resolve()
+        if self.args.input.is_relative_to(self.output) or self.output.is_relative_to(self.args.input):
+            raise RuntimeError("Input and build output must not overlap")
+        self.run("check-input", [sys.executable, "-B", "tools/extract/check_dump.py", str(self.args.input)], timeout=600)
+        identities = {}
+        for name in ("main", "sdk"):
+            file = self.args.input / "exefs" / name
+            identities[name] = {"sha256": digest(file), "bytes": file.stat().st_size}
+        expected = {"main": "76ffa21b99c0385cfb14d1f90bbeddcdc98c17350b8edd79dfdbbb7341e70c48",
+                    "sdk": "31ce67e8701584ba812dceeae9b590d7a6ad642bcb5aa74d2fe3ea5c5474250d"}
+        if any(identities[n]["sha256"] != expected[n] for n in expected):
+            raise RuntimeError("Selected DE2.0.0 main/SDK hashes differ from the accepted input")
+        self.receipt["input"] = {"path": str(self.args.input), "exefs": identities}
+
+    def installation(self):
+        if os.name != "nt":
+            raise RuntimeError("Native Windows installation requires Win32")
+        import _winapi
+        target = self.output / "targets"
+        target.mkdir()
+        for name in ("exefs", "romfs"):
+            _winapi.CreateJunction(str(self.args.input / name), str(target / name))
+        for name in ("LICENSE", "NOTICE.md"):
+            shutil.copy2(ROOT / name, self.output / name)
+        self.receipt["installation"] = {"input_links": {n: str(self.args.input / n) for n in ("exefs", "romfs")},
+                                         "state_root": str(self.output), "new_profile": True}
+
+    def reuse_game_objects(self, previous):
+        """Reuse only an explicitly selected local completed compile manifest.
+
+        A failed later runtime link does not invalidate successful game compiles;
+        every input/header/source/flag and successful command is checked first.
+        This is a private static-object optimization, never GameLib ABI reuse.
+        """
+        previous = previous.absolute()
+        if previous.resolve() != previous or not previous.is_relative_to(ROOT / "build"):
+            raise RuntimeError("Game object reuse requires an ordinary owned build root")
+        receipt_path = previous / "build-receipt.json"
+        if not ordinary(receipt_path):
+            raise RuntimeError("Previous build has no ordinary compile receipt")
+        record = json.loads(receipt_path.read_text(encoding="utf-8"))
+        identity = generator_closure()
+        if (record.get("flags") != FLAGS or record.get("zig") != self.receipt["zig"] or
+                record.get("input", {}).get("exefs") != self.receipt["input"]["exefs"] or
+                not compatible_generator_closure(record.get("generator_closure"), identity)):
+            raise RuntimeError("Previous game object input/compiler/flags/header closure differs")
+        stamp_path = previous / "generated/generated-receipt.json"
+        if not ordinary(stamp_path) or digest(stamp_path) != record.get("generated_receipt_sha256"):
+            raise RuntimeError("Previous generated identity receipt changed")
+        stamp = json.loads(stamp_path.read_text(encoding="utf-8"))
+        for name, sha in stamp["sources"].items():
+            source = previous / "generated" / name
+            if not ordinary(source) or digest(source) != sha or record["sources"].get(source.relative_to(ROOT).as_posix()) != sha:
+                raise RuntimeError("Previous generated source changed: " + name)
+        objects = []
+        adopted = {}
+        values = record.get("generated_objects", [])
+        if not values:
+            # An unrelated runtime header edit can fail a whole-stage guard
+            # after every guest compile succeeded. Recover only the exact
+            # successful command manifest, never discover objects with globs.
+            by_source = {}
+            for command in record["commands"]:
+                argv = command.get("argv", [])
+                if command.get("exit") != 0 or len(argv) < 4 or argv[-4] != "-c" or argv[-2] != "-o":
+                    continue
+                c_source = Path(argv[-3])
+                if c_source.is_relative_to(previous / "generated"):
+                    name = c_source.relative_to(previous / "generated").as_posix()
+                    if name in by_source:
+                        raise RuntimeError("Duplicate successful guest compile in previous manifest")
+                    by_source[name] = argv[-1]
+            if set(by_source) != set(stamp["sources"]):
+                raise RuntimeError("Previous guest compile manifest is incomplete")
+            values = [by_source[n] for n in sorted(by_source)]
+        for value in values:
+            source = Path(value)
+            if not source.is_relative_to(previous / "obj") or source.resolve() != source or not ordinary(source):
+                raise RuntimeError("Previous game object ownership mismatch")
+            commands = [c for c in record["commands"] if c.get("exit") == 0 and "-c" in c["argv"] and c["argv"][-1] == str(source)]
+            if len(commands) != 1:
+                raise RuntimeError("Previous game object lacks one successful compile command")
+            c_source = Path(commands[0]["argv"][-3])
+            if not c_source.is_relative_to(previous / "generated") or c_source.relative_to(previous / "generated").as_posix() not in stamp["sources"]:
+                raise RuntimeError("Previous object compiled another source")
+            target = self.output / "obj/reused-game" / source.name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            sha = digest(source)
+            shutil.copy2(source, target)
+            if digest(target) != sha:
+                raise RuntimeError("Copied game object changed")
+            objects.append(target)
+            adopted[str(target)] = {"sha256": sha, "from": str(source)}
+        if len(objects) != len(stamp["sources"]) or not objects:
+            raise RuntimeError("Previous game object manifest is incomplete")
+        self.receipt["reused_game_objects"] = {"receipt": str(receipt_path), "receipt_sha256": digest(receipt_path), "objects": adopted}
+        self.receipt["generator_closure"] = identity
+        print(f"Reused {len(objects)} checked local static game objects", flush=True)
+        return objects
+
+    def build(self):
+        self.preflight()
+        if self.args.stage == "preflight":
+            return
+        stage = self.args.stage
+        if stage in ("generated", "boot", "all"):
+            self.validate_input()
+        if stage in ("runtime", "boot", "all"):
+            (self.output / "inc").mkdir()
+            self.run("smaa-source", [sys.executable, "tools/gen_smaa_inc.py", "third_party/smaa/SMAA.hlsl", str(self.output / "inc/smaa_hlsl.inc")])
+            units = [n if n != "host/gamelib_static" or not self.args.split_game else "gamelib" for n in RUNTIME]
+            sources = [ROOT / ("runtime/" + n + ".c") for n in units]
+            sources += [ROOT / ("runtime/nvn/" + n + ".c") for n in NVN] + [ROOT / n for n in CPP]
+            objects = self.compile(sources)
+            self.receipt["authored_objects"] = [str(o) for o in objects]
+        if stage in ("generated", "boot", "all"):
+            if self.args.reuse_game_build:
+                game_objects = self.reuse_game_objects(self.args.reuse_game_build)
+            else:
+                generated = self.args.generated
+                identity = generator_closure()
+                if generated is None:
+                    generated = self.output / "generated"
+                    self.run("generate-game", [sys.executable, "-B", "tools/gen_all.py", "--exefs", str(self.args.input / "exefs"), "--out", str(generated)], timeout=1800)
+                    if generator_closure() != identity:
+                        raise RuntimeError("Generator/guest-header source changed during generation; retry in a fresh build")
+                    stamp = {"schema": 1, "input": self.receipt["input"]["exefs"], "generator_closure": identity,
+                             "sources": {p.relative_to(generated).as_posix(): digest(p) for p in sorted(generated.rglob("*.c"))}}
+                    atomic_json(generated / "generated-receipt.json", stamp)
+                else:
+                    generated = generated.absolute()
+                    if generated.resolve() != generated or not any(generated.is_relative_to(ROOT / n) for n in ("build", "generated", "runs")):
+                        raise RuntimeError("Generated reuse requires an ordinary owned Windows output root")
+                    stamp_path = generated / "generated-receipt.json"
+                    if not ordinary(stamp_path):
+                        raise RuntimeError("Generated sources have no owned identity receipt; use the full source build to regenerate")
+                    stamp = json.loads(stamp_path.read_text(encoding="utf-8"))
+                    if stamp.get("input") != self.receipt["input"]["exefs"] or not compatible_generator_closure(stamp.get("generator_closure"), identity):
+                        raise RuntimeError("Generated input/generator/header identity changed; regenerate from source")
+                    for name, sha in stamp["sources"].items():
+                        path = generated / name
+                        if not path.resolve().is_relative_to(generated) or not ordinary(path) or digest(path) != sha:
+                            raise RuntimeError("Generated source hash/ownership mismatch: " + name)
+                self.receipt["generator_closure"] = identity
+                self.receipt["generated_receipt_sha256"] = digest(generated / "generated-receipt.json")
+                game_sources = []
+                for name in ("main", "sdk"):
+                    entries = sorted((generated / name).glob("*.c"))
+                    if len(entries) < 2 or not (generated / name / (name + "_table.c")).is_file():
+                        raise RuntimeError(f"Generated {name} chunks and table missing")
+                    game_sources += entries
+                game_objects = self.compile(game_sources)
+                self.receipt["generated_objects"] = [str(o) for o in game_objects]
+            if stage in ("all", "boot"):
+                if self.args.split_game:
+                    self.split_link(objects, game_objects)
+                else:
+                    self.link("xcde_boot.exe" if stage == "boot" else "xcde.exe", objects + game_objects)
+        if stage in ("launcher", "all"):
+            (self.output / "inc").mkdir(exist_ok=True)
+            self.run("launcher-resources", [sys.executable, "-B", "tools/launcher/theme_resource.py", "--assets", "tools/launcher/assets", "--output", str(self.output / "inc/launcher-theme")])
+            self.link("xcde_launcher.exe", self.compile([ROOT / n for n in LAUNCHER]), launcher=True)
+        for name, sha in self.receipt["sources"].items():
+            path = ROOT / name
+            if not ordinary(path) or digest(path) != sha:
+                raise RuntimeError("Compiled source changed before completion; use a fresh build: " + name)
+        if stage == "all":
+            self.installation()
+
+
+def checked_current(launch=False):
+    marker_path = ROOT / "build/active-windows-build.json"
+    if not ordinary(marker_path):
+        raise RuntimeError("No checked native game/launcher installation has been selected")
+    marker = json.loads(marker_path.read_text(encoding="utf-8"))
+    install = Path(marker["root"])
+    if install.resolve() != install or not install.is_relative_to(ROOT / "build"):
+        raise RuntimeError("Unsafe active installation root")
+    receipt_path = install / "build-receipt.json"
+    if not ordinary(receipt_path) or digest(receipt_path) != marker["receipt_sha256"]:
+        raise RuntimeError("Active build receipt changed")
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    if receipt.get("status") != "success" or not receipt.get("installation"):
+        raise RuntimeError("Active build is not a completed native installation")
+    for name, sha in receipt["outputs"].items():
+        path = install / name
+        if not path.resolve().is_relative_to(install) or not ordinary(path) or digest(path) != sha:
+            raise RuntimeError("Active build companion changed/missing: " + name)
+    game, launcher = install / "build/xcde.exe", install / "build/xcde_launcher.exe"
+    for exe in (game, launcher):
+        if exe.relative_to(install).as_posix() not in receipt["outputs"]:
+            raise RuntimeError("Active receipt lacks the complete game/launcher pair")
+    images = [game, launcher]
+    if receipt.get("split_game"):
+        images.append(game.parent / "lasgame.dll")
+    dll_closure(images, game.parent, flat=True, own_images=[game])
+    if launch:
+        subprocess.Popen([str(launcher)], cwd=install, close_fds=True)
+    print(str(launcher))
+    return install
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--stage", choices=("preflight", "runtime", "generated", "boot", "launcher", "all"), default="all")
+    ap.add_argument("--input", type=Path)
+    ap.add_argument("--output", type=Path, default=ROOT / "build" / ("windows-dev-" + datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S") + f"-{os.getpid()}"))
+    ap.add_argument("--generated", type=Path)
+    ap.add_argument("--reuse-game-build", type=Path, help="verify a selected private static compile receipt and reuse its unchanged game objects")
+    ap.add_argument("--split-game", action="store_true", help="link an authored runtime plus locally generated lasgame.dll with strict identity/hash sidecars")
+    ap.add_argument("--prefix", type=Path)
+    ap.add_argument("--jobs", type=int, choices=range(1, 7), default=4)
+    ap.add_argument("--keep-going", action="store_true", help="retain all runtime compile diagnostics; never link failed objects")
+    ap.add_argument("--launch-current", action="store_true", help="verify active pair/DLLs, then open only its settings launcher")
+    ap.add_argument("--check-current", action="store_true", help="verify active pair/DLLs without launching anything")
+    args = ap.parse_args(argv)
+    if args.split_game and args.stage != "all":
+        ap.error("--split-game currently requires the complete graphics --stage all; static/headless fallback remains available")
+    builder = None
+    try:
+        if args.launch_current or args.check_current:
+            checked_current(launch=args.launch_current)
+            return 0
+        builder = Builder(args)
+        builder.build()
+        builder.receipt["status"] = "success"
+        builder.receipt["outputs"] = {p.relative_to(builder.output).as_posix(): digest(p) for p in (builder.output / "build").glob("*") if p.suffix.lower() in (".exe", ".dll") or p.name in ("lasgame.dll.id", "lasgame.dll.sha256")}
+        atomic_json(builder.output / "build-receipt.json", builder.receipt)
+        if args.stage == "all":
+            atomic_json(ROOT / "build/active-windows-build.json", {"root": str(builder.output), "receipt_sha256": digest(builder.output / "build-receipt.json")})
+        print("Build stage complete: " + str(builder.output))
+        return 0
+    except (Exception, KeyboardInterrupt) as error:
+        if builder:
+            builder.receipt.update(status="failed", error=str(error))
+        print(str(error), file=sys.stderr)
+        return 1
+    finally:
+        if builder:
+            builder.guard.close()
+            atomic_json(builder.output / "build-receipt.json", builder.receipt)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

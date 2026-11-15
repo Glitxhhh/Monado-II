@@ -7,6 +7,7 @@
 #include <unistd.h>
 
 #include "hle.h"
+#include "hle/fibers.h"
 #include "kernel.h"
 
 // ------------------------------------------------------------------ results
@@ -70,6 +71,9 @@ static KThread *g_syncwaiters;
 // Only the baton holder runs guest code. Everything below runs with g_klock held.
 static bool g_det;
 static KThread *g_baton;
+// [XCDE] LINUX-008: virtual timers signal events from inside the dispatcher.
+// Protected by g_klock; an external wake must not recursively grant a baton.
+static bool g_det_dispatching;
 static uint64_t g_det_seq;
 static uint64_t g_vnow = 1000000000ull;  // virtual ns (starts at 1 s: some code treats 0 as "never")
 typedef struct { uint64_t when, seq; void (*fn)(void *); void *arg; } DetTimer;
@@ -104,6 +108,10 @@ void kernel_signal(KObject *o) {
     // caller holds g_klock
     o->signaled = true;
     for (KThread *t = g_syncwaiters; t; t = t->snext) wake(t);
+    // [XCDE] LINUX-008: a native UI/device event can wake the last blocked
+    // guest. Runnable alone is insufficient when no thread owns the baton.
+    // Timer callbacks already have a dispatcher responsible for selecting it.
+    if (g_syncwaiters && g_det && !g_baton && !g_det_dispatching) det_dispatch();
 }
 
 // ------------------------------------------------------------------ time
@@ -155,7 +163,9 @@ typedef struct { uint64_t addr, size; uint32_t type, perm; } Region;
 #define MAX_REGIONS 16384
 static Region regions[MAX_REGIONS];
 static int nregions;
-static uint64_t heap_size;
+// [XCDE] LINUX-005: render-worker heap import reads this outside the guest lock.
+// Publish SetHeapSize/reset without a C data race; guest region locking is unchanged.
+static _Atomic uint64_t heap_size;
 static uint64_t tls_next = TLS_BASE;
 uint64_t kernel_heap_size(void) { return heap_size; }  // bytes from HEAP_BASE set by SetHeapSize
 // Writable guest data regions (heap, mapped/physical memory, module .data): for debug/runtime memory scans.
@@ -224,11 +234,26 @@ static uint64_t next_thread_id = 0x50;
 // frames dropped are recompiled code (its state lives in guest memory, which is wiped next) and HLE functions;
 // none of those hold a host lock across a call into the guest, so nothing stays locked. svcExitThread ends a
 // thread the same way.
-volatile int g_rt_unwind;
+// [XCDE] LINUX-003: cooperative stop is shared across pthreads; volatile was a data race.
+int g_rt_unwind;
+static bool unwind_requested(void) { return __atomic_load_n(&g_rt_unwind, __ATOMIC_ACQUIRE) != 0; }
 static KThread *g_threads;  // every thread of this boot (g_klock)
 
 void rt_unwind_point(void) {
-    if (__builtin_expect(g_rt_unwind, 0) && t_cur) longjmp(t_cur->unwind, 1);
+    if (__builtin_expect(unwind_requested(), 0) && t_cur) kernel_fiber_unwind();
+}
+
+// [XCDE] Windows parity: the fiber adapter has restored the actual Win32 root
+// before asking us to resume its native setjmp cleanup boundary.
+void kernel_fiber_unwind(void) {
+#ifdef _WIN32
+    // Win32 longjmp cannot cross fiber stack/TEB ownership. Rescue the real
+    // native root first; its resumed switch then reenters this same boundary.
+    fibers_prepare_unwind();
+#endif
+    KThread *thread = kernel_current_thread();
+    if (!thread) FATAL("[kernel] fiber unwind has no owning guest thread\n");
+    longjmp(thread->unwind, 1);
 }
 
 static KThread *det_pick(void) {
@@ -240,6 +265,7 @@ static KThread *det_pick(void) {
 
 // The baton is free: hand it to the best runnable thread. With none, time passes: jump to the earliest timer or timeout.
 static void det_dispatch(void) {
+    g_det_dispatching = true;
     g_baton = NULL;
     for (;;) {
         // everything already due (time moved on while threads were running or yielding) fires before anyone is picked
@@ -267,6 +293,7 @@ static void det_dispatch(void) {
             if (tr && ntr++ < 400) fprintf(stderr, "[det] -> t%llu (prio %d) vnow %llu\n", (unsigned long long)n->id, n->prio, (unsigned long long)kernel_vnow(0));
             n->det_state = 2, g_baton = n, n->det_granted = true;
             pthread_cond_signal(&n->cond);
+            g_det_dispatching = false;
             return;
         }
         int ti = -1;
@@ -275,7 +302,10 @@ static void det_dispatch(void) {
         KThread *bt = NULL;
         for (KThread *t = g_threads; t; t = t->anext)
             if (t->det_state == 3 && t->det_deadline >= 0 && (!bt || t->det_deadline < bt->det_deadline || (t->det_deadline == bt->det_deadline && t->id < bt->id))) bt = t;
-        if (ti < 0 && !bt) return;  // every thread is blocked for good (or none exists yet): nothing can run
+        if (ti < 0 && !bt) {
+            g_det_dispatching = false;
+            return;  // every thread is blocked for good (or none exists yet)
+        }
         if (ti >= 0 && (!bt || (int64_t)g_timers[ti].when <= bt->det_deadline)) {
             DetTimer tm = g_timers[ti];
             g_timers[ti] = g_timers[--g_ntimers];
@@ -328,7 +358,8 @@ static void *thread_main(void *arg) {
     KThread *t = arg;
     t_cur = t;
     crash_handler_install();
-    rt_set_fpcr(0);
+// [XCDE] Windows parity: pthread creators can have arbitrary FP modes.
+    if (!plat_guest_fp_init()) FATAL("[kernel] cannot establish guest thread host FP environment\n");
     { char nm[64]; snprintf(nm, sizeof nm, "guest t%llu p%d f_%llx", (unsigned long long)t->id, t->prio, (unsigned long long)t->entry); plat_thread_name(nm); }
     if (g_det) {  // runnable since thread_start (made so by the starter, in a deterministic order); wait for the baton
         pthread_mutex_lock(&g_klock);
@@ -336,6 +367,13 @@ static void *thread_main(void *arg) {
         pthread_mutex_unlock(&g_klock);
     }
     if (!setjmp(t->unwind)) guest_call(&t->cpu, t->entry);
+#if defined(_WIN32) || (defined(__linux__) && defined(__x86_64__))
+    // Back on the native stack after normal return, ExitThread or reboot unwind.
+    fibers_thread_cleanup();
+#endif
+#ifdef __linux__
+    plat_crash_handler_uninstall();
+#endif
     pthread_mutex_lock(&g_klock);
     t->finished = true;
     kernel_signal(&t->obj);
@@ -406,9 +444,20 @@ void kernel_run_main(KThread *t, uint64_t x0, uint64_t x1, uint64_t x2, uint64_t
     thread_start(t);  // the host main thread goes on to run the window event loop
 }
 
-uint32_t kernel_current_thread_handle(void) { return t_cur ? t_cur->handle : 0; }
-Cpu *kernel_current_cpu(void) { return t_cur ? &t_cur->cpu : NULL; }
-KThread *kernel_current_thread(void) { return t_cur; }
+// [XCDE] LINUX-003: a guest fiber may resume on another pthread. Do not inline or
+// hoist these TLS reads across a transfer, including in unity/LTO test builds.
+__attribute__((noinline)) KThread *kernel_current_thread(void) {
+    __asm__ volatile("" ::: "memory");
+    return t_cur;
+}
+uint32_t kernel_current_thread_handle(void) {
+    KThread *thread = kernel_current_thread();
+    return thread ? thread->handle : 0;
+}
+Cpu *kernel_current_cpu(void) {
+    KThread *thread = kernel_current_thread();
+    return thread ? &thread->cpu : NULL;
+}
 
 // ------------------------------------------------------------------ mutex / condvar (Horizon semantics)
 // Mutex word: owner handle | WAITERS_BIT. Waiting threads sleep on the global cond and are handed ownership.
@@ -465,7 +514,7 @@ static uint32_t block_current(int64_t timeout_ns) {
     if (timeout_ns >= 0) deadline(&ts, timeout_ns);
     waitlist_add(t);
     while (t->wait_kind != WAIT_NONE) {
-        if (g_rt_unwind) {  // reboot: give up the wait (the thread unwinds when its svc returns)
+        if (unwind_requested()) {  // reboot: give up the wait (the thread unwinds when its svc returns)
             t->wait_kind = WAIT_NONE;
             t->wait_result = R_CANCELLED;
             break;
@@ -664,7 +713,7 @@ static uint32_t svc_wait_synchronization(uint64_t handles_ptr, int32_t count, in
             if (o->signaled) { *index = i; r = R_OK; goto out; }
         }
         if (t->cancel) { t->cancel = false; r = R_CANCELLED; goto out; }
-        if (g_rt_unwind) { r = R_CANCELLED; goto out; }
+        if (unwind_requested()) { r = R_CANCELLED; goto out; }
         if (timeout == 0) { r = R_TIMEOUT; goto out; }
         t->in_sync_wait = true;
         t->snext = g_syncwaiters;
@@ -766,8 +815,10 @@ static void svc_entry(Cpu *c, uint32_t imm, uint64_t pc) {
     if (!trace_svc) return svc_impl(c, imm, pc);
     uint64_t in[4] = {c->x[0], c->x[1], c->x[2], c->x[3]};
     svc_impl(c, imm, pc);
-    LOG("[svc] t%llu %02x(%llx, %llx, %llx, %llx) -> %llx %llx %llx  @%llx lr=%llx\n", (unsigned long long)(t_cur ? t_cur->id : 0), imm, in[0], in[1], in[2], in[3], c->x[0],
-        c->x[1], c->x[2], pc, c->x[30]);  // [XCDE] caller (lr) in the SVC trace
+    LOG("[svc] t%llu %02x(%llx, %llx, %llx, %llx) -> %llx %llx %llx  @%llx lr=%llx\n", (unsigned long long)(t_cur ? t_cur->id : 0), imm,
+        (unsigned long long)in[0], (unsigned long long)in[1], (unsigned long long)in[2], (unsigned long long)in[3],
+        (unsigned long long)c->x[0], (unsigned long long)c->x[1], (unsigned long long)c->x[2],
+        (unsigned long long)pc, (unsigned long long)c->x[30]);  // [XCDE] LINUX-003: LP64 format types; caller (lr) in trace
 }
 
 static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
@@ -776,6 +827,13 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
     case 0x01: {  // SetHeapSize
         uint64_t size = x[1];
         if (size > HEAP_MAX) { x[0] = R_OUT_OF_RESOURCE; break; }
+#if defined(__linux__) && defined(XCDE_LINUX_RADV_HEAP)
+        // [XCDE] LINUX-070: choose backing before publishing the first heap.
+        // The guest starts before the UI's Vulkan device is ready; a later
+        // remap at first draw would discard data the guest has already written.
+        extern void backend_guest_heap_prepare(uint64_t size);
+        backend_guest_heap_prepare(size);
+#endif
         heap_size = size;
         diag_use("mem", "SetHeapSize 0x%llx", (unsigned long long)size);
         region_remove(HEAP_BASE);
@@ -816,7 +874,7 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
         x[0] = R_OK;
         break;
     }
-    case 0x0A: longjmp(t_cur->unwind, 1);  // ExitThread: back to thread_main, which signals the thread object
+    case 0x0A: kernel_fiber_unwind();  // ExitThread: root cleanup signals the thread object
     case 0x0B: {  // SleepThread (in slices of at most 50 ms: a reboot doesn't wait out a long sleep)
         int64_t ns = (int64_t)x[0];
         if (g_det) {
@@ -824,13 +882,13 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
             if (ns <= 0) det_yield(20000);
             else {
                 uint64_t end = kernel_vnow(0) + (uint64_t)ns;
-                while (!g_rt_unwind && kernel_vnow(0) < end) det_block((int64_t)end);
+                while (!unwind_requested() && kernel_vnow(0) < end) det_block((int64_t)end);
             }
             pthread_mutex_unlock(&g_klock);
             break;
         }
         if (ns <= 0) { sched_yield(); break; }
-        for (uint64_t end = plat_now_ns() + (uint64_t)ns, now; !g_rt_unwind && (now = plat_now_ns()) < end;) {
+        for (uint64_t end = plat_now_ns() + (uint64_t)ns, now; !unwind_requested() && (now = plat_now_ns()) < end;) {
             uint64_t d = end - now < 50000000 ? end - now : 50000000;
             struct timespec ts = {(time_t)(d / 1000000000), (long)(d % 1000000000)};
             nanosleep(&ts, NULL);
@@ -1007,13 +1065,17 @@ static void svc_impl(Cpu *c, uint32_t imm, uint64_t pc) {
 
 // Reboot, step 1: stop every guest thread (see rt_unwind_point) and join it. `idle` keeps the window responsive.
 void kernel_stop_threads(void (*idle)(void)) {
-    g_rt_unwind = 1;
+    __atomic_store_n(&g_rt_unwind, 1, __ATOMIC_RELEASE);
     uint64_t t0 = plat_now_ns(), logged = t0;
     for (;;) {
         int live = 0;
         pthread_mutex_lock(&g_klock);
         for (KThread *t = g_threads; t; t = t->anext)
             if (t->started && !t->finished) { live++; wake(t); }
+        // [XCDE] LINUX-003: with every deterministic worker blocked, wake only
+        // makes it runnable. Grant the free baton so it can observe stop/unwind.
+        // Never take the baton away from a currently executing worker.
+        if (live && g_det && !g_baton) det_dispatch();
         pthread_cond_broadcast(&g_nothread_cond);
         pthread_mutex_unlock(&g_klock);
         if (!live) break;
@@ -1033,6 +1095,18 @@ void kernel_stop_threads(void (*idle)(void)) {
     int n = 0;
     for (KThread *t = g_threads; t; t = t->anext)
         if (t->started) { pthread_join(t->host, NULL); n++; }
+#if defined(_WIN32) || (defined(__linux__) && defined(__x86_64__))
+    // All native roots have been cleaned up and joined; suspended/abandoned
+    // contexts may now be unmapped before guest memory is reset for reboot.
+    size_t fibers = fibers_reset();
+    LOG("[reboot] reclaimed %zu native fibers\n", fibers);
+#endif
+#ifdef _WIN32
+    extern void party_worker_stop(void), input_reset(void), input_rumble_shutdown(void);
+    party_worker_stop();
+    input_reset();
+    input_rumble_shutdown();
+#endif
     LOG("[reboot] %d guest threads stopped in %llums\n", n, (unsigned long long)((plat_now_ns() - t0) / 1000000));
 }
 
@@ -1053,7 +1127,7 @@ void kernel_reset(void) {
     heap_size = 0;
     tls_next = TLS_BASE;
     next_thread_id = 0x50;
-    g_rt_unwind = 0;
+    __atomic_store_n(&g_rt_unwind, 0, __ATOMIC_RELEASE);
     pthread_mutex_unlock(&g_klock);
 }
 
@@ -1098,12 +1172,19 @@ static KThread *thread_by_handle(uint32_t h) {
 const char *(*kernel_sym_hook)(uint64_t pc, uint64_t *offset);  // dispatch.c: names host frames in thread dumps
 void kernel_dump_threads(FILE *out) {
     uint64_t now = plat_now_ns();
-    // never block here: if the hang is on g_klock itself, dump without it (and say so)
+    // Bound lock acquisition; unavailable details are safer than an unlocked
+    // walk racing kernel_reset and freed guest-thread records.
     bool locked = false;
     for (int i = 0; i < 20 && !(locked = pthread_mutex_trylock(&g_klock) == 0); i++) plat_sleep_until_ns(plat_now_ns() + 50000000ull);
-    if (!locked) fprintf(out, "[wd] WARNING g_klock is held by someone (dumping without it)\n");
+    if (!locked) {
+        // [XCDE] Windows parity: reset frees this list under g_klock. An unlocked
+        // diagnostic walk can race it and dereference freed threads/guest memory.
+        // Preserve bounded reporting, but explicitly report unavailable data.
+        fprintf(out, "[wd] WARNING g_klock is held; thread details unavailable without a safe snapshot\n");
+        return;
+    }
     int nthreads = 0, nwait = 0;
-    fprintf(out, "[wd] anchor kernel_dump_threads=%p (host frames: nm build/xcde.exe)\n", (void *)kernel_dump_threads);
+    fprintf(out, "[wd] anchor kernel_dump_threads=%p (host frames: nm on the running executable)\n", (void *)kernel_dump_threads);
     for (KThread *t = g_threads; t; t = t->anext) {
         nthreads++;
         const char *w = t->finished ? "finished" : t->wait_kind == WAIT_MUTEX ? "mutex" : t->wait_kind == WAIT_CONDVAR ? "condvar"

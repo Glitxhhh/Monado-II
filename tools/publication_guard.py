@@ -17,6 +17,9 @@ MANIFEST = 'publication-manifest.json'
 POLICY = 'publication-policy.json'
 # [XCDE] LINUX-026: one reviewed generated illustration, not a general image grant.
 ARTWORK_PATH = 'Monado_Linux/tools/launcher/assets/gaur_plain.png'
+# [XCDE] WINPARITY-003: the Windows launcher uses the identical reviewed bytes.
+# This exact second path does not admit arbitrary artwork or binary assets.
+ARTWORK_PATHS = frozenset((ARTWORK_PATH, 'Monado_Windows/tools/launcher/assets/gaur_plain.png'))
 ARTWORK_SHA256 = '4a863642bba750089667e10727cf72353875a7baf80a0903911e47d897d8fd0a'
 ARTWORK_BYTES = 2621747
 ARTWORK_WIDTH, ARTWORK_HEIGHT = 1536, 1024
@@ -77,7 +80,7 @@ def path_problem(name):
         return 'generated AppImage staging directory'
     if any(part in FORBIDDEN_DIRS or re.match(r'^save_[0-9]+(?:$|[._])', part) for part in low):
         return 'private/input/generated/runtime directory'
-    reviewed_artwork = name == ARTWORK_PATH
+    reviewed_artwork = name in ARTWORK_PATHS
     if '.git' in low or (low[-1] in FORBIDDEN_NAMES and not reviewed_artwork):
         return 'private/unsafe file'
     if ((PurePosixPath(name).suffix.lower() in FORBIDDEN_EXT and not reviewed_artwork)
@@ -89,7 +92,7 @@ def path_problem(name):
 def content_problem(name, data, licensed_media=None):
     if len(data) > MAX_FILE:
         return 'file exceeds reviewed source limit'
-    if name == ARTWORK_PATH:
+    if name in ARTWORK_PATHS:
         if (licensed_media or {}).get(name) != ARTWORK_SHA256:
             return 'artwork missing exact reviewed licensed-media identity'
         if len(data) != ARTWORK_BYTES or digest(data) != ARTWORK_SHA256:
@@ -208,10 +211,10 @@ def verify_tree(root):
     violations, actual_names = [], set()
     for name, identity in licensed.items():
         if (path_problem(name)
-                or not (name.lower().endswith(('.ttf', '.otf')) or name == ARTWORK_PATH)
+                or not (name.lower().endswith(('.ttf', '.otf')) or name in ARTWORK_PATHS)
                 or not isinstance(identity, str) or not HASH.fullmatch(identity)):
             return ['invalid licensed-media policy entry']
-        if name == ARTWORK_PATH and identity != ARTWORK_SHA256:
+        if name in ARTWORK_PATHS and identity != ARTWORK_SHA256:
             return ['invalid fixed artwork policy identity']
     for name, expected in document['files'].items():
         if (path_problem(name) or name == MANIFEST or not isinstance(expected, dict)

@@ -4,3 +4,5 @@
 # Preserve the original licensed bcdec header byte-for-byte, including whitespace.
 /Monado_Linux/third_party/bcdec/bcdec.h -whitespace
 /Monado_Windows/third_party/bcdec/bcdec.h -whitespace
+# Preserve the transferred licensed notice exactly, including upstream spaces.
+/Monado_Windows/tools/launcher/assets/fonts/LICENSE-DejaVu.txt -whitespace

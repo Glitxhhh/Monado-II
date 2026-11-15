@@ -348,7 +348,7 @@ class PublicationGuardTests(unittest.TestCase):
                                  {guard.ARTWORK_PATH: hashlib.sha256(good).hexdigest()}))
 
     def test_artwork_exception_does_not_allow_renamed_or_unreviewed_images(self):
-        names = ('gaur_plain.png', 'Monado_Windows/tools/launcher/assets/gaur_plain.png',
+        names = ('gaur_plain.png', 'Monado_Windows/tools/launcher/assets/other.png',
                  'Monado_Linux/tools/launcher/assets/gaur_plain.PNG',
                  'Monado_Linux/tools/launcher/assets/other.png',
                  'Monado_Linux/tools/launcher/assets/../assets/gaur_plain.png',
@@ -362,6 +362,37 @@ class PublicationGuardTests(unittest.TestCase):
                     self.policy['licensed_media'] = {name: identity}
                     self.refresh()
                     self.assertTrue(guard.verify_tree(self.root))
+
+    def test_windows_reviewed_assets_are_identical_and_pinned(self):
+        if not (ROOT / 'Monado_Windows').is_dir():
+            self.skipTest('Windows launcher assets are absent from the Linux-only source kit')
+        policy = json.loads((ROOT / guard.POLICY).read_text(encoding='utf-8'))['licensed_media']
+        for suffix in ('gaur_plain.png', 'fonts/DejaVuSans.ttf',
+                       'fonts/DejaVuSerif-Bold.ttf', 'fonts/DejaVuSerif-BoldItalic.ttf'):
+            windows = 'Monado_Windows/tools/launcher/assets/' + suffix
+            linux = windows.replace('Monado_Windows/', 'Monado_Linux/', 1)
+            with self.subTest(asset=suffix):
+                data = (ROOT / windows).read_bytes()
+                self.assertEqual(hashlib.sha256(data).hexdigest(), policy[windows])
+                self.assertEqual(policy[windows], policy[linux])
+                if (ROOT / linux).is_file():
+                    self.assertEqual(data, (ROOT / linux).read_bytes())
+                self.assertIsNone(guard.path_problem(windows))
+                self.assertIsNone(guard.content_problem(windows, data, policy))
+                self.assertIsNotNone(guard.content_problem(windows, data[:-1] + b'x', policy))
+
+    def test_windows_artwork_requires_fixed_pin_even_if_policy_is_rehashed(self):
+        name = 'Monado_Windows/tools/launcher/assets/gaur_plain.png'
+        data = authored_rgb_png()
+        with self.authored_artwork_policy(data):
+            self.files[name] = data
+            self.policy['licensed_media'][name] = hashlib.sha256(data).hexdigest()
+            self.refresh()
+            self.assertEqual(guard.verify_tree(self.root), [])
+            self.files[name] = data[:-1] + bytes((data[-1] ^ 1,))
+            self.policy['licensed_media'][name] = hashlib.sha256(self.files[name]).hexdigest()
+            self.refresh()
+            self.assertTrue(guard.verify_tree(self.root))
 
     def test_artwork_survives_guarded_archive_and_mutated_copy_is_refused(self):
         # Exercise the actual source/stage/readback policy path with authored

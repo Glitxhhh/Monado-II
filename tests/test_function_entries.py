@@ -14,7 +14,7 @@ import unittest
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
-PORT = ROOT / 'Monado_Linux'
+PORT = ROOT / os.environ.get('MONADO_TEST_PORT', 'Monado_Linux')
 sys.path.insert(0, str(PORT / 'tools/lifter'))
 import gen  # noqa: E402
 from lifter import Lifter  # noqa: E402

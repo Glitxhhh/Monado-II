@@ -10,6 +10,7 @@ fonts (see `CONTRIBUTING.md`, Article I). Players must supply files extracted fr
 |---|---|---|---|
 | AArch64→C generator (`gen.py`, `lifter.py`, `simd_c.py`, `analyze.py`, `nso.py`, `sym.py`) | [LASRecomp](https://github.com/peiikai/LASRecomp) by Peiikai, commit `136f679` | MIT | `tools/lifter/` |
 | Runtime (loader, dispatch, kernel, IPC, services, NVN→Vulkan, Maxwell shader translator) | LASRecomp, commit `136f679` | MIT | `runtime/` |
+| Native correctly rounded `fma` / `fmaf` compatibility | musl math sources bundled by pinned Zig 0.14.1; exact per-file hashes retained | MIT / FreeBSD two-clause | `runtime/platform/windows_fma.c`, `third_party/musl_math/` |
 
 Every edit to a copied file is marked `[XCDE]` (the project's working name) and listed in `docs/UPSTREAM.md`.
 
@@ -30,6 +31,7 @@ Every edit to a copied file is marked `[XCDE]` (the project's working name) and 
 | AMD FidelityFX API headers (FSR 3.1 / frame generation) | MIT |
 | NVIDIA Streamline headers (DLSS) | MIT (`third_party/streamline/license.txt`) |
 | bcdec (BC texture decoding) | MIT or public domain (Unlicense), at the user's choice |
+| Native baseline FMA compatibility (`runtime/platform/windows_fma.c`) | musl MIT / FreeBSD two-clause; complete notices and exact source provenance in `third_party/musl_math/` |
 
 ## Linked at build time (not in this repository)
 
@@ -38,9 +40,17 @@ Every edit to a copied file is marked `[XCDE]` (the project's working name) and 
 | SDL3 | zlib |
 | Vulkan headers / loader, Vulkan Memory Allocator | Apache-2.0 / MIT |
 | shaderc (glslang, SPIRV-Tools) | Apache-2.0 |
-| FFmpeg (LGPL build from MSYS2) | LGPL-2.1+ |
+| FFmpeg (selected local build) | LGPL-2.1+ or GPL, according to enabled components |
 | libopus | BSD-3-Clause |
 | Capstone, Unicorn, lz4 (build-time Python tools, not linked into the game) | BSD-3-Clause / GPL-2.0 / BSD-2-Clause |
+
+The native Windows development dependency lock records the exact official MSYS2
+packages, hashes and declared licenses. Its FFmpeg closure includes GPL-enabled
+components; the historical LGPL-only description does not describe this local
+development build. Complete package notices remain in the private dependency
+tree. These local dependencies are not an approved public binary bundle; any
+distribution must satisfy the actual selected components' licenses and applicable
+corresponding-source obligations.
 
 ## Optional vendor binaries (not redistributed; each user downloads them)
 

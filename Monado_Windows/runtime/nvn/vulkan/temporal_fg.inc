@@ -41,10 +41,34 @@ static PFN_vkCreateSwapchainFFXAPI fg_create_fn;
 static PFN_vkDestroySwapchainFFXAPI fg_destroy_fn;
 static PFN_getLastPresentCountFFXAPI fg_present_count;
 static uint64_t fg_frame_id;
+static atomic_uint_fast64_t fg_generation_floor;
 static Img fg_hl;      // the frame without the HUD (window size, swapchain format)
 static bool fg_hl_ok;  // filled for the frame being configured
 static uint32_t fg_w, fg_h;
 static bool fg_active;
+static bool fg_inputs_ready;
+static atomic_bool fg_generated_ready;
+static atomic_uint_fast64_t fg_reset_serial,fg_reset_ack;
+static atomic_uint_fast64_t fg_last_generated_frame;
+static void fg_reset(void) {
+    fg_inputs_ready=fg_hl_ok=false;
+    atomic_store_explicit(&fg_generated_ready,false,memory_order_release);
+    atomic_fetch_add_explicit(&fg_reset_serial,1,memory_order_release);
+    atomic_store_explicit(&fg_generation_floor,++fg_frame_id,memory_order_release); // history discontinuity; scratch images remain owned
+}
+void tmp_fg_invalidate(void) {fg_reset();}
+// Presence/API only. Queue and swapchain creation remain independently checked.
+bool tmp_fg_supported(void) {return ffx_load();}
+// No output rate or generated FPS is inferred from dispatch success.
+bool tmp_fg_inputs_ready(void) {
+    uint64_t generated=atomic_load_explicit(&fg_last_generated_frame,memory_order_acquire);
+    return fg_active&&fg_inputs_ready&&atomic_load_explicit(&fg_generated_ready,memory_order_acquire)&&
+        generated>=atomic_load_explicit(&fg_generation_floor,memory_order_acquire)&&fg_frame_id>generated&&fg_frame_id-generated<=3;
+}
+bool tmp_fg_present_count(uint64_t *count) {
+    if(!count||!fg_active||!fg_present_count||!g_vk.swapchain)return false;
+    *count=fg_present_count(g_vk.swapchain);return true;
+}
 bool tmp_fg_active(void) { return fg_active; }
 
 // [XCDE] T224: frame generation for the whole game (frame_gen) or only for cutscenes held at 30 (cutscenes = 30fg). The
@@ -69,6 +93,7 @@ static void VKAPI_PTR fg_destroy_sc(VkDevice d, VkSwapchainKHR sc, const VkAlloc
 static bool fg_context(uint32_t w, uint32_t h) {
     if (fg_ctx && fg_w == w && fg_h == h) return true;
     if (fg_ctx) { vkDeviceWaitIdle(g_vk.dev); ffx_destroy(&fg_ctx, NULL); fg_ctx = NULL; }
+    fg_reset();
     struct ffxCreateBackendVKDesc be = {.header = {.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK},
                                         .vkDevice = g_vk.dev, .vkPhysicalDevice = g_vk.phys, .vkDeviceProcAddr = ffx_proc};
     struct ffxCreateContextDescFrameGeneration cd = {.header = {.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_FRAMEGENERATION, .pNext = &be.header},
@@ -118,9 +143,10 @@ bool tmp_fg_install(VkSwapchainKHR *sc, const VkSwapchainCreateInfoKHR *ci, PFN_
     struct ffxQueryDescSwapchainReplacementFunctionsVK q;
     memset(&q, 0, sizeof q);
     q.header.type = FFX_API_QUERY_DESC_TYPE_FGSWAPCHAIN_FUNCTIONS_VK;
-    ffx_query(&fgsc_ctx, &q.header);
-    if (!q.pOutCreateSwapchainFFXAPI || !q.pOutGetSwapchainImagesKHR || !q.pOutAcquireNextImageKHR || !q.pOutQueuePresentKHR) {
+    r=ffx_query(&fgsc_ctx, &q.header);
+    if (r!=FFX_API_RETURN_OK || !q.pOutCreateSwapchainFFXAPI || !q.pOutDestroySwapchainFFXAPI || !q.pOutGetSwapchainImagesKHR || !q.pOutAcquireNextImageKHR || !q.pOutQueuePresentKHR) {
         LOG("[tmp] frame generation swapchain: replacement functions missing\n");
+        ffx_destroy(&fgsc_ctx,NULL);fgsc_ctx=NULL;
         return false;
     }
     fg_create_fn = q.pOutCreateSwapchainFFXAPI;
@@ -137,15 +163,32 @@ bool tmp_fg_install(VkSwapchainKHR *sc, const VkSwapchainCreateInfoKHR *ci, PFN_
     return true;
 }
 
-static ffxReturnCode_t fg_dispatch_cb(ffxDispatchDescFrameGeneration *p, void *ctx) { return ffx_dispatch((ffxContext *)ctx, &p->header); }
+static ffxReturnCode_t fg_dispatch_cb(ffxDispatchDescFrameGeneration *p, void *ctx) {
+    bool current=p->frameID>=atomic_load_explicit(&fg_generation_floor,memory_order_acquire);
+    uint64_t reset_serial=atomic_load_explicit(&fg_reset_serial,memory_order_acquire);
+    if(current)p->reset |= reset_serial!=atomic_load_explicit(&fg_reset_ack,memory_order_acquire);
+    ffxReturnCode_t result=ffx_dispatch((ffxContext *)ctx,&p->header);
+    if(current&&result==FFX_API_RETURN_OK&&p->numGeneratedFrames>0) {
+        atomic_store_explicit(&fg_last_generated_frame,p->frameID,memory_order_release);
+        atomic_store_explicit(&fg_generated_ready,true,memory_order_release);
+    } else if(current) {
+        atomic_store_explicit(&fg_generated_ready,false,memory_order_release);
+        if(result!=FFX_API_RETURN_OK)atomic_fetch_add_explicit(&fg_reset_serial,1,memory_order_release);
+    }
+    if(current&&result==FFX_API_RETURN_OK)atomic_store_explicit(&fg_reset_ack,reset_serial,memory_order_release);
+    return result;
+}
 
 // Every presented frame (with or without this frame's camera): the frame-generation configuration; with a camera, the
 // interpolation inputs. enabled = false: the swapchain presents only rendered frames (menus, loading screens).
 static void fg_frame(VkCommandBuffer cb, bool enabled, const TmpCamera *cam, const float jit[2], uint32_t rw, uint32_t rh, float dt,
                      bool reset) {
+    fg_inputs_ready=false;
     if (!fg_active) return;
     if (!fg_context(g_vk.sc_extent.width, g_vk.sc_extent.height)) return;
-    enabled = enabled && fg_on();  // (the F1 menu can turn it off; the swapchain stays)
+    enabled = enabled && fg_on();
+    if(reset||!enabled) {atomic_store_explicit(&fg_generation_floor,fg_frame_id,memory_order_release);atomic_store_explicit(&fg_generated_ready,false,memory_order_release);atomic_fetch_add_explicit(&fg_reset_serial,1,memory_order_release);}
+    //  // (the F1 menu can turn it off; the swapchain stays)
     struct ffxConfigureDescFrameGeneration c;
     memset(&c, 0, sizeof c);
     c.header.type = FFX_API_CONFIGURE_DESC_TYPE_FRAMEGENERATION;
@@ -160,7 +203,9 @@ static void fg_frame(VkCommandBuffer cb, bool enabled, const TmpCamera *cam, con
         c.HUDLessColor = res(&fg_hl, FFX_API_SURFACE_FORMAT_B8G8R8A8_UNORM, FFX_API_RESOURCE_USAGE_READ_ONLY);
     ffxReturnCode_t r = ffx_configure(&fg_ctx, &c.header);
     if (r != FFX_API_RETURN_OK) { static int n; if (n++ < 5) LOG("[tmp] frame generation configure failed: %u\n", r); }
-    if (enabled) {
+    bool configured=r==FFX_API_RETURN_OK;
+    bool prepared=false;
+    if (enabled&&configured) {
         struct ffxDispatchDescFrameGenerationPrepare p;
         memset(&p, 0, sizeof p);
         p.header.type = FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATION_PREPARE;
@@ -181,12 +226,23 @@ static void fg_frame(VkCommandBuffer cb, bool enabled, const TmpCamera *cam, con
         p.motionVectors = res(&img[1], FFX_API_SURFACE_FORMAT_R16G16_FLOAT, FFX_API_RESOURCE_USAGE_READ_ONLY);
         r = ffx_dispatch(&fg_ctx, &p.header);
         if (r != FFX_API_RETURN_OK) { static int n; if (n++ < 5) LOG("[tmp] frame generation prepare failed: %u\n", r); }
+        prepared=r==FFX_API_RETURN_OK;
+        fg_inputs_ready=prepared&&!reset;
     }
+    if(!configured || (enabled&&!prepared)) {
+        // Fail closed: a failed preparation must not leave last frame's
+        // generation configuration enabled with stale interpolation inputs.
+        c.frameGenerationEnabled=false;
+        if(ffx_configure(&fg_ctx,&c.header)!=FFX_API_RETURN_OK)
+            FATAL("[tmp] native frame generation could not be disabled after provider failure\n");
+        atomic_fetch_add_explicit(&fg_reset_serial,1,memory_order_release);
+    }
+    if(!fg_inputs_ready)atomic_store_explicit(&fg_generated_ready,false,memory_order_release);
     fg_frame_id++;
     if (env_int("XCDE_TMP_LOG") && fg_present_count && fg_frame_id % 120 == 0) {  // (presents: rendered + generated)
         static uint64_t last_p, last_f;
         uint64_t p = fg_present_count(g_vk.swapchain);
-        LOG("[tmp] frame generation: %llu presents for %llu frames\n", (unsigned long long)(p - last_p), (unsigned long long)(fg_frame_id - last_f));
+        LOG("[tmp] frame generation: %llu presents for %llu frames\n", (unsigned long long)(p>=last_p?p-last_p:0), (unsigned long long)(fg_frame_id-last_f));
         last_p = p; last_f = fg_frame_id;
     }
 }

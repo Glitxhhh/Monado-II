@@ -2,7 +2,9 @@
 #define _GNU_SOURCE
 #include <assert.h>
 #include <stdint.h>
+#ifndef _WIN32
 #include <sys/wait.h>
+#endif
 #include <unistd.h>
 #include <vulkan/vulkan.h>
 static VkResult fixture_enumerate(VkInstance,uint32_t *,VkPhysicalDevice *);
@@ -19,7 +21,17 @@ static VkResult fixture_extensions(VkPhysicalDevice,const char *,uint32_t *,VkEx
 #define vkGetPhysicalDeviceQueueFamilyProperties fixture_queues
 #define vkGetPhysicalDeviceSurfaceSupportKHR fixture_surface
 #define vkEnumerateDeviceExtensionProperties fixture_extensions
+#ifdef _WIN32
+#include "../../Monado_Windows/runtime/rt.h"
+#include "../../Monado_Windows/runtime/settings.h"
+#include "../../Monado_Windows/runtime/gpu_selection.h"
+#include "../../Monado_Windows/runtime/gpu_requirements_vk.h"
+#include "../../Monado_Windows/runtime/nvn/vulkan/vk.h"
+VkG g_vk;
+#include "production_device_selection.h"
+#else
 #include "../../Monado_Linux/runtime/nvn/vulkan/device.c"
+#endif
 #undef vkEnumeratePhysicalDevices
 #undef vkGetPhysicalDeviceProperties
 #undef vkGetPhysicalDeviceProperties2
@@ -74,6 +86,9 @@ static void run(void){
  assert(id(g_vk.phys)==expected && g_vk.qfam==(expected==2?1u:0u));
  _Exit(0);
 }
+#ifdef _WIN32
+int main(int argc,char **argv){assert(argc==2);scenario=(unsigned)atoi(argv[1]);run();}
+#else
 int main(void){
  for(scenario=0;scenario<18;scenario++){
   pid_t child=fork();assert(child>=0);if(!child)run();int status;assert(waitpid(child,&status,0)==child && WIFEXITED(status));
@@ -82,3 +97,4 @@ int main(void){
  }
  puts("Actual renderer GPU selection18 cases: UUID/Auto/reorder/stale/API/features/heap/queue/surface/errors PASS");
 }
+#endif

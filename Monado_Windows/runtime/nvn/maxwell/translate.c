@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "shader.h"
+#include "scaled_gather.h"
 
 uint64_t maxwell_gmem_base, maxwell_gmem_size;
 const uint8_t *maxwell_dbg_code;
@@ -86,6 +87,7 @@ typedef struct {
     // [XCDE] SSY/PBK/PCNT stacks resolved at translation (resolve_stacks): per instruction index the pc a SYNC / BRK /
     // CONT jumps to, so the GLSL has no run-time stack arrays. NULL: not resolvable, the arrays as before.
     uint32_t *stk_tgt;
+    bool uses_scaled_gather; // LINUX-103: simple floating 2D fragment gathers only
 } Ctx;
 
 static uint64_t bits(uint64_t w, int lo, int n) { return (w >> lo) & ((n == 64) ? ~0ull : ((1ull << n) - 1)); }
@@ -883,6 +885,16 @@ static void emit_texs(Ctx *c, uint64_t w, bool fetch) {
     write_tex_result(c, slot, call, mask, d0, d1, true, !bits(w, 59, 1));  // 0xd0/0xd2: .F16 results
 }
 
+// Guest texels remain the gather footprint when the image allocation is scaled.
+// Other stages, integer/shadow/offset forms retain their original instruction path.
+static bool scaled_gather(Ctx *c, int slot) {
+    if (!c->glsl || c->stage != STAGE_FRAGMENT || slot < 0 || c->fail) return false;
+    const ShaderTexture *t = &c->info->tex[slot];
+    if (t->type != TEXTYPE_2D || t->shadow || t->is_uint || t->is_image) return false;
+    c->uses_scaled_gather = c->uses_rscale = true;
+    return true;
+}
+
 // TLD4S: texture gather ("S" form: 2D only, coordinates in gpr8 / gpr20, results in gpr0 / gpr28 like TEXS).  [XCDE]
 // Fields: texture index 36..48, nodep 49 (no scoreboard effect: ignored), dc 50, aoffi 51, component 52..53,
 // fp16 55 (results packed as half pairs). GLSL only; the depth-compare and offset forms fail cleanly until needed.
@@ -897,7 +909,9 @@ static void emit_tld4s(Ctx *c, uint64_t w) {
     const char *A = reg(c, a, ra), *Bv = reg(c, b, rb);
     int slot = tex_slot(c, index, TEXTYPE_2D, false, false);
     char call[512];
-    sprintf(call, "textureGather(t%d, vec2(as_type<float>(%s), as_type<float>(%s)), %d)", slot, A, Bv, comp);
+    if (scaled_gather(c, slot))
+        sprintf(call, "rgather(t%d, vec2(as_type<float>(%s), as_type<float>(%s)), rscale[%d].xy, %d)", slot, A, Bv, slot + 1, comp);
+    else sprintf(call, "textureGather(t%d, vec2(as_type<float>(%s), as_type<float>(%s)), %d)", slot, A, Bv, comp);
     write_tex_result(c, slot, call, 0xF, d0, d1, true, f16);
 }
 
@@ -936,6 +950,7 @@ static void emit_tld4(Ctx *c, uint64_t w) {
     if (off[0]) sprintf(uv, "(vec2(%s, %s) + vec2(%s) / vec2(tsize%d(0).xy))", x, y, off, slot);
     else sprintf(uv, "vec2(%s, %s)", x, y);
     if (dc) sprintf(call, "vec4(textureGather(t%d, %s, %s))", slot, uv, dref);
+    else if (!offmode && scaled_gather(c, slot)) sprintf(call, "rgather(t%d, %s, rscale[%d].xy, %d)", slot, uv, slot + 1, comp);
     else sprintf(call, "textureGather(t%d, %s, %d)", slot, uv, comp);
     write_tex_result(c, slot, call, mask, d, RZ, false, false);
 }
@@ -2280,6 +2295,7 @@ static ShaderInfo *glsl_finish(Ctx *c, bool any_branch, bool dbg) {
            key && key->flip_x ? 66 : 65);  // ([65]: mirror mode's render target width)
         info->uses_rscale = true;
     }
+    if (c->uses_scaled_gather) sp(&s, "%s", scaled_gather_glsl);
     bool tint = stage == STAGE_FRAGMENT && !dbg && (c->omap_target & 0x7) == 0x7 && (!key || key->rt_kind[0] == 0);
     if (tint) {
         sp(&s, "layout(std140, set = %d, binding = 19) uniform Tint { vec4 ltint[2]; };\n", set);

@@ -6,30 +6,115 @@
 #include "../hle.h"
 #include "../ipc.h"
 #include "../settings.h"
+#include "am.h"
 
 #define AM_NO_MESSAGE MAKE_RESULT(128, 3)
 #define AM_NO_DATA MAKE_RESULT(128, 2)
 
-static uint32_t msg_event_r, msg_event_w;
-static KEvent *msg_event;
-static uint32_t msg_queue[16];
-static int msg_count;
+// [XCDE] LINUX-008: one per-boot owner, protected by g_klock. This native applet
+// stays active/in focus; desktop focus, thread/fiber/render waits do not suspend
+// it. Policy/notification configuration is retained, but no HOME/sleep/applet
+// transition is synthesized. Suspended ticks remain zero under this model.
+static struct {
+    bool initialized, preselected_popped;
+    KEvent *message_event, *suspended_event;
+    uint32_t messages[16];
+    unsigned message_count;
+    uint8_t focus_policy[3], operation_mode;
+    uint32_t performance_mode, idle_time_extension;
+    bool out_of_focus_suspending, operation_notify, performance_notify, resume_notify;
+    bool exit_locked, exit_requested, timeout_reported;
+    uint64_t exit_requested_ns, suspended_ticks;
+} am;
+#define AM_EXIT_GRACE_NS UINT64_C(15000000000)
 
-static bool preselected_popped;
+static KEvent *am_new_event_locked(void) {
+    KEvent *event = calloc(1, sizeof *event);
+    if (!event) FATAL("[am] cannot allocate lifecycle event\n");
+    event->type = KOBJ_EVENT;
+    return event;
+}
+
+static void am_enqueue_locked(uint32_t message) {
+    if (am.message_count == sizeof am.messages / sizeof am.messages[0])
+        FATAL("[am] lifecycle message queue overflow\n");
+    am.messages[am.message_count++] = message;
+    kernel_signal(am.message_event);
+}
+
+static void am_init_locked(void) {
+    if (am.initialized) return;
+    am.message_event = am_new_event_locked();
+    am.suspended_event = am_new_event_locked();
+    am.focus_policy[2] = 1; // default SuspendHomeSleep, not a native pause request
+    am.operation_mode = getenv("XCDE_HANDHELD") ? 0 : 1;
+    am.performance_mode = am.operation_mode;
+    am.initialized = true;
+    am_enqueue_locked(15); // initial FocusStateChanged: already InFocus
+}
+
 RT_ON_RESET(am_reset) {  // (reboot: the message queue starts over with FocusStateChanged)
-    msg_event = NULL;
-    msg_event_r = msg_event_w = 0;
-    msg_count = 0;
-    preselected_popped = false;
+    // Guest threads have stopped. Do not reset/free the old object's refs:
+    // kernel_reset drops old handles separately, retaining kernel objects.
+    pthread_mutex_lock(&g_klock);
+    memset(&am, 0, sizeof am);
+    pthread_mutex_unlock(&g_klock);
 }
 
 static void am_init_once(void) {
-    if (msg_event) return;
-    msg_event = kernel_create_event_pair(&msg_event_w, &msg_event_r);
-    msg_queue[msg_count++] = 15;  // FocusStateChanged
     pthread_mutex_lock(&g_klock);
-    kernel_signal(msg_event);
+    am_init_locked();
     pthread_mutex_unlock(&g_klock);
+}
+
+static uint32_t am_event_handle(bool suspended) {
+    pthread_mutex_lock(&g_klock);
+    am_init_locked();
+    KEvent *event = suspended ? am.suspended_event : am.message_event;
+    pthread_mutex_unlock(&g_klock);
+    // Objects are retained, and reset requires stopped guest threads. The
+    // allocator takes g_klock itself; each reply owns an independent handle.
+    return kernel_new_handle(event);
+}
+
+void am_request_host_exit(uint64_t now_ns) {
+    pthread_mutex_lock(&g_klock);
+    am_init_locked();
+    if (!am.exit_requested) {
+        am.exit_requested = true;
+        am.exit_requested_ns = now_ns;
+        am_enqueue_locked(4); // ExitRequest; repeated native closes coalesce
+        LOG("[am] native close requested (exit lock %s)\n", am.exit_locked ? "held" : "clear");
+    }
+    pthread_mutex_unlock(&g_klock);
+}
+
+bool am_host_exit_ready(uint64_t now_ns) {
+    pthread_mutex_lock(&g_klock);
+    // Querying before the service is opened must not change its initial state.
+    bool expired = am.exit_requested && now_ns >= am.exit_requested_ns &&
+        now_ns - am.exit_requested_ns >= AM_EXIT_GRACE_NS;
+    bool ready = am.exit_requested && (!am.exit_locked || expired);
+    if (expired && am.exit_locked && !am.timeout_reported) {
+        am.timeout_reported = true;
+        LOG("[am] native close: 15-second guest exit-lock deadline expired; cleanup not confirmed\n");
+    }
+    pthread_mutex_unlock(&g_klock);
+    return ready;
+}
+
+static void am_validate_flags(IpcReq *req, unsigned count) {
+    if (req->data_size < count)
+        FATAL("[am] malformed ISelfController cmd %u: %u payload bytes, need %u\n", req->cmd, req->data_size, count);
+    for (unsigned i = 0; i < count; ++i)
+        if (req->data[i] > 1)
+            FATAL("[am] malformed ISelfController cmd %u: flag %u is not boolean\n", req->cmd, i);
+}
+
+static void am_validate_idle_request(IpcReq *req, uint32_t bytes) {
+    if (req->data_size != bytes || req->has_pid || req->ncopy || req->nmove ||
+        req->nx || req->na || req->nb || req->nc || req->ndomain_in)
+        FATAL("[am] malformed idle-time cmd %u: expected %u payload bytes and no descriptors\n", req->cmd, bytes);
 }
 
 static uint32_t new_event(void) {
@@ -43,13 +128,14 @@ static uint32_t new_event(void) {
 static void common_state_getter(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     switch (req->cmd) {
-    case 0: resp->copy_handles[resp->ncopy++] = msg_event_r; break;  // GetEventHandle
+    case 0: resp->copy_handles[resp->ncopy++] = am_event_handle(false); break;  // GetEventHandle
     case 1:  // ReceiveMessage
         pthread_mutex_lock(&g_klock);
-        if (msg_count) {
-            OUT(uint32_t, 0) = msg_queue[0];
-            memmove(msg_queue, msg_queue + 1, --msg_count * sizeof(uint32_t));
-            if (!msg_count) msg_event->signaled = false;
+        am_init_locked();
+        if (am.message_count) {
+            OUT(uint32_t, 0) = am.messages[0];
+            memmove(am.messages, am.messages + 1, --am.message_count * sizeof(uint32_t));
+            if (!am.message_count) am.message_event->signaled = false;
             resp_size(resp, 4);
         } else {
             resp->result = AM_NO_MESSAGE;
@@ -58,8 +144,13 @@ static void common_state_getter(Service *s, IpcReq *req, IpcResp *resp) {
         break;
     // [XCDE] T146 (test): XCDE_HANDHELD=1 reports handheld mode and a 1280x720 display (UI anchored to the bottom /
     // right edges lands off screen in docked mode: is the layout computed for the reported display size?)
-    case 5: OUT(uint8_t, 0) = getenv("XCDE_HANDHELD") ? 0 : 1; resp_size(resp, 1); break;   // GetOperationMode: docked
-    case 6: OUT(uint32_t, 0) = getenv("XCDE_HANDHELD") ? 0 : 1; resp_size(resp, 4); break;  // GetPerformanceMode: boost
+    case 5: case 6: // Boot configuration is snapshotted; desktop fullscreen does not change it.
+        pthread_mutex_lock(&g_klock);
+        am_init_locked();
+        if (req->cmd == 5) { OUT(uint8_t, 0) = am.operation_mode; resp_size(resp, 1); }
+        else { OUT(uint32_t, 0) = am.performance_mode; resp_size(resp, 4); }
+        pthread_mutex_unlock(&g_klock);
+        break;
     case 8: OUT(uint8_t, 0) = 0; resp_size(resp, 1); break;   // GetBootMode
     case 9: OUT(uint8_t, 0) = 1; resp_size(resp, 1); break;   // GetCurrentFocusState: in focus
     case 13: case 61: resp->copy_handles[resp->ncopy++] = new_event(); break;
@@ -77,9 +168,66 @@ static void self_controller(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     switch (req->cmd) {
     case 0: LOG("[am] application requested exit\n"); exit(0);
+    case 1: case 2: // LockExit / UnlockExit: no payload; guest cleanup continues while locked.
+        pthread_mutex_lock(&g_klock);
+        am_init_locked();
+        am.exit_locked = req->cmd == 1;
+        pthread_mutex_unlock(&g_klock);
+        break;
     case 9: resp->copy_handles[resp->ncopy++] = new_event(); break;
+    case 11: case 12: case 13: case 14: case 16: {
+        unsigned count = req->cmd == 13 ? 3 : 1;
+        am_validate_flags(req, count);
+        pthread_mutex_lock(&g_klock);
+        am_init_locked();
+        switch (req->cmd) {
+        case 11: am.operation_notify = req->data[0] != 0; break;
+        case 12: am.performance_notify = req->data[0] != 0; break;
+        case 13: memcpy(am.focus_policy, req->data, 3); break;
+        case 14: am.resume_notify = req->data[0] != 0; break;
+        case 16: am.out_of_focus_suspending = req->data[0] != 0; break;
+        }
+        LOG("[am] active-only policy cmd %u: %u%s", req->cmd, req->data[0], count == 3 ? "," : "\n");
+        if (count == 3) LOG("%u,%u\n", req->data[1], req->data[2]);
+        pthread_mutex_unlock(&g_klock);
+        break;
+    }
     case 40: OUT(uint64_t, 0) = 1; resp_size(resp, 8); break;  // CreateManagedDisplayLayer
+    case 62: { // [XCDE] LINUX-010: SetIdleTimeDetectionExtension (None/Extended/ExtendedUnsafe).
+        am_validate_idle_request(req, 4);
+        uint32_t mode;
+        memcpy(&mode, req->data, sizeof mode);
+        if (mode > 2) FATAL("[am] invalid idle-time extension %u; expected 0..2\n", mode);
+        pthread_mutex_lock(&g_klock);
+        am_init_locked();
+        am.idle_time_extension = mode;
+        pthread_mutex_unlock(&g_klock);
+        // SDL already requests display-idle inhibition for the native game's
+        // lifetime. Retain the guest enum for queries without inventing console
+        // sleep timers or calling SDL from a guest thread. This is not a promise
+        // that the desktop compositor/OS honors inhibition or disables suspend.
+        LOG("[am] idle-time extension %u retained; native SDL lifetime idle policy unchanged\n", mode);
+        break;
+    }
+    case 63: // GetIdleTimeDetectionExtension: shared applet state, no input.
+        am_validate_idle_request(req, 0);
+        pthread_mutex_lock(&g_klock);
+        am_init_locked();
+        OUT(uint32_t, 0) = am.idle_time_extension;
+        pthread_mutex_unlock(&g_klock);
+        resp_size(resp, 4);
+        break;
     case 69: OUT(uint8_t, 0) = 0; resp_size(resp, 1); break;
+    case 90:  // GetAccumulatedSuspendedTickValue (19.2 MHz system ticks)
+        pthread_mutex_lock(&g_klock);
+        am_init_locked();
+        OUT(uint64_t, 0) = am.suspended_ticks;
+        pthread_mutex_unlock(&g_klock);
+        resp_size(resp, 8);
+        break;
+    case 91:  // GetAccumulatedSuspendedTickChangedEvent (client autoclear)
+        resp->copy_handles[resp->ncopy++] = am_event_handle(true);
+        break;
     default: UNHANDLED("ISelfController");
     }
 }
@@ -88,6 +236,12 @@ static void window_controller(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     switch (req->cmd) {
     case 1: OUT(uint64_t, 0) = 0x1234; resp_size(resp, 8); break;  // GetAppletResourceUserId
+    case 10:  // AcquireForegroundRights: no input/output, idempotent.
+        // [XCDE] LINUX-007: the single active application already owns applet
+        // foreground (CommonStateGetter reports InFocus before this call).
+        // Reacquisition does not change focus or post another notification.
+        // This is guest applet ownership, not desktop keyboard/window focus.
+        break;
     default: UNHANDLED("IWindowController");
     }
 }
@@ -142,18 +296,23 @@ extern const uint8_t g_user_id[16];
 static void application_functions(Service *s, IpcReq *req, IpcResp *resp) {
     (void)s;
     switch (req->cmd) {
-    case 1:  // PopLaunchParameter(kind)
-        if (IN(uint32_t, 0) == 2 && !preselected_popped) {  // PreselectedUser
+    case 1: { // PopLaunchParameter(kind)
+        pthread_mutex_lock(&g_klock);
+        am_init_locked();
+        bool pop = IN(uint32_t, 0) == 2 && !am.preselected_popped;
+        if (pop) am.preselected_popped = true;
+        pthread_mutex_unlock(&g_klock);
+        if (pop) {  // PreselectedUser
             uint8_t p[0x88] = {0};
             *(uint32_t *)p = 0xC79497CA;
             *(uint32_t *)(p + 4) = 1;
             memcpy(p + 8, g_user_id, 16);
-            preselected_popped = true;
             ipc_return_object(resp, new_am_storage(p, sizeof p));
         } else {
             resp->result = AM_NO_DATA;
         }
         break;
+    }
     case 20: OUT(uint64_t, 0) = 0; resp_size(resp, 8); break;  // EnsureSaveData
     case 21: {  // GetDesiredLanguage: the game's text language (settings: runtime/settings.c, "language")
         char lang[8] = {0};

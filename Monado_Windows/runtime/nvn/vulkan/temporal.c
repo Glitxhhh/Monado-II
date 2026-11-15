@@ -1,23 +1,40 @@
 // [XCDE] Temporal upscaling / anti-aliasing at the present (temporal.h). AMD FSR 3.1 through the FidelityFX API
 // (amd_fidelityfx_vk.dll next to the exe, FidelityFX SDK 1.1.4 - the last with Vulkan; loaded at run time, so the exe
-// runs without it). NVIDIA DLSS: dlss.cpp (Streamline).
+// runs without it). NVIDIA DLSS: dlss.cpp (Windows Streamline / Linux NGX).
 //
 // Per frame: exec.c jitters the draws into the scene depth by a Halton (2, 3) sub-pixel offset and finds the game's
 // camera. Here one fullscreen pass at render size copies the game image (raw bytes: gamma-encoded LDR) and the scene
 // depth into images the upscaler can read, and writes camera motion vectors (each pixel reprojected with the previous
 // frame's view-projection). The upscaler then accumulates the jittered frames into the window-size image.
-// Limits (first version): motion is the camera's only (moving characters rely on the upscaler's own history
-// rejection); the HUD is part of the input image (T213: masked out of the history, tmp_hud_snapshot).
+// Motion combines camera reprojection with the game's object vectors when available. T213 strips the HUD before
+// temporal reconstruction and composites it afterwards (exec.c).
 //   XCDE_TMP_DEBUG=1  the upscaler's debug view (FSR: motion vectors, depth, reactiveness...)
 //   XCDE_TMP_LOG=1    a line a second: camera found, sizes, jitter
+// [XCDE] LINUX-103: portable temporal inputs, native Linux FSR3/DLSS and separate Linux FG.
 #include <SDL3/SDL_timer.h>
 #include <math.h>
+#include <float.h>
 #include <stdlib.h>
+#include <stdatomic.h>
 #include <string.h>
 
 #include "../../diag/diag.h"
 #include "../../settings.h"
 #include "temporal.h"
+#include "dlss.h"
+#include "temporal_camera.h"
+#if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
+static void linux_fg_reset(void);
+#endif
+#ifdef _WIN32
+#include <windows.h>
+static void fg_reset(void);
+#endif
+#if defined(__linux__) && (defined(XCDE_LINUX_FSR3) || defined(XCDE_LINUX_FSR4))
+#include <dlfcn.h>
+#include "../../paths.h"
+#endif
+#if defined(_WIN32) || defined(XCDE_LINUX_FSR3)
 #include "ffx_api/ffx_api.h"
 #include "ffx_api/ffx_upscale.h"
 // (ffx_api/vk/ffx_api_vk.h is C++-only: its one structure used here, as declared there)
@@ -29,65 +46,120 @@ struct ffxCreateBackendVKDesc {
     PFN_vkGetDeviceProcAddr vkDeviceProcAddr;
 };
 
-#ifdef _WIN32
-#include <windows.h>
 #endif
 
 bool diag_deterministic(void);
 
 // ---------------------------------------------------------------- FidelityFX loader
+#if defined(_WIN32) || defined(XCDE_LINUX_FSR3)
 static PfnFfxCreateContext ffx_create;
 static PfnFfxDestroyContext ffx_destroy;
 static PfnFfxDispatch ffx_dispatch;
 static PfnFfxQuery ffx_query;
 static PfnFfxConfigure ffx_configure;
 static int ffx_state;  // 0 not tried, 1 loaded, -1 unavailable
+#if defined(__linux__) || defined(_WIN32)
+static uint64_t fsr_ring[4];
+static unsigned fsr_slot;
+#endif
 
 static bool ffx_load(void) {
     if (ffx_state) return ffx_state > 0;
     ffx_state = -1;
 #ifdef _WIN32
-    HMODULE m = LoadLibraryA("amd_fidelityfx_vk.dll");
+    wchar_t library[4096];DWORD length=GetModuleFileNameW(NULL,library,4096);
+    if(!length || length>=4096)return false;
+    while(length && library[length-1]!=L'\\' && library[length-1]!=L'/')--length;
+    const wchar_t name[]=L"amd_fidelityfx_vk.dll";
+    if(!length || length+sizeof name/sizeof *name>4096)return false;
+    memcpy(library+length,name,sizeof name);
+    HMODULE m=LoadLibraryExW(library,NULL,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
     if (!m) { LOG("[tmp] amd_fidelityfx_vk.dll not found: FSR 3 unavailable\n"); return false; }
     ffx_create = (PfnFfxCreateContext)(void *)GetProcAddress(m, "ffxCreateContext");
     ffx_destroy = (PfnFfxDestroyContext)(void *)GetProcAddress(m, "ffxDestroyContext");
     ffx_dispatch = (PfnFfxDispatch)(void *)GetProcAddress(m, "ffxDispatch");
     ffx_query = (PfnFfxQuery)(void *)GetProcAddress(m, "ffxQuery");
     ffx_configure = (PfnFfxConfigure)(void *)GetProcAddress(m, "ffxConfigure");
-    if (!ffx_create || !ffx_destroy || !ffx_dispatch || !ffx_query || !ffx_configure) { LOG("[tmp] amd_fidelityfx_vk.dll: entry points missing\n"); return false; }
+    if (!ffx_create || !ffx_destroy || !ffx_dispatch || !ffx_query || !ffx_configure) { LOG("[tmp] amd_fidelityfx_vk.dll: entry points missing\n"); FreeLibrary(m); return false; }
+#else
+    // [XCDE] LINUX-103: the checked build manifest supplies one locally built
+    // official SDK component; no ambient library path or updater is consulted.
+    char path[4096];
+    if (!rt_resource("libmonado-fsr3.so", NULL, path, sizeof path)) {
+        LOG("[tmp] native FSR3 component absent; spatial fallback\n"); return false;
+    }
+    void *m = dlopen(path, RTLD_NOW | RTLD_LOCAL);
+    if (!m) { LOG("[tmp] native FSR3 load failed: %s\n", dlerror()); return false; }
+    uint32_t (*abi)(void) = (uint32_t (*)(void))dlsym(m, "monado_fsr3_abi_version");
+    const char *(*commit)(void) = (const char *(*)(void))dlsym(m, "monado_fsr3_sdk_commit");
+    if (!abi || !commit || abi()!=1 || !commit() || strcmp(commit(), "c6efa6bf7f2027b3ec94f28578bb5965eabb9e55")) {
+        LOG("[tmp] native FSR3 component identity mismatch\n"); dlclose(m); return false;
+    }
+    ffx_create = (PfnFfxCreateContext)dlsym(m, "ffxCreateContext");
+    ffx_destroy = (PfnFfxDestroyContext)dlsym(m, "ffxDestroyContext");
+    ffx_dispatch = (PfnFfxDispatch)dlsym(m, "ffxDispatch");
+    ffx_query = (PfnFfxQuery)dlsym(m, "ffxQuery");
+    ffx_configure = (PfnFfxConfigure)dlsym(m, "ffxConfigure");
+    if (!ffx_create || !ffx_destroy || !ffx_dispatch || !ffx_query || !ffx_configure) {
+        LOG("[tmp] native FSR3 entry points missing\n"); dlclose(m); return false;
+    }
+#endif
     ffx_state = 1;
     LOG("[tmp] FidelityFX API loaded (FSR 3.1)\n");
     return true;
+}
+#else
+static bool ffx_load(void) { return false; }
+#endif
+
+// Component/API availability only; context creation and valid scene inputs are checked at evaluation.
+bool tmp_fsr3_supported(void) { return ffx_load(); }
+
+// [XCDE] LINUX-017: history belongs to one successful, consecutive provider evaluation.
+static TmpCamera previous;
+static uint32_t hist_rw, hist_rh, hist_ow, hist_oh;
+static int hist_upscaler, hist_quality, hist_provider;
+static uint64_t hist_frame, frames, t_last;
+static int active_provider = -1, active_upscaler = -1, active_quality = -1;
+static uint32_t jit_index, jit_phases = 8;
+static uint64_t snap_frame = ~0ull;
+static void history_invalidate(void) { previous.ok = false; t_last = 0; }
+
+static bool fsr4_frame_available(void);
+
+static int env_int(const char *k) { const char *e = getenv(k); return e ? atoi(e) : 0; }
+
+bool tmp_enabled(void) {
+    int provider = 0;
+    if (!env_int("XCDE_TMP_OFF") && (!diag_deterministic() || env_int("XCDE_TMP_DETERMINISTIC"))) {
+        if (g_settings.upscaler == UPSCALE_FSR4_LITE) provider = fsr4_frame_available()?3:ffx_load();
+        else if (g_settings.upscaler == UPSCALE_FSR3) provider = ffx_load();
+        else if (g_settings.upscaler == UPSCALE_DLSS) provider = dlss_available() ? 2 : ffx_load();
+    }
+    if (provider != active_provider || g_settings.upscaler != active_upscaler || g_settings.upscale_quality != active_quality) {
+        history_invalidate();
+        snap_frame = ~0ull;
+        jit_index = 0;
+        jit_phases = 8;
+        if (g_settings.upscaler == UPSCALE_DLSS && provider == 1) LOG("[tmp] DLSS unavailable: FSR 3 instead\n");
+        if(g_settings.upscaler==UPSCALE_FSR4_LITE)LOG("[tmp] FSR4 selection: %s; eligible provider %s\n",tmp_fsr4_status(),provider==3?"FSR4 Lite":provider==1?"FSR3":"spatial");
+        active_provider = provider;
+        active_upscaler = g_settings.upscaler;
+        active_quality = g_settings.upscale_quality;
+    }
+    if (!provider) history_invalidate();
+    return provider != 0;
+}
+static bool use_dlss(void) { return g_settings.upscaler == UPSCALE_DLSS && dlss_available(); }
+bool tmp_linear_output(void) {
+#if defined(__linux__) && (defined(XCDE_LINUX_FSR3) || defined(XCDE_LINUX_FSR4))
+    return active_provider == 1 || active_provider == 3;
 #else
     return false;
 #endif
 }
 
-static int env_int(const char *k) { const char *e = getenv(k); return e ? atoi(e) : 0; }
-
-bool tmp_enabled(void) {
-    static int on = -1, for_upscaler = -1;
-    if (for_upscaler != g_settings.upscaler) { on = -1; for_upscaler = g_settings.upscaler; }  // (changed in the F1 menu)
-    if (on < 0) {
-        on = 0;
-        if (env_int("XCDE_TMP_OFF")) return false;
-        if (diag_deterministic() && !env_int("XCDE_TMP_DETERMINISTIC")) return false;  // (captures stay comparable)
-        if (g_settings.upscaler == UPSCALE_FSR3) on = ffx_load();
-        else if (g_settings.upscaler == UPSCALE_DLSS) {
-            extern bool dlss_available(void);
-            on = dlss_available() ? 2 : ffx_load();  // (no RTX GPU / runtime: FSR 3 instead)
-            if (on == 1) LOG("[tmp] DLSS unavailable: FSR 3 instead\n");
-        }
-    }
-    return on != 0;
-}
-static bool use_dlss(void) {
-    extern bool dlss_available(void);
-    return g_settings.upscaler == UPSCALE_DLSS && dlss_available();
-}
-
 // ---------------------------------------------------------------- jitter
-static uint32_t jit_index, jit_phases = 8;
 static float halton(uint32_t i, uint32_t b) {
     float f = 1, r = 0;
     for (; i; i /= b) { f /= (float)b; r += f * (float)(i % b); }
@@ -121,18 +193,62 @@ static void img_make(Img *d, VkFormat f, uint32_t w, uint32_t h, VkImageUsageFla
 }
 // (render size) 0 colour, 1 motion, 2 depth, 4 the game image before the HUD, 5 HUD mask; (window size) 3 output
 static Img img[6];
-enum { F_COLOR = VK_FORMAT_R8G8B8A8_UNORM, F_MV = VK_FORMAT_R16G16_SFLOAT, F_DEPTH = VK_FORMAT_R32_SFLOAT, F_MASK = VK_FORMAT_R8_UNORM };
+enum { F_COLOR = VK_FORMAT_R8G8B8A8_UNORM, F_LINEAR = VK_FORMAT_R16G16B16A16_SFLOAT, F_MV = VK_FORMAT_R16G16_SFLOAT, F_DEPTH = VK_FORMAT_R32_SFLOAT, F_MASK = VK_FORMAT_R8_UNORM };
+
+// Native Windows optional FSR4 preparation/provider is not implemented yet.
+// Preserve the saved request and select the existing checked FSR3/spatial fallback.
+bool tmp_fsr4_set_asset_dir(const char *path){(void)path;return false;}
+bool tmp_fsr4_supported(void){return false;}
+const char *tmp_fsr4_status(void){return "Native Windows FSR4 component is not prepared";}
+static bool fsr4_frame_available(void){return false;}
+static bool fsr4_size_supported(uint32_t rw,uint32_t rh,uint32_t ow,uint32_t oh){(void)rw;(void)rh;(void)ow;(void)oh;return false;}
+static void fsr4_reset(void){}
+static bool fsr4_evaluate(VkCommandBuffer cb,const Img *color,const Img *motion,const Img *depth,const Img *output,const float jitter[2],bool reset) {
+    (void)cb;(void)color;(void)motion;(void)depth;(void)output;(void)jitter;(void)reset;return false;
+}
+static int temporal_provider(uint32_t rw,uint32_t rh,uint32_t ow,uint32_t oh) {
+    if(g_settings.upscaler==UPSCALE_FSR4_LITE && fsr4_frame_available() && fsr4_size_supported(rw,rh,ow,oh))return 3;
+    if(use_dlss())return 2;
+    if(g_settings.upscaler==UPSCALE_FSR3 || g_settings.upscaler==UPSCALE_FSR4_LITE || g_settings.upscaler==UPSCALE_DLSS)return ffx_load()?1:0;
+    return 0;
+}
+
 
 // [XCDE] T213: HUD without ghosting. exec.c calls this when the first pass of the frame that draws into the presented
 // image ends (the scene composite; the HUD passes follow): a copy of the image before the HUD. The inputs pass marks
 // the pixels the HUD changed; the upscalers get that as their reactive mask (FSR) / "bias current colour" hint (DLSS):
 // no history there, so text and icons leave no trails. Any HUD, menu or scene: it is measured every frame.
-static uint64_t snap_frame = ~0ull;
 uint64_t renderer_present_count(void);
 // [XCDE] T215: the game's velocity buffer (exec.c finds it at its readers' gTVelocity unit)
 static TexBackend *game_vel;
 static uint64_t game_vel_frame = ~0ull;
+// GPU idle, guest execution stopped: retain device-local scratch images, drop every guest/history reference.
+void tmp_reset(void) {
+#ifdef _WIN32
+    fg_reset();
+#endif
+#if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
+    linux_fg_reset();
+#endif
+    memset(&previous, 0, sizeof previous);
+    hist_rw = hist_rh = hist_ow = hist_oh = 0;
+    hist_upscaler = hist_quality = hist_provider = 0;
+    hist_frame = frames = t_last = 0;
+    active_provider = active_upscaler = active_quality = -1;
+    game_vel = NULL;
+    game_vel_frame = snap_frame = ~0ull;
+    jit_index = 0;
+    jit_phases = 8;
+#if defined(_WIN32) || defined(XCDE_LINUX_FSR3)
+    memset(fsr_ring,0,sizeof fsr_ring);fsr_slot=0;
+#endif
+    fsr4_reset();
+    dlss_reset();
+}
 void tmp_set_velocity(TexBackend *v) { game_vel = v; game_vel_frame = renderer_present_count(); }
+void tmp_forget_texture(TexBackend *b) {
+    if (b && b == game_vel) { game_vel = NULL; game_vel_frame = ~0ull; }
+}
 // [XCDE] T228: the readers run only with the game's own AA / motion blur on (launcher "Antialiasing y desenfoque de
 // movimiento del juego"); with it off (the user's setting) the buffer is still written by the G-buffer pass but was
 // never found, and DLSS / FSR got camera-only motion for characters and grass (MV captures, meadow frame 3500:
@@ -251,18 +367,20 @@ void tmp_hud_snapshot(VkCommandBuffer cb, TexBackend *b) {
 // ---------------------------------------------------------------- the inputs pass
 static VkPipelineLayout prep_layout;
 static VkDescriptorSetLayout prep_set_layout;
-static VkPipeline prep_pipe;
-static void prep_pipeline(void) {
-    if (prep_pipe) return;
+static VkPipeline prep_pipe[2];
+static void prep_pipeline(bool linear) {
+    if (prep_pipe[linear]) return;
+    if (!prep_layout) {
     VkDescriptorSetLayoutBinding b[4];
     for (uint32_t i = 0; i < 4; i++)
         b[i] = (VkDescriptorSetLayoutBinding){i, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, NULL};
     VkDescriptorSetLayoutCreateInfo li = {.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, .bindingCount = 4, .pBindings = b};
     VK_CHECK(vkCreateDescriptorSetLayout(g_vk.dev, &li, NULL, &prep_set_layout));
-    VkPushConstantRange r = {VK_SHADER_STAGE_FRAGMENT_BIT, 0, 96};
+    VkPushConstantRange r = {VK_SHADER_STAGE_FRAGMENT_BIT, 0, 112};
     VkPipelineLayoutCreateInfo ci = {.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, .setLayoutCount = 1,
                                      .pSetLayouts = &prep_set_layout, .pushConstantRangeCount = 1, .pPushConstantRanges = &r};
     VK_CHECK(vkCreatePipelineLayout(g_vk.dev, &ci, NULL, &prep_layout));
+    }
     VkPipelineShaderStageCreateInfo stages[2] = {
         {.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, .stage = VK_SHADER_STAGE_VERTEX_BIT,
          .module = vk_builtin_shader("post.vert"), .pName = "main"},
@@ -282,7 +400,7 @@ static void prep_pipeline(void) {
                                               .pAttachments = cba};
     VkDynamicState dyn[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dy = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, .dynamicStateCount = 2, .pDynamicStates = dyn};
-    VkFormat fmts[4] = {F_COLOR, F_MV, F_DEPTH, F_MASK};
+    VkFormat fmts[4] = {linear ? F_LINEAR : F_COLOR, F_MV, F_DEPTH, F_MASK};
     VkPipelineRenderingCreateInfo ri = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO, .colorAttachmentCount = 4,
                                         .pColorAttachmentFormats = fmts};
     VkPipelineDepthStencilStateCreateInfo ds = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
@@ -290,7 +408,7 @@ static void prep_pipeline(void) {
                                        .pStages = stages, .pVertexInputState = &vi, .pInputAssemblyState = &ia, .pViewportState = &vs,
                                        .pRasterizationState = &rs, .pMultisampleState = &ms, .pDepthStencilState = &ds,
                                        .pColorBlendState = &cb, .pDynamicState = &dy, .layout = prep_layout};
-    VK_CHECK(vkCreateGraphicsPipelines(g_vk.dev, g_vk.pcache, 1, &pi, NULL, &prep_pipe));
+    VK_CHECK(vkCreateGraphicsPipelines(g_vk.dev, g_vk.pcache, 1, &pi, NULL, &prep_pipe[linear]));
 }
 
 // 4x4 helpers on the game's row matrices (double precision)
@@ -304,6 +422,7 @@ static void mat_mul(const double a[16], const double b[16], double o[16]) {
         }
 }
 static bool mat_inv(const double m[16], double o[16]) {  // Gauss-Jordan
+    for (int i = 0; i < 16; i++) if (!isfinite(m[i])) return false;
     double a[4][8];
     for (int i = 0; i < 4; i++)
         for (int j = 0; j < 8; j++) a[i][j] = j < 4 ? m[i * 4 + j] : (j - 4 == i);
@@ -317,13 +436,50 @@ static bool mat_inv(const double m[16], double o[16]) {  // Gauss-Jordan
         for (int r = 0; r < 4; r++)
             if (r != c) { double f = a[r][c]; for (int j = 0; j < 8; j++) a[r][j] -= f * a[c][j]; }
     }
-    for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++) o[i * 4 + j] = a[i][j + 4];
+    for (int i = 0; i < 4; i++) for (int j = 0; j < 4; j++) {
+        o[i * 4 + j] = a[i][j + 4];
+        if (!isfinite(o[i * 4 + j])) return false;
+    }
     return true;
+}
+
+// [XCDE] LINUX-017: reject invalid cameras before recording GPU work. Every reset uses zero motion vectors.
+static bool history_prepare(const TmpCamera *cam, const float jitter[2], uint32_t rw, uint32_t rh, uint32_t ow, uint32_t oh,
+                            int provider, uint64_t frame, double reproj[16], bool *have_prev) {
+    *have_prev = false;
+    memset(reproj, 0, 16 * sizeof *reproj);
+    if (!cam || !cam->ok || !jitter || !isfinite(jitter[0]) || !isfinite(jitter[1]) ||
+        !rw || !rh || !ow || !oh || ow > 16384 || oh > 16384 || rw > ow + 1 || rh > oh + 1) return false;
+    for (int i = 0; i < 12; i++) if (!isfinite(cam->view[i])) return false;
+    for (int i = 0; i < 16; i++) if (!isfinite(cam->proj[i]) || !isfinite(cam->viewproj[i])) return false;
+    double cur[16], inv[16];
+    mat_from_rows(cam->viewproj, cur);
+    if (!mat_inv(cur, inv)) return false;
+    bool keep = previous.ok && hist_frame + 1 == frame && hist_rw == rw && hist_rh == rh && hist_ow == ow && hist_oh == oh &&
+                hist_upscaler == g_settings.upscaler && hist_quality == g_settings.upscale_quality && hist_provider == provider;
+    if (keep) keep = tmp_camera_continuous(cam->view, previous.view);
+    if (keep) {
+        double pv[16];
+        mat_from_rows(previous.viewproj, pv);
+        mat_mul(pv, inv, reproj);
+        for (int i = 0; i < 16; i++) if (!isfinite(reproj[i])) return false;
+        *have_prev = true;
+    }
+    return true;
+}
+static void history_commit(const TmpCamera *cam, uint32_t rw, uint32_t rh, uint32_t ow, uint32_t oh,
+                           int provider, uint64_t frame, bool ok) {
+    if (!ok) { history_invalidate(); return; }
+    previous = *cam;
+    hist_rw = rw; hist_rh = rh; hist_ow = ow; hist_oh = oh;
+    hist_upscaler = g_settings.upscaler; hist_quality = g_settings.upscale_quality; hist_provider = provider;
+    hist_frame = frame;
 }
 
 static void prep(VkCommandBuffer cb, VkImageView color_view, VkImageView scene_view, VkImageView vel_view, TexBackend *depth,
                  const double reproj[16], bool have_prev, const float jit[2], bool dm1, uint32_t rw, uint32_t rh) {
-    prep_pipeline();
+    bool linear = tmp_linear_output();
+    prep_pipeline(linear);
     vk_full_barrier(cb);
     VkRenderingAttachmentInfo ca[4];
     for (int i = 0; i < 4; i++)
@@ -345,17 +501,18 @@ static void prep(VkCommandBuffer cb, VkImageView color_view, VkImageView scene_v
         w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = ds, .dstBinding = (uint32_t)i,
                                       .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &ii[i]};
     vkUpdateDescriptorSets(g_vk.dev, 4, w, 0, NULL);
-    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, prep_pipe);
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, prep_pipe[linear]);
     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, prep_layout, 0, 1, &ds, 0, NULL);
     VkViewport vp = {0, 0, (float)rw, (float)rh, 0, 1};
     VkRect2D sc = {{0, 0}, {rw, rh}};
     vkCmdSetViewport(cb, 0, 1, &vp);
     vkCmdSetScissor(cb, 0, 1, &sc);
-    float pc[24];
+    float pc[28] = {0};
     for (int c = 0; c < 4; c++) for (int r = 0; r < 4; r++) pc[c * 4 + r] = (float)reproj[r * 4 + c];  // (GLSL: column-major)
     pc[16] = jit[0]; pc[17] = jit[1]; pc[18] = (float)rw; pc[19] = (float)rh;
     static int precise = -1;  // [XCDE] T228: our exact camera motion where the game's velocity says the same (tmp_prep.frag)
     if (precise < 0) { const char *e = getenv("XCDE_TMP_VEL_PRECISE"); precise = !(e && *e == '0'); }
+    pc[24] = linear ? 1.0f : 0.0f;
     pc[20] = dm1 ? 1.0f : 0.0f; pc[21] = have_prev ? 1.0f : 0.0f; pc[22] = vel_view ? 1.0f : 0.0f; pc[23] = precise ? 1.0f : 0.0f;
     vkCmdPushConstants(cb, prep_layout, VK_SHADER_STAGE_FRAGMENT_BIT, 0, sizeof pc, pc);
     vkCmdDraw(cb, 3, 1, 0, 0);
@@ -364,6 +521,7 @@ static void prep(VkCommandBuffer cb, VkImageView color_view, VkImageView scene_v
 }
 
 // ---------------------------------------------------------------- FSR 3.1
+#if defined(_WIN32) || defined(XCDE_LINUX_FSR3)
 static ffxContext fsr_ctx;
 static uint32_t fsr_w, fsr_h;
 static void fsr_message(uint32_t type, const wchar_t *msg) {
@@ -392,7 +550,10 @@ static bool fsr_context(uint32_t ow, uint32_t oh) {
     struct ffxCreateBackendVKDesc be = {.header = {.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_BACKEND_VK},
                                         .vkDevice = g_vk.dev, .vkPhysicalDevice = g_vk.phys, .vkDeviceProcAddr = ffx_proc};
     struct ffxCreateContextDescUpscale cd = {.header = {.type = FFX_API_CREATE_CONTEXT_DESC_TYPE_UPSCALE, .pNext = &be.header},
-                                             .flags = FFX_UPSCALE_ENABLE_DEPTH_INFINITE | FFX_UPSCALE_ENABLE_NON_LINEAR_COLORSPACE |
+                                             .flags = FFX_UPSCALE_ENABLE_DEPTH_INFINITE |
+#ifdef _WIN32
+                                                      FFX_UPSCALE_ENABLE_NON_LINEAR_COLORSPACE |
+#endif
                                                       FFX_UPSCALE_ENABLE_DYNAMIC_RESOLUTION,
                                              .maxRenderSize = {ow, oh}, .maxUpscaleSize = {ow, oh}, .fpMessage = fsr_message};
     if (env_int("XCDE_TMP_DEBUG")) cd.flags |= FFX_UPSCALE_ENABLE_DEBUG_CHECKING;
@@ -419,7 +580,32 @@ static struct FfxApiResource res(Img *d, uint32_t ffx_fmt, uint32_t usage) {
     return r;
 }
 
+#endif // Windows or native Linux upscaler
+#ifdef _WIN32
 #include "temporal_fg.inc"
+#elif defined(XCDE_LINUX_FRAMEGEN)
+#include "temporal_fg_linux.inc"
+#else
+// Builds without a native interpolation dependency keep ordinary presentation.
+bool tmp_fg_active(void) { return false; }
+bool tmp_frame_gen_wanted(void) { return false; }
+bool tmp_fg_install(VkSwapchainKHR *sc, const VkSwapchainCreateInfoKHR *ci, PFN_vkCreateSwapchainKHR *create,
+    PFN_vkDestroySwapchainKHR *destroy, PFN_vkGetSwapchainImagesKHR *images,
+    PFN_vkAcquireNextImageKHR *acquire, PFN_vkQueuePresentKHR *present) {
+    (void)sc; (void)ci; (void)create; (void)destroy; (void)images; (void)acquire; (void)present;
+    return false;
+}
+void tmp_fg_idle(VkCommandBuffer cb) { (void)cb; }
+VkImageView tmp_fg_hudless_target(void) { return VK_NULL_HANDLE; }
+#ifdef __linux__
+bool tmp_fg_supported(void) { return false; }
+void tmp_fg_invalidate(void) {}
+void tmp_fg_set_rect(float x, float y, float w, float h) { (void)x; (void)y; (void)w; (void)h; }
+bool tmp_fg_record_present(VkCommandBuffer cb, VkImage scene, VkImage *base, float *dt_ms) {
+    (void)cb; (void)scene; (void)base; (void)dt_ms; return false;
+}
+#endif
+#endif
 
 // ---------------------------------------------------------------- per frame
 // [XCDE] T228 research: XCDE_TMP_MV_SHOT=<frame>[,<frame>...] saves the motion vectors handed to DLSS / FSR (img[1],
@@ -499,34 +685,35 @@ static void mv_shot(VkCommandBuffer cb, uint32_t rw, uint32_t rh, const double r
 
 VkImageView tmp_upscale(VkCommandBuffer cb, TexBackend *color, VkImageView color_view, TexBackend *depth, const TmpCamera *cam,
                         const float jitter[2], bool dm1, uint32_t ow, uint32_t oh) {
-    static TmpCamera prev;
-    static uint64_t frames, t_last;
-    static float last_jit[2];
-    if (!cam || !cam->ok || !depth || !(depth->aspect & VK_IMAGE_ASPECT_DEPTH_BIT) || !color) { prev.ok = false; tmp_fg_idle(cb); return VK_NULL_HANDLE; }
-    uint32_t rw = color->width, rh = color->height;
-    if (!rw || !rh || !ow || !oh || ow > 16384 || oh > 16384 || rw > ow + 1 || rh > oh + 1) { prev.ok = false; tmp_fg_idle(cb); return VK_NULL_HANDLE; }
+    double reproj[16];
+    bool have_prev;
+    uint32_t rw = color ? color->width : 0, rh = color ? color->height : 0;
+    int provider=temporal_provider(rw,rh,ow,oh);
+    uint64_t frame = renderer_present_count();
+    static int reported_provider=-1;
+    if(reported_provider!=provider) {
+        if(g_settings.upscaler==UPSCALE_FSR4_LITE)LOG("[tmp] effective provider %s: %s\n",provider==3?"FSR4 Lite":provider==1?"FSR3":"spatial",tmp_fsr4_status());
+        reported_provider=provider;
+    }
+    if (!provider || !color || !color->image || !color_view || !depth || !depth->image || !(depth->aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ||
+        !history_prepare(cam, jitter, rw, rh, ow, oh, provider, frame, reproj, &have_prev)) {
+        history_invalidate();
+        tmp_fg_idle(cb);
+        return VK_NULL_HANDLE;
+    }
+    bool reset = !have_prev;
     jit_phases = (uint32_t)ceil(8.0 * ((double)ow / rw) * ((double)oh / rh));
     if (jit_phases < 8) jit_phases = 8;
-    // previous view-projection x inverse(current): this frame's NDC -> the previous frame's clip position
-    double cur[16], pv[16], inv[16], reproj[16];
-    mat_from_rows(cam->viewproj, cur);
-    bool have_prev = prev.ok && mat_inv(cur, inv);
-    if (have_prev) { mat_from_rows(prev.viewproj, pv); mat_mul(pv, inv, reproj); }
-    else memset(reproj, 0, sizeof reproj);
-    // a cut (camera jumped): no history
-    bool reset = !prev.ok;
-    if (prev.ok) {
-        double d = 0;
-        for (int i = 0; i < 12; i++) d += fabs((double)cam->view[i] - prev.view[i]);
-        if (d > 1.5) reset = true;  // (a rotation of ~30 degrees or a big translation in one frame)
-    }
-    img_make(&img[0], F_COLOR, rw, rh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
-    img_make(&img[1], F_MV, rw, rh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
-    img_make(&img[2], F_DEPTH, rw, rh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    VkFormat color_format = tmp_linear_output() ? F_LINEAR : F_COLOR;
+    img_make(&img[0], color_format, rw, rh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    img_make(&img[1], F_MV, rw, rh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+                                      VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
+    img_make(&img[2], F_DEPTH, rw, rh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+                                         VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
     img_make(&img[5], F_MASK, rw, rh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
     bool snap = snap_frame == renderer_present_count() && img[4].b.image && img[4].b.width == color->width &&
                 img[4].b.height == color->height && !env_int("XCDE_TMP_NO_HUD_MASK");
-    img_make(&img[3], F_COLOR, ow, oh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
+    img_make(&img[3], color_format, ow, oh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
                                        VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
     // [XCDE] T213: the upscalers get the image before the HUD; the HUD goes back on top after them (exec.c
     // post_process, tmp_hud.frag). The upscalers undo the jitter on all they get: the HUD, never jittered, shook
@@ -535,7 +722,7 @@ VkImageView tmp_upscale(VkCommandBuffer cb, TexBackend *color, VkImageView color
     VkImageView vel_view = VK_NULL_HANDLE;
     static int use_vel = -1;
     if (use_vel < 0) { const char *e = getenv("XCDE_TMP_GAME_VEL"); use_vel = !(e && *e == '0'); }
-    if (use_vel && have_prev && game_vel && game_vel->image && game_vel_frame == renderer_present_count() &&
+    if (use_vel && have_prev && game_vel && game_vel_frame == renderer_present_count() && game_vel->image &&
         game_vel->format == VK_FORMAT_A2B10G10R10_UNORM_PACK32) {
         static const VkComponentMapping id = {0};
         vel_view = vk_image_view(game_vel, VK_IMAGE_VIEW_TYPE_2D, game_vel->format, 0, 1, 0, 1, id, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -544,7 +731,8 @@ VkImageView tmp_upscale(VkCommandBuffer cb, TexBackend *color, VkImageView color
         if (env_int("XCDE_TMP_LOG") && (nl < 6 ? (frames % 60) == 0 : (frames % 600) == 0)) {
             nl++;
             LOG("[tmp] game velocity %s (seen frame %llu, now %llu, fmt %d, prev %d)\n", vel_view ? "used" : "NOT used",
-                (unsigned long long)game_vel_frame, (unsigned long long)renderer_present_count(), game_vel ? (int)game_vel->format : -1, have_prev);
+                (unsigned long long)game_vel_frame, (unsigned long long)renderer_present_count(),
+                game_vel && game_vel_frame == renderer_present_count() ? (int)game_vel->format : -1, have_prev);
         }
     }
     if (!getenv("XCDE_TMP_VEL_FIT")) {
@@ -556,51 +744,74 @@ VkImageView tmp_upscale(VkCommandBuffer cb, TexBackend *color, VkImageView color
     mv_shot(cb, rw, rh, reproj, have_prev);  // [XCDE] T228 (research)
     uint64_t now = SDL_GetTicksNS();
     float dt = t_last ? (float)((now - t_last) / 1e6) : 16.7f;
+    if (!isfinite(dt) || dt < 1.0f) dt = 1.0f;
+    if (dt > 100.0f) dt = 100.0f;
     t_last = now;
     bool ok = false;
-    if (use_dlss()) {
-        extern bool dlss_evaluate(VkCommandBuffer cb, const TexBackend *color, const TexBackend *mv, const TexBackend *depth,
-                                  const TexBackend *out, const TexBackend *hud, const float jitter[2], bool reset, const TmpCamera *cam,
-                                  const double reproj[16]);
-        ok = dlss_evaluate(cb, &img[0].b, &img[1].b, &img[2].b, &img[3].b, NULL, jitter, reset, cam, reproj);
-    } else if (ffx_load() && fsr_context(ow, oh)) {
+    if(provider==3) {
+        ok=fsr4_evaluate(cb,&img[0],&img[1],&img[2],&img[3],jitter,reset);
+    } else if (provider == 2) {
+        ok = dlss_evaluate(cb, &img[0].b, &img[1].b, &img[2].b, &img[3].b, &img[5].b, jitter, reset, cam, reproj, vk_pending_seq(), vk_completed_seq());
+    }
+#if defined(_WIN32) || defined(XCDE_LINUX_FSR3)
+    else if (ffx_load() && fsr_context(ow, oh)) {
+#if defined(__linux__) || defined(_WIN32)
+        // The SDK rotates descriptors/constants through four slots. A slot must
+        // be complete before reuse even when our producer records ahead.
+        if (fsr_ring[fsr_slot] > vk_completed_seq()) {
+            if (fsr_ring[fsr_slot] >= vk_pending_seq()) { history_invalidate(); tmp_fg_idle(cb); return VK_NULL_HANDLE; }
+            vk_wait_seq(fsr_ring[fsr_slot]);
+        }
+        fsr_ring[fsr_slot] = vk_pending_seq(); fsr_slot = (fsr_slot+1)%4;
+#endif
         struct ffxDispatchDescUpscale d;
         memset(&d, 0, sizeof d);
         d.header.type = FFX_API_DISPATCH_DESC_TYPE_UPSCALE;
         d.commandList = (void *)cb;
-        d.color = res(&img[0], FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM, FFX_API_RESOURCE_USAGE_READ_ONLY);
+        d.color = res(&img[0], tmp_linear_output() ? FFX_API_SURFACE_FORMAT_R16G16B16A16_FLOAT : FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM, FFX_API_RESOURCE_USAGE_READ_ONLY);
         d.motionVectors = res(&img[1], FFX_API_SURFACE_FORMAT_R16G16_FLOAT, FFX_API_RESOURCE_USAGE_READ_ONLY);
         d.depth = res(&img[2], FFX_API_SURFACE_FORMAT_R32_FLOAT, FFX_API_RESOURCE_USAGE_READ_ONLY);
-        d.output = res(&img[3], FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM, FFX_API_RESOURCE_USAGE_UAV);
+        d.output = res(&img[3], tmp_linear_output() ? FFX_API_SURFACE_FORMAT_R16G16B16A16_FLOAT : FFX_API_SURFACE_FORMAT_R8G8B8A8_UNORM, FFX_API_RESOURCE_USAGE_UAV);
 
+        d.reactive = res(&img[5], FFX_API_SURFACE_FORMAT_R8_UNORM, FFX_API_RESOURCE_USAGE_READ_ONLY);
         d.jitterOffset.x = jitter[0];
         d.jitterOffset.y = jitter[1];
         d.motionVectorScale.x = (float)rw;
         d.motionVectorScale.y = (float)rh;
         d.renderSize.width = rw; d.renderSize.height = rh;
         d.upscaleSize.width = ow; d.upscaleSize.height = oh;
-        d.enableSharpening = true;
-        d.sharpness = 0.3f;
+        d.sharpness = xcde_sharpness(&g_settings);
+        d.enableSharpening = d.sharpness > 0.0f;
         d.frameTimeDelta = dt;
         d.preExposure = 1.0f;
         d.reset = reset;
         float p11 = cam->proj[5];
         d.cameraNear = cam->proj[11] != 0 ? fabsf(cam->proj[11]) * 0.5f : 0.1f;  // (GL infinite projection: row 2 w = -2 near)
-        d.cameraFar = 1e6f;
+        d.cameraFar = FLT_MAX;
         d.cameraFovAngleVertical = p11 != 0 ? 2.0f * atanf(1.0f / fabsf(p11)) : 0.785f;
         d.viewSpaceToMetersFactor = 1.0f;
-        d.flags = FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_SRGB | (env_int("XCDE_TMP_DEBUG") ? FFX_UPSCALE_FLAG_DRAW_DEBUG_VIEW : 0);
+        d.flags = (env_int("XCDE_TMP_DEBUG") ? FFX_UPSCALE_FLAG_DRAW_DEBUG_VIEW : 0);
+#ifdef _WIN32
+        d.flags |= FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_SRGB;
+#endif
         ffxReturnCode_t r = ffx_dispatch(&fsr_ctx, &d.header);
         ok = r == FFX_API_RETURN_OK;
         if (!ok) { static int n; if (n++ < 5) LOG("[tmp] FSR dispatch failed: %u\n", r); }
     }
+#endif
     vk_full_barrier(cb);
+#ifdef _WIN32
     fg_frame(cb, ok, cam, jitter, rw, rh, dt, reset);
+#elif defined(XCDE_LINUX_FRAMEGEN)
+    if (ok) linux_fg_prepare(cam, jitter, rw, rh, dt, reset);
+    else linux_fg_reset();
+#else
+    (void)dt;
+#endif
     if (env_int("XCDE_TMP_LOG") && (frames++ % 60) == 0)
         LOG("[tmp] %ux%u -> %ux%u jitter %.3f %.3f (%u phases) %s%s near %.3f fov %.1f proj11 %.3f\n", rw, rh, ow, oh, jitter[0],
             jitter[1], jit_phases, reset ? "reset " : "", ok ? "ok" : "FAILED", cam->proj[11] * 0.5, 2 * atan(1.0 / cam->proj[5]) * 57.2958,
             cam->proj[5]);
-    last_jit[0] = jitter[0]; last_jit[1] = jitter[1];
-    prev = *cam;
+    history_commit(cam, rw, rh, ow, oh, provider, frame, ok);
     return ok ? img[3].v : VK_NULL_HANDLE;
 }

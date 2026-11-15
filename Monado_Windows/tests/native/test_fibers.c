@@ -5,12 +5,18 @@
 #include <string.h>
 #include <windows.h>
 #include <process.h>
+#include <setjmp.h>
 
 #include "../../runtime/cpu.h"
+#include "../../runtime/platform/guest_fp_windows.h"
+#include "../../runtime/hle/fibers.h"
 
 // ---- hooks the fiber layer expects from the runtime
 void guest_call(Cpu *c, uint64_t addr) { ((void (*)(Cpu *))(uintptr_t)addr)(c); }
 void rt_fatal_trace(void) { fflush(stdout); abort(); }
+static jmp_buf unwind_root;
+static unsigned unwind_routes;
+void kernel_fiber_unwind(void) { ++unwind_routes; fibers_prepare_unwind(); longjmp(unwind_root, 1); }
 
 // ---- the HLE entry points under test (runtime/hle/fibers.c)
 extern void hle__ZN2nn2os15InitializeFiberEPNS0_9FiberTypeEPFS2_PvES3_S3_mi(Cpu *c);
@@ -89,6 +95,7 @@ static unsigned __stdcall thread1(void *p) {
     fib_switch(&root, shared_fiber);   // runs to its own suspend
     SetEvent(ev_suspended);
     WaitForSingleObject(ev_done, 10000);
+    fibers_thread_cleanup();
     return 0;
 }
 static unsigned __stdcall thread2(void *p) {
@@ -97,6 +104,7 @@ static unsigned __stdcall thread2(void *p) {
     root.tpidr = 0x2222;
     fib_switch(&root, shared_fiber);   // resume on this thread
     fib_final(&root, shared_fiber);
+    fibers_thread_cleanup();
     return 0;
 }
 static void test_migration(void) {
@@ -111,6 +119,7 @@ static void test_migration(void) {
     CHECK(tp_before == 0x1111);
     CHECK(tp_after == 0x2222);
     if (tp_after != 0x2222) printf("  tp_before=%llx tp_after=%llx\n", (unsigned long long)tp_before, (unsigned long long)tp_after);
+    CloseHandle(t1); CloseHandle(t2); CloseHandle(ev_suspended); CloseHandle(ev_done);
 }
 
 // many create/switch/finalize cycles: no growth, no crash
@@ -127,11 +136,90 @@ static void test_churn(void) {
     CHECK(1);
 }
 
-int main(void) {
+// [XCDE] WINPARITY-001: creator state must not leak into guest-thread arithmetic,
+// and suspended helpers must retain their own MXCSR across root/fiber switches.
+static void fn_fp(Cpu *c) {
+    CHECK(_mm_getcsr() == 0x1f80);
+    c->fpcr = 0x400000; c->fpsr = 0x15;
+    _mm_setcsr(0x3f85);  // downward rounding and independent sticky flags
+    fib_switch(c, 0);
+    CHECK(_mm_getcsr() == 0x3f85);
+    CHECK(c->fpcr == 0x400000 && c->fpsr == 0x15);
+    c->x[0] = 0;
+}
+static void test_fp(void) {
+    unsigned saved = _mm_getcsr();
+    _mm_setcsr(0xffc1); // upward creator state, DAZ/FTZ and a sticky flag
+    CHECK(monado_windows_guest_fp_init());
+    CHECK(_mm_getcsr() == 0x1f80);
+    Cpu root = {0};
+    fib_init(&root, F_A, fn_fp, 0, (uint64_t)(uintptr_t)stackmem[0], sizeof stackmem[0]);
+    fib_switch(&root, F_A);
+    CHECK(_mm_getcsr() == 0x1f80);
+    _mm_setcsr(0x5f82);
+    fib_switch(&root, F_A);
+    CHECK(_mm_getcsr() == 0x5f82);
+    fib_final(&root, F_A);
+    _mm_setcsr(saved);
+}
+
+static void fn_unwind(Cpu *c) { (void)c; _mm_setcsr(0xffc1); kernel_fiber_unwind(); }
+static void test_nonlocal_unwind(void) {
+    Cpu root = {0};
+    volatile unsigned cleanup_passes = 0;
+    CHECK(!IsThreadAFiber());
+    CHECK(monado_windows_guest_fp_init());
+    if (!setjmp(unwind_root)) {
+        fib_init(&root, F_A, fn_unwind, 0, (uint64_t)(uintptr_t)stackmem[0], sizeof stackmem[0]);
+        fib_switch(&root, F_A);
+        CHECK(0);
+    }
+    ++cleanup_passes;
+    fprintf(stderr, "fiber fixture: cleanup pass %u\n", cleanup_passes);
+    fibers_thread_cleanup();
+    CHECK(cleanup_passes == 1 && unwind_routes == 2); // fiber requests unwind, restored root executes longjmp
+    CHECK(!IsThreadAFiber());
+    CHECK(_mm_getcsr() == 0x1f80);
+    CHECK(fibers_reset() == 1); // abandoned context reclaimed only after root cleanup
+}
+
+static void test_borrowed_root(void) {
+    CHECK(ConvertThreadToFiberEx(NULL, FIBER_FLAG_FLOAT_SWITCH) != NULL);
+    Cpu root = {0};
+    fib_init(&root, F_A, fn_quick, 0, (uint64_t)(uintptr_t)stackmem[0], sizeof stackmem[0]);
+    fib_switch(&root, F_A); fib_final(&root, F_A);
+    fibers_thread_cleanup();
+    CHECK(IsThreadAFiber()); // external native fiber ownership is preserved
+    CHECK(ConvertFiberToThread());
+    CHECK(fibers_reset() == 0);
+}
+static void fn_bad_finalize(Cpu *c) { fib_final(c, F_A); c->x[0] = 0; }
+
+int main(int argc, char **argv) {
+    setvbuf(stdout, NULL, _IONBF, 0);
+    if (argc == 2 && !strcmp(argv[1], "finalize-running")) {
+        Cpu root = {0};
+        fib_init(&root, F_A, fn_bad_finalize, 0, (uint64_t)(uintptr_t)stackmem[0], sizeof stackmem[0]);
+        fib_switch(&root, F_A);
+        return 99; // must refuse before returning here
+    }
+    fprintf(stderr, "fiber fixture: ping pong\n");
     test_ping_pong();
+    fprintf(stderr, "fiber fixture: thread block\n");
     test_thread_block();
+    fprintf(stderr, "fiber fixture: migration\n");
     test_migration();
+    fprintf(stderr, "fiber fixture: FP\n");
+    test_fp();
+    fprintf(stderr, "fiber fixture: churn\n");
     test_churn();
+    fprintf(stderr, "fiber fixture: root cleanup\n");
+    fibers_thread_cleanup();
+    CHECK(!IsThreadAFiber());
+    CHECK(fibers_reset() == 0);
+    fprintf(stderr, "fiber fixture: nonlocal unwind\n");
+    test_nonlocal_unwind();
+    test_borrowed_root();
     printf(fails ? "FAILED (%d)\n" : "OK\n", fails);
     return fails ? 1 : 0;
 }

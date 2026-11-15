@@ -35,6 +35,8 @@ typedef struct {
     VkSemaphore timeline;      // value = last completed submission number
     VkCommandPool pool;        // render thread only
     bool custom_border, divisor, host_import, robust2, logic_op, minmax;
+    bool sampler_anisotropy; // actual enabled device feature
+    bool feedback_loop; // actual enabled attachment feedback-loop feature
     bool gpl;  // [XCDE] T188: VK_EXT_graphics_pipeline_library with fast linking (exec.c build_pipeline)
     // [XCDE] FSR 3 frame generation's queues (device.c create_device): present, image acquire, async compute; fam UINT32_MAX: none
     VkQueue fg_queue[3];
@@ -58,6 +60,8 @@ uint64_t vk_pending_seq(void);        // number the pending submission will get
 uint64_t vk_completed_seq(void);
 void vk_wait_seq(uint64_t seq);
 void vk_full_barrier(VkCommandBuffer cb);
+void vk_feedback_boundary(void);
+void vk_feedback_texture_gone(NvnTexture *t);
 void vk_end_pass(void);
 void vk_submit_extra(VkSemaphore wait, VkSemaphore signal, VkCommandBuffer extra);  // submit + one more cb (present)
 
@@ -71,6 +75,8 @@ VkDescriptorSet vk_alloc_set(VkDescriptorSetLayout layout);
 // ---- textures (textures.c)
 typedef struct TexBackend {
     VkImage image;
+    uint64_t image_identity; // allocation serial retained across resets
+    bool feedback_usage;
     VmaAllocation mem;
     VkFormat format;
     VkImageViewType base_type;
@@ -117,6 +123,8 @@ VkImageView vk_image_view(TexBackend *b, VkImageViewType type, VkFormat fmt, uin
                           uint32_t nly, VkComponentMapping sw, VkImageAspectFlags aspect);
 VkImageView vk_dummy_view(int textype);
 VkSampler vk_sampler(NvnSamplerDesc *d);
+VkSampler vk_sampler_filtered(NvnSamplerDesc *d, bool color, bool integer, bool shadow, unsigned levels);
+void vk_sampler_variants_reset(void); // GPU idle only
 VkSampler vk_default_sampler(bool linear);
 void vk_image_init_layout(VkCommandBuffer cb, VkImage img, VkImageAspectFlags aspect);
 // Destruction once every submission that may use the object has completed.

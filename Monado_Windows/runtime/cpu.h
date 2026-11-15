@@ -43,7 +43,8 @@ static inline void rt_set_fpcr(uint64_t v) { __asm__ volatile("msr fpcr, %0" :: 
 static inline void rt_set_fpsr(uint64_t v) { __asm__ volatile("msr fpsr, %0" :: "r"(v)); }
 #else
 // Host FP state is not the guest's here: code lifted with --simd=c keeps FPCR/FPSR in Cpu (c->fpcr, zeroed
-// with the Cpu), so the host-side reset in thread start-up has nothing to do.
+// with the Cpu). Host thread startup separately establishes its native FP
+// baseline through plat_guest_fp_init; these accessors do not reset host FP.
 static inline uint64_t rt_get_fpcr(void) { return 0; }
 static inline uint64_t rt_get_fpsr(void) { return 0; }
 static inline void rt_set_fpcr(uint64_t v) { (void)v; }

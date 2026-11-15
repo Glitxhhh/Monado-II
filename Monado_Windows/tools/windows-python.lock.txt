@@ -1,0 +1,6 @@
+# Official PyPI wheel hashes for native Windows CPython 3.14 x64.
+ziglang==0.14.1 --hash=sha256:e4f7e089a44d5ce34181853a90cdb8456e63c6640f5d44b844a117055326c375
+capstone==5.0.6 --hash=sha256:761c3deae00b22ac697081cdae1383bb90659dd0d79387a09cf5bdbb22b17064
+unicorn==2.1.4 --hash=sha256:d7107500c64ce5c168fbff6bef9485b5db1350050036f4cea568650cf8bdbdf5
+lz4==4.4.5 --hash=sha256:92159782a4502858a21e0079d77cdcaade23e8a5d252ddf46b0652604300d7be
+zstandard==0.25.0 --hash=sha256:c19bcdd826e95671065f8692b5a4aa95c52dc7a02a4c5a0cac46deb879a017a2

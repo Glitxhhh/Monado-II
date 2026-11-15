@@ -43,7 +43,8 @@ extern "C" {
 #endif
 
 // Loads the game code for the game files in game_dir (once; later calls return the first result). Looks at
-// LARECOMP_GAME_LIB, next to the executable (a source checkout's build/), then game_dir. false: why says what's wrong.
+// On Windows only the owned, receipted companion beside the exact executable is
+// eligible. Other ports retain their documented candidate policy. false: why says what's wrong.
 bool gamelib_load(const char *game_dir, char *why, size_t why_size);
 // The tables of the loaded library (NULL before gamelib_load succeeds).
 const GameLibTables *gamelib_tables(void);

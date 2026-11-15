@@ -1,8 +1,15 @@
+#ifdef _WIN32
+#define _CRT_RAND_S
+#endif
 // Monado launcher: edits xcde.ini (graphics, scaling, controls, audio, language) and starts the game.
 // Standalone (SDL3 + Dear ImGui with the SDL renderer); the game reads the same file when its window opens
 // (runtime/host/settings_ini.c). Build: tools/launcher/build.sh. Run: "Play Monado.bat" at the repository root.
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
+#include "../../runtime/platform/sdl_controller_diagnostics.h"  // [XCDE] LINUX-077
+#include "../../runtime/settings.h" // [XCDE] LINUX-089: shared aspect indices/default.
+#include "../../runtime/gpu_selection.h" // [XCDE] LINUX-103: stable adapter preference
+#include "../../runtime/quality_policy.h" // [XCDE] LINUX-103: shared config semantics.
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -12,10 +19,27 @@
 #include <sys/stat.h>
 #include <algorithm>
 #include <vector>
+#include <map>
+#ifdef __linux__
+#include "linux_host.h"
+#include "linux_gpu_probe.h" // [XCDE] LINUX-103: read-only GPU capability query
+#include "linux_report.h" // [XCDE] LINUX-103
+#include "linux_precompile.h"  // [XCDE] LINUX-018
+#include "input_recovery.h" // Native picker before profile, state or game initialization.
+#endif
 
 #include "imgui.h"
 #include "imgui_impl_sdl3.h"
 #include "imgui_impl_sdlrenderer3.h"
+#include "theme.h"
+#ifdef _WIN32
+#include "windows_host.h"
+#include "windows_profile.h"
+#include "windows_report.h"
+#include "windows_gpu_probe.h"
+#include "../../runtime/host/settings_transaction_windows.h"
+#endif
+#include "../../runtime/ui/quality_controls_linux.h" // shared portable quality UI
 
 #ifdef _WIN32
 #include <windows.h>
@@ -78,20 +102,38 @@ static int key_from_ini(const char *v) {
 
 struct Cfg {
     bool fullscreen = false;
+    int aspect = ASPECT_ORIGINAL; // [XCDE] LINUX-089: non-original framing is opt-in.
     int win = 0;            // index into k_wins
     int res = 0;            // index into k_res
     int upscaler = 1;       // 0 bilinear, 1 FSR 1, 2 FSR 3.1, 3 DLSS
     int uquality = 1;       // FSR 3 / DLSS: 0 native AA, 1 quality, 2 balanced, 3 performance, 4 ultra performance
     bool frame_gen = false;
+    bool frame_gen_smooth_motion = false; // [XCDE] LINUX-097: external, restart required
+    bool frame_gen_match_display = false; // [XCDE] LINUX-097: preserve legacy native-cap behavior
     bool smaa = false;
     bool dof = true;        // the game's depth of field (T183)
     bool game_blur = true;  // the game's own AA / temporal AA / motion blur (lib_nx.ini)
+    // [XCDE] LINUX-103: independent original-default quality preferences.
+    int quality_preset = QUALITY_CUSTOM;
+    int dynamic_min_height = 0, dynamic_max_height = 0;
+    float upscale_sharpness = -1.f;
+    bool taa_off = false, input_rumble = false;
+    int grass_lod = GRASS_ORIGINAL;
+    GraphicsOptions graphics = {};
+    char gpu_uuid[33] = {}; // [XCDE] LINUX-103: automatic unless explicitly selected
     bool vsync = true;      // FIFO presentation at 30 / 60 fps
     int cutscenes = 0;      // T224: 0 at the FPS setting, 1 at 30 (xcde.ini cutscenes = same | 30)
     bool cut_fg = false;    // T224: cutscenes at 30 + frame generation, gameplay without it (xcde.ini cutscenes = 30fg)
+    bool quickstep_slot = false; // [XCDE] LINUX-039: optional per-character gem slot
     bool party_switch = false;  // party mod: switch the controlled character (F2 / L2 + L1 / R1), runtime/hle/party.c
+    // [XCDE] LINUX-072: independent opt-ins; integer percentages preserve 0.01x steps.
+    bool cheat_enabled[6] = {};
+    int cheat_percent[6] = {100, 100, 100, 100, 100, 100};
+    bool cheat_no_fall_damage = false;
     bool show_fps = false;
+    bool show_fps_overlay = false; // [XCDE] LINUX-094: separate from the legacy title-bar preference
     int fps = 0;  // index into k_fps_ini
+    int menu_navigation_speed = 0;  // 0 normal (30 FPS style), 1 fast (60 FPS style)
     int volume = 100;
     bool movie_audio = true;
     int lang = 0;           // index into k_langs
@@ -122,9 +164,14 @@ static int icons_effective(int sel) {
     return t == SDL_GAMEPAD_TYPE_XBOX360 || t == SDL_GAMEPAD_TYPE_XBOXONE ? 2 :
            t == SDL_GAMEPAD_TYPE_PS3 || t == SDL_GAMEPAD_TYPE_PS4 || t == SDL_GAMEPAD_TYPE_PS5 ? 3 : 1;
 }
-static const char *const k_ups_ini[] = {"bilinear", "fsr", "fsr3", "dlss"};
+static const char *const k_ups_ini[] = {"bilinear", "fsr", "fsr3", "dlss", "fsr4_lite"};
 static const char *const k_uq_ini[] = {"native", "quality", "balanced", "performance", "ultra"};
-static const char *const k_wins[] = {"1280x720", "1600x900", "1920x1080", "2560x1440", "3840x2160"};
+// [XCDE] LINUX-089: stable native/original keys; fixed ratios are independent of window size.
+static const char *const k_aspect_ini[N_ASPECTS] = {"native", "original", "16:10", "21:9", "32:9"};
+// [XCDE] LINUX-089: retain the old preset indices, then add native handheld/ultrawide sizes.
+static const char *const k_wins[] = {"1280x720", "1600x900", "1920x1080", "2560x1440", "3840x2160",
+    "1280x800", "1920x1200", "2560x1600", "2560x1080", "3440x1440", "5120x1440", "7680x2160"};
+static constexpr int N_WINS = sizeof k_wins / sizeof *k_wins;
 static const char *const k_res_ini[] = {"match", "1", "2", "3", "75%", "50%", "dynamic"};
 static const char *const k_res_ui[] = {"Igual que la ventana (recomendado)", "1x - 720p (como Switch)", "2x - 1440p",
                                        "3x - 2160p (4K)", "75% de la ventana", "50% de la ventana", "Dinámica (según rendimiento)"};
@@ -133,9 +180,96 @@ static const char *const k_lang_ini[] = {"auto", "en-US", "es", "fr", "de", "it"
 static const char *const k_lang_ui[] = {"Inglés (por defecto)", "Inglés", "Español", "Francés", "Alemán", "Italiano", "Japonés"};
 
 static Cfg g;
+static const int quality_res_values[]={RES_MATCH,1,2,3,RES_Q75,RES_Q50,RES_DYNAMIC};
+static Settings quality_settings() {
+    Settings s{};
+    s.res_mode=quality_res_values[g.res>=0 && g.res<7?g.res:0];
+    s.upscaler=g.upscaler==4?UPSCALE_FSR4_LITE:g.upscaler==3?UPSCALE_DLSS:g.upscaler==2?UPSCALE_FSR3:g.upscaler==1?UPSCALE_FSR1:UPSCALE_BILINEAR;
+    s.dof_off=!g.dof;s.game_blur=g.game_blur;
+    s.quality_preset=g.quality_preset;s.dynamic_min_height=g.dynamic_min_height;s.dynamic_max_height=g.dynamic_max_height;
+    s.upscale_sharpness=g.upscale_sharpness;s.taa_off=g.taa_off;s.input_rumble=g.input_rumble;s.grass_lod=g.grass_lod;s.graphics=g.graphics;
+    return s;
+}
+static void quality_from_settings(const Settings &s) {
+    for(int i=0;i<7;i++)if(quality_res_values[i]==s.res_mode)g.res=i;
+    g.dof=!s.dof_off;g.quality_preset=s.quality_preset;g.dynamic_min_height=s.dynamic_min_height;g.dynamic_max_height=s.dynamic_max_height;
+    g.upscale_sharpness=s.upscale_sharpness;g.taa_off=s.taa_off;g.input_rumble=s.input_rumble;g.grass_lod=s.grass_lod;g.graphics=s.graphics;
+}
+static bool quality_load(const char *key,const char *value) {
+    Settings s=quality_settings();if(!xcde_quality_load(&s,key,value))return false;
+    quality_from_settings(s);return true;
+}
+static bool quality_key(const char *key) {
+    Settings s{};return xcde_quality_load(&s,key,"")!=0;
+}
 
+// [XCDE] LINUX-072: launcher cheat configuration, shared key/units contract with settings_ini.c.
+static const char *const k_cheat_ini[] = {"damage_dealt", "damage_received", "exp", "ap", "sp", "gold"};
+static bool cheat_enabled_value(const char *v) { return !strcmp(v, "1") || !strcmp(v, "true"); }
+static int cheat_percent_value(const char *v) {
+    if (!*v) return 100;
+    int value = 0;
+    for (const char *p = v; *p; ++p) {
+        if (*p < '0' || *p > '9') return 100;
+        value = value * 10 + (*p - '0');
+        if (value > 2000) return 100; // bounded before another multiplication, including oversized input
+    }
+    return value;
+}
+static void cheats_reset() {
+    for (int i = 0; i < 6; ++i) { g.cheat_enabled[i] = false; g.cheat_percent[i] = 100; }
+    g.cheat_no_fall_damage = false;
+}
+static bool is_cheat_key(const char *key) {
+    if (!strcmp(key, "cheat_no_fall_damage")) return true;
+    for (const char *name : k_cheat_ini) {
+        const std::string base = std::string("cheat_") + name;
+        if (base == key || base + "_percent" == key) return true;
+    }
+    return false;
+}
+static bool cheats_load(const char *key, const char *value) {
+    if (!strcmp(key, "cheat_no_fall_damage")) { g.cheat_no_fall_damage = cheat_enabled_value(value); return true; }
+    for (int i = 0; i < 6; ++i) {
+        const std::string base = std::string("cheat_") + k_cheat_ini[i];
+        if (base == key) { g.cheat_enabled[i] = cheat_enabled_value(value); return true; }
+        if (base + "_percent" == key) { g.cheat_percent[i] = cheat_percent_value(value); return true; }
+    }
+    return false;
+}
+static void cheats_save(FILE *file) {
+    for (int i = 0; i < 6; ++i) {
+        fprintf(file, "cheat_%s = %d\ncheat_%s_percent = %d\n", k_cheat_ini[i], g.cheat_enabled[i],
+                k_cheat_ini[i], std::clamp(g.cheat_percent[i], 0, 2000));
+    }
+    fprintf(file, "cheat_no_fall_damage = %d\n", g.cheat_no_fall_damage);
+}
+// [XCDE] LINUX-072: end launcher cheat configuration.
+// [XCDE] LINUX-009: preserve runtime values absent from the launcher lists,
+// and unrelated keys, until the user explicitly changes that control.
+static std::map<std::string, std::string> g_custom, g_extra;
+static const char *cfg_value(const char *key, const char *fallback) {
+    auto i = g_custom.find(key); return i == g_custom.end() ? fallback : i->second.c_str();
+}
+static void custom_note(const char *key) {
+    auto i = g_custom.find(key);
+    if (i != g_custom.end()) ImGui::TextDisabled("Current custom value: %s (preserved until changed)", i->second.c_str());
+}
 // [XCDE] launcher language (xcde.ini launcher_lang = es | en): the Spanish text is the key, T() gives the English one.
 static const char *const k_en[][2] = {
+    // [XCDE] LINUX-072: optional launcher cheats and exact percentage controls.
+    {"Trucos", "Cheats"}, {"Combate", "Combat"}, {"Recompensas", "Rewards"}, {"Exploración", "Exploration"},
+    {"Daño causado por el grupo", "Party damage dealt"}, {"Daño recibido por el grupo", "Party damage received"},
+    {"EXP obtenida", "EXP gained"}, {"AP obtenidos", "AP gained"}, {"SP obtenidos", "SP gained"},
+    {"Dinero obtenido", "Gold gained"}, {"Sin daño por caídas", "No fall damage"},
+    {"Cada truco se activa por separado y se aplica al iniciar el juego.",
+     "Each cheat is enabled separately and applies when the game starts."},
+    {"Multiplicadores: de 0x a 20x, en pasos de 0.01x (1%). 1x mantiene la cantidad original.",
+     "Multipliers: 0x to 20x, in 0.01x (1%) steps. 1x keeps the original amount."},
+    {"Ctrl+clic para escribir un porcentaje. Con el control activo, Ctrl+flecha ajusta 1%.",
+     "Ctrl-click to enter a percentage. With the slider active, Ctrl+arrow adjusts 1%."},
+    {"La EXP, AP, SP y el dinero ganados permanecen en la partida al desactivar los trucos.",
+     "EXP, AP, SP and gold already earned remain in your save after disabling cheats."},
     {"A (acción, usar arte, aceptar)", "A (action, use art, confirm)"}, {"B (saltar, atrás)", "B (jump, back)"},
     {"X (menú principal)", "X (main menu)"}, {"Y (mapa)", "Y (map)"}, {"Pulsar stick izq.", "Left stick press"},
     {"Pulsar stick der.", "Right stick press"}, {"L (objetivo anterior)", "L (previous target)"},
@@ -160,6 +294,16 @@ static const char *const k_en[][2] = {
     {"Dinámica (según rendimiento)", "Dynamic (by performance)"},
     {"Inglés (por defecto)", "English (default)"}, {"Inglés", "English"}, {"Español", "Spanish"}, {"Francés", "French"},
     {"Alemán", "German"}, {"Italiano", "Italian"}, {"Japonés", "Japanese"},
+    {"Relación de aspecto", "Aspect ratio"},
+    {"Original (16:9)", "Original (16:9)"},
+    {"Igual que la pantalla (experimental)", "Match the display (experimental)"},
+    {"16:10 (experimental)", "16:10 (experimental)"},
+    {"21:9 (experimental)", "21:9 (experimental)"},
+    {"32:9 (experimental)", "32:9 (experimental)"},
+    {"Vista 3D adaptada; menús y HUD conservan sus proporciones en una zona central de 16:9.",
+     "Adapt the 3D view; menus and HUD keep their proportions in a centered 16:9 area."},
+    {"Las proporciones fijas añaden bandas cuando no coinciden con la ventana o pantalla.",
+     "Fixed ratios add bars when they differ from the window or display."},
     {"Pantalla", "Display"}, {"Pantalla completa", "Fullscreen"}, {"Tamaño de la ventana", "Window size"},
     {"Resolución y escalado", "Resolution and scaling"}, {"Resolución interna", "Internal resolution"},
     {"El juego original renderiza a 720p. Más resolución = imagen más nítida y más carga para la GPU.",
@@ -185,6 +329,11 @@ static const char *const k_en[][2] = {
      "With 'Internal resolution' on 'Match the window': the resolution rendered\n"
      "before reconstruction (percentage of the window's side)."},
     {"Generación de frames (FSR 3)", "Frame generation (FSR 3)"},
+    // [XCDE] Linux experimental feature status; Windows labels stay unchanged.
+    {"Generación de frames (FSR 3, experimental)", "Frame generation (FSR 3, experimental)"},
+    {"Generación de frames solo en cinemáticas (experimental)", "Frame generation in cutscenes only (experimental)"},
+    {"Experimental: puede funcionar lentamente y mostrar errores visuales. Se recomienda dejarla desactivada por ahora.",
+     "Experimental: performance varies; may run slowly, stutter or show visual glitches. Leaving it off is recommended."},
     {"Inserta un frame interpolado entre cada dos del juego en todo el juego: el doble de imágenes\n"
      "por segundo (p. ej. FPS 30 -> 60 en pantalla). La de AMD: funciona con FSR 3.1 y con DLSS.\n"
      "Añade algo de latencia. Se aplica al iniciar el juego.",
@@ -213,7 +362,20 @@ static const char *const k_en[][2] = {
      "Switch's 720p: at 1080p or more they soften the whole image.\n"
      "Off: a sharp image (combine it with SMAA for the edges)."},
     {"Mostrar FPS en la barra de título", "Show FPS in the title bar"}, {"Velocidad", "Speed"},
+    {"Mostrar FPS en pantalla", "Show FPS on screen"},
+    {"Muestra los FPS reales del juego, también en pantalla completa.\nNo incluye imágenes generadas ni presentaciones repetidas.",
+     "Shows rendered game FPS, including in fullscreen.\nExcludes generated frames and repeated presentations."},
     {"30 (como en Switch)", "30 (like Switch)"}, {"Sin límite", "Unlimited"},
+    {"Ranura exclusiva de Paso rápido", "Dedicated Quick Step gem slot"},
+    {"Equipa una gema de Paso rápido en una ranura propia del personaje, incluso sin botas.", "Equip a Quick Step gem in a character-owned slot, including without boots."},
+    {"Función opcional estable. Desactivada por defecto para quienes prefieren el sistema de equipo original.", "Stable optional feature. Off by default for players who prefer the original equipment setup."},
+    {"Velocidad de navegación en menús", "Menu navigation speed"},
+    {"Normal (estilo de 30 FPS)", "Normal (30 FPS style)"},
+    {"Rápida (estilo de 60 FPS)", "Fast (60 FPS style)"},
+    {"Controla las direcciones mantenidas en los menús y la selección de artes.\n"
+     "Rápida repite al doble de velocidad. La velocidad del juego y las animaciones de los menús no cambian.",
+     "Controls held directions in menus and arts selection.\n"
+     "Fast repeats twice as quickly. Game speed and menu animations are unchanged."},
     {"Más de 30: la velocidad del mundo, el reloj y las escenas no cambian (probado a 60 y 120);\n"
      "la cámara queda un poco más lejos. El V-Sync forzado en el panel de NVIDIA / AMD o el límite\n"
      "de RivaTuner también limitan los FPS: déjalos en 'configuración de la aplicación' / 0.",
@@ -329,7 +491,43 @@ static const char *T(const char *es) {
 // (combo lists: each element through T)
 struct TList { const char *p[48]; };
 static TList TL(const char *const *a, int n) { TList t{}; for (int i = 0; i < n && i < 48; i++) t.p[i] = T(a[i]); return t; }
-static std::string g_root;  // repository root (where targets/, build/, xcde.ini live)
+static std::string g_root;  // Profile state: settings, targets, saves, caches and logs.
+#ifdef _WIN32
+static std::string g_runtime_root; // Authored executable/dependencies remain adjacent to launcher.
+#endif
+#ifdef __linux__
+static bool g_fsr3_available, g_fsr4_available;
+static std::string g_fsr4_unavailable_reason;
+static bool linux_fsr4_available(){return g_fsr4_available||launcher_linux::fsr4_models_ready;}
+static bool linux_component_hint(const char *value, bool *out) {
+    if (!value || (strcmp(value,"0") && strcmp(value,"1"))) return false;
+    *out=!strcmp(value,"1"); return true;
+}
+// [XCDE] LINUX-017: feature choice follows the selected game's local resources.
+static bool linux_dlss_packaged() {
+    auto slash = launcher_linux::game.find_last_of('/');
+    if (slash == std::string::npos) return false;
+    auto parent = launcher_linux::game.substr(0, slash + 1);
+    return access((parent + "libmonado-ngx.so").c_str(), R_OK) == 0 &&
+           access((parent + "libnvidia-ngx-dlss.so.310.9.1").c_str(), R_OK) == 0;
+}
+static bool linux_framegen_packaged() {
+    auto slash = launcher_linux::game.find_last_of('/');
+    if (slash == std::string::npos) return false;
+    const auto parent = launcher_linux::game.substr(0, slash + 1);
+    return access((parent + "libmonado-fidelityfx.so").c_str(), R_OK) == 0 &&
+        access((parent + "FidelityFX-MIT.txt").c_str(), R_OK) == 0;
+}
+static void linux_graphics_normalize() {
+    if ((g.upscaler == 2 && !g_fsr3_available) || (g.upscaler==4&&!linux_fsr4_available()) || g.upscaler < 0 || g.upscaler > 4 || (g.upscaler == 3 && !linux_dlss_packaged())) g.upscaler = 1;
+    // [XCDE] LINUX-097: never run two generation methods together. Resolve a
+    // malformed mixed request before capability fallback, so it fails closed.
+    if (g.frame_gen || g.cut_fg) g.frame_gen_smooth_motion = false;
+    if ((g.upscaler != 2 && g.upscaler != 3 && g.upscaler!=4) || !linux_framegen_packaged()) g.frame_gen = g.cut_fg = false;
+    if (!launcher_linux::smooth_motion_layer_available) g.frame_gen_smooth_motion = false;
+}
+#endif
+
 
 static std::string path(const char *rel) { return g_root + "/" + rel; }
 struct Mod { std::string name; bool on = true; bool present = true; };
@@ -341,11 +539,25 @@ static int find(const char *const *list, int n, const char *v) {
 }
 
 static void load() {
+    g.aspect = ASPECT_ORIGINAL; // [XCDE] LINUX-089: missing/invalid preference preserves vanilla framing.
+    g.gpu_uuid[0]=0;
+    g.menu_navigation_speed = 0;
+    g.quickstep_slot = false; // [XCDE] LINUX-039: missing/invalid key resets OFF
+    g.show_fps_overlay = false; // [XCDE] LINUX-094: independent opt-in on every load
+    g.frame_gen = g.cut_fg = false;
+    g.frame_gen_smooth_motion = g.frame_gen_match_display = false; // [XCDE] LINUX-097
+#if defined(__linux__) || defined(_WIN32)
+    { Settings s=quality_settings();xcde_quality_defaults(&s);quality_from_settings(s); }
+#endif
+    cheats_reset(); // [XCDE] LINUX-072: old/missing configurations always opt out.
     for (int i = 0; i < NPAD; i++) g.pad[i] = k_def_pad[i];
     for (int i = 0; i < NACT; i++) g.key[i] = k_def_key[i], g.key2[i] = k_def_key2[i];
-    FILE *f = fopen(path("xcde.ini").c_str(), "r");
+    FILE *f = monado_launcher_windows::open(path("xcde.ini"), "r");
     if (!f) return;
     int layout = 1;  // (bind_layout: an older file's keyboard lines are the old layout - the new defaults replace them)
+#if defined(__linux__) || defined(_WIN32)
+    bool quality_present = false; // [XCDE] LINUX-056: explicit choices survive reload, regardless of key order.
+#endif
     char line[512];
     while (fgets(line, sizeof line, f)) {
         char *eq = strchr(line, '=');
@@ -358,12 +570,21 @@ static void load() {
         while (*v == ' ' || *v == '\t') v++;
         for (char *e = v + strlen(v); e > v && (e[-1] == ' ' || e[-1] == '\t' || e[-1] == '\r' || e[-1] == '\n'); ) *--e = 0;
         int i;
-        if (!strcmp(k, "fullscreen")) g.fullscreen = atoi(v) != 0;
-        else if (!strcmp(k, "window") && (i = find(k_wins, 5, v)) >= 0) g.win = i;
+        if (!strcmp(k, "aspect_ratio")) g.aspect = (i = find(k_aspect_ini, N_ASPECTS, v)) >= 0 ? i : ASPECT_ORIGINAL;
+        else if (!strcmp(k,"gpu_uuid")) monado_gpu_uuid_normalize(v,g.gpu_uuid);
+        else if (!strcmp(k, "fullscreen")) g.fullscreen = atoi(v) != 0;
+        else if (!strcmp(k, "window") && (i = find(k_wins, N_WINS, v)) >= 0) g.win = i;
         else if (!strcmp(k, "resolution") && (i = find(k_res_ini, 7, v)) >= 0) g.res = i;
-        else if (!strcmp(k, "upscaler")) g.upscaler = !strcmp(v, "fsr") ? 1 : !strcmp(v, "fsr3") ? 2 : !strcmp(v, "dlss") ? 3 : 0;
-        else if (!strcmp(k, "upscale_quality") && (i = find(k_uq_ini, 5, v)) >= 0) g.uquality = i;
+        else if (!strcmp(k, "upscaler")) g.upscaler = !strcmp(v, "fsr") ? 1 : !strcmp(v, "fsr3") ? 2 : !strcmp(v, "dlss") ? 3 : !strcmp(v,"fsr4_lite") ? 4 : 0;
+        else if (!strcmp(k, "upscale_quality") && (i = find(k_uq_ini, 5, v)) >= 0) {
+            g.uquality = i;
+#if defined(__linux__) || defined(_WIN32)
+            quality_present = true;
+#endif
+        }
         else if (!strcmp(k, "frame_gen")) g.frame_gen = atoi(v) != 0;
+        else if (!strcmp(k, "frame_gen_smooth_motion")) g.frame_gen_smooth_motion = !strcmp(v, "1") || !strcmp(v, "true");
+        else if (!strcmp(k, "frame_gen_match_display")) g.frame_gen_match_display = !strcmp(v, "1") || !strcmp(v, "true");
         else if (!strcmp(k, "antialias")) g.smaa = !strcmp(v, "smaa");
         else if (!strcmp(k, "depth_of_field")) g.dof = atoi(v) != 0;
         else if (!strcmp(k, "game_blur")) g.game_blur = atoi(v) != 0;
@@ -371,7 +592,14 @@ static void load() {
         else if (!strcmp(k, "cutscenes")) { g.cutscenes = !strcmp(v, "30") || !strcmp(v, "30fg") ? 1 : 0; g.cut_fg = !strcmp(v, "30fg"); }
         else if (!strcmp(k, "party_switch")) g.party_switch = atoi(v) != 0;
         else if (!strcmp(k, "show_fps")) g.show_fps = atoi(v) != 0;
+        else if (!strcmp(k, "show_fps_overlay")) g.show_fps_overlay = !strcmp(v, "1") || !strcmp(v, "true");
         else if (!strcmp(k, "fps")) { g.fps = 0; for (int j = 0; j < 6; j++) if (!strcmp(v, k_fps_ini[j])) g.fps = j; }
+        else if (!strcmp(k, "menu_navigation_speed")) g.menu_navigation_speed = !strcmp(v, "fast") ? 1 : 0;
+        else if (!strcmp(k, "quickstep_slot")) g.quickstep_slot = !strcmp(v, "1");
+#if defined(__linux__) || defined(_WIN32)
+        else if (quality_load(k,v)) {} // [XCDE] LINUX-103: typed shared quality keys
+#endif
+        else if (cheats_load(k, v)) {} // [XCDE] LINUX-072: recognized keys are not unrelated extras.
         else if (!strcmp(k, "volume")) g.volume = atoi(v);
         else if (!strcmp(k, "movie_audio")) g.movie_audio = atoi(v) != 0;
         else if (!strcmp(k, "language") && (i = find(k_lang_ini, 7, v)) >= 0) g.lang = i;
@@ -380,9 +608,11 @@ static void load() {
             int h = find(k_pad_ini, PADB_COUNT, v);
             if (h >= 0) g.pad[i] = h;
         } else if (!strncmp(k, "bind_key_", 9) && (i = find(k_ini, NACT, k + 9)) >= 0) {
-            g.key[i] = key_from_ini(v);
+            int key = key_from_ini(v);
+            if (key || !strcmp(v, "none")) g.key[i] = key;
         } else if (!strncmp(k, "bind_key2_", 10) && (i = find(k_ini, NACT, k + 10)) >= 0) {
-            g.key2[i] = key_from_ini(v);
+            int key = key_from_ini(v);
+            if (key || !strcmp(v, "none")) g.key2[i] = key;
         } else if (!strcmp(k, "bind_layout")) layout = atoi(v);
         else if (!strcmp(k, "mouse_look")) g.mouse_look = std::clamp(atoi(v), 0, 2);
         else if (!strcmp(k, "mouse_sens")) g.mouse_sens = std::clamp(atoi(v), 1, 100);
@@ -390,24 +620,64 @@ static void load() {
         else if (!strcmp(k, "launcher_lang")) g.ui_lang = !strcmp(v, "es") ? 0 : 1;
         else if (!strcmp(k, "mouse_invert")) g.mouse_invert = atoi(v) != 0;
         else if (!strcmp(k, "button_icons") && (i = find(k_icon_ini, 5, v)) >= 0) g.icons = i;
+#if defined(__linux__) || defined(_WIN32)
+        if ((!strcmp(k, "window") && find(k_wins, N_WINS, v) >= 0) ||
+            (!strcmp(k, "resolution") && find(k_res_ini, 7, v) >= 0) ||
+            (!strcmp(k, "fps") && find(k_fps_ini, 6, v) >= 0) ||
+            (!strcmp(k, "language") && find(k_lang_ini, 7, v) >= 0)) g_custom.erase(k);
+        if (!strcmp(k, "volume")) g.volume = std::clamp(g.volume, 0, 200);
+        if (!strcmp(k, "window") && find(k_wins, N_WINS, v) < 0) {
+            int w = 0, h = 0; char extra;
+            if (sscanf(v, "%dx%d%c", &w, &h, &extra) == 2 && w >= 320 && h >= 180 && w <= 7680 && h <= 4320) g_custom[k] = v;
+        }
+        if (!strcmp(k, "resolution") && find(k_res_ini, 7, v) < 0) {
+            if (!strcmp(v, "4") || !strcmp(v, "5") || !strcmp(v, "6") || !strcmp(v, "7") || !strcmp(v, "8") || !strcmp(v, "25%")) g_custom[k] = v;
+        }
+        if (!strcmp(k, "fps") && find(k_fps_ini, 6, v) < 0) {
+            char *end = nullptr; long fps = strtol(v, &end, 10);
+            if (end != v && !*end && fps >= 1 && fps <= 1000) g_custom[k] = v;
+        }
+        if (!strcmp(k, "language") && find(k_lang_ini, 7, v) < 0) {
+            const char *extra[] = {"zh-CN", "ko", "nl", "pt", "ru"};
+            if (find(extra, 5, v) >= 0) g_custom[k] = v;
+        }
+        const char *known[] = {"gpu_uuid","aspect_ratio","fullscreen","window","resolution","upscaler","upscale_quality","frame_gen","frame_gen_smooth_motion","frame_gen_match_display","antialias","depth_of_field",
+            "game_blur","vsync","cutscenes","party_switch","show_fps","show_fps_overlay","fps","menu_navigation_speed","quickstep_slot","volume","movie_audio","language","bind_layout",
+            "mouse_look","mouse_sens","stick_deadzone","launcher_lang","mouse_invert","button_icons"};
+        if (quality_key(k) || is_cheat_key(k)) g_extra.erase(k); // [XCDE] LINUX-072: never serialize stale duplicate cheat keys.
+        else if (find(known, sizeof known / sizeof *known, k) < 0 && strncmp(k, "mod_", 4) && strncmp(k, "bind_", 5)) g_extra[k] = v;
+#endif
     }
     fclose(f);
+#if defined(__linux__) || defined(_WIN32)
+    { Settings q=quality_settings();xcde_quality_bounds(&q);quality_from_settings(q); }
+#endif
+    if (g.frame_gen || g.cut_fg) g.frame_gen_smooth_motion = false; // [XCDE] LINUX-097
+#if defined(__linux__) || defined(_WIN32)
+    if (g.upscaler == 3 && !quality_present) g.uquality = 0;
+#endif
     if (layout < 2) for (int i = 0; i < NACT; i++) g.key[i] = k_def_key[i], g.key2[i] = k_def_key2[i];
 }
 
-static bool save() {
-    FILE *f = fopen(path("xcde.ini").c_str(), "w");
-    if (!f) return false;
-    fprintf(f, "# Monado settings (written by the launcher)\n");
+static void emit_settings(FILE *f) {
     fprintf(f, "fullscreen = %d\nwindow = %s\nresolution = %s\nupscaler = %s\nantialias = %s\nshow_fps = %d\n", g.fullscreen,
-            k_wins[g.win], k_res_ini[g.res], k_ups_ini[g.upscaler], g.smaa ? "smaa" : "off", g.show_fps);
+            cfg_value("window", k_wins[g.win]), cfg_value("resolution", k_res_ini[g.res]), k_ups_ini[g.upscaler], g.smaa ? "smaa" : "off", g.show_fps);
+    fprintf(f,"gpu_uuid = %s\n",*g.gpu_uuid?g.gpu_uuid:"auto");
+    fprintf(f, "show_fps_overlay = %d\n", g.show_fps_overlay); // [XCDE] LINUX-094
     fprintf(f, "upscale_quality = %s\nframe_gen = %d\n", k_uq_ini[g.uquality], g.frame_gen);
+    fprintf(f, "frame_gen_smooth_motion = %d\nframe_gen_match_display = %d\n",
+            g.frame_gen_smooth_motion && !g.frame_gen && !g.cut_fg, g.frame_gen_match_display); // [XCDE] LINUX-097
     fprintf(f, "depth_of_field = %d\n", g.dof);
     fprintf(f, "game_blur = %d\n", g.game_blur);
+    { Settings q=quality_settings();xcde_quality_save(f,&q); }
     fprintf(f, "vsync = %d\n", g.vsync);
     fprintf(f, "cutscenes = %s\n", g.cut_fg ? "30fg" : g.cutscenes ? "30" : "same");
     fprintf(f, "party_switch = %d\n", g.party_switch);
-    fprintf(f, "volume = %d\nmovie_audio = %d\nlanguage = %s\nfps = %s\n", g.volume, g.movie_audio, k_lang_ini[g.lang], k_fps_ini[g.fps]);
+    fprintf(f, "volume = %d\nmovie_audio = %d\nlanguage = %s\nfps = %s\n", g.volume, g.movie_audio, cfg_value("language", k_lang_ini[g.lang]), cfg_value("fps", k_fps_ini[g.fps]));
+    fprintf(f, "menu_navigation_speed = %s\n", g.menu_navigation_speed == 1 ? "fast" : "normal");
+    fprintf(f, "aspect_ratio = %s\n", k_aspect_ini[g.aspect >= 0 && g.aspect < N_ASPECTS ? g.aspect : ASPECT_ORIGINAL]); // [XCDE] LINUX-089
+    fprintf(f, "quickstep_slot = %d\n", g.quickstep_slot); // [XCDE] LINUX-039
+    cheats_save(f); // [XCDE] LINUX-072
     for (const Mod &m : g_mods) if (!is_icon_mod(m.name)) fprintf(f, "mod_%s = %d", m.name.c_str(), m.on), fputc(10, f);
     int ic = icons_effective(g.icons);
     fprintf(f, "button_icons = %s\nmod_%s = %d\nmod_%s = %d\nmod_icons_keyboard = %d\n", k_icon_ini[g.icons], k_icon_mod[0], ic == 2,
@@ -421,8 +691,18 @@ static bool save() {
     fprintf(f, "mouse_look = %d\nmouse_sens = %d\nmouse_invert = %d\n", g.mouse_look, g.mouse_sens, g.mouse_invert);
     fprintf(f, "stick_deadzone = %d\n", g.stick_deadzone);
     fprintf(f, "launcher_lang = %s\n", g.ui_lang ? "en" : "es");
-    fclose(f);
-    return true;
+}
+static bool save() {
+#ifdef _WIN32
+    return monado_ini_write(path("xcde.ini").c_str(), emit_settings, nullptr);
+#else
+    std::string temporary;
+    FILE *f = launcher_linux::atomic_open(path("xcde.ini"), temporary);
+    if (!f) return false;
+    emit_settings(f);
+    for (const auto &e : g_extra) fprintf(f, "%s = %s\n", e.first.c_str(), e.second.c_str());
+    return launcher_linux::atomic_finish(f, temporary, path("xcde.ini"));
+#endif
 }
 
 static bool exists(const char *rel) {
@@ -431,39 +711,18 @@ static bool exists(const char *rel) {
 }
 
 static std::string g_status;
+static HANDLE g_game_proc;
 static bool g_launched_ok;  // (launch() started the game: the launcher closes)
 static float g_scale = 1;
 
+static bool pc_running();
 static void launch() {
-    if (!save()) { g_status = T("No se pudo escribir xcde.ini"); return; }
-#ifdef _WIN32
-    std::string exe = path("build/xcde.exe");
-    std::string cmd = "\"" + exe + "\" targets";
-    // the game's DLLs (SDL3, Vulkan loader, FFmpeg, opus) come from MSYS2
-    const char *old = getenv("PATH");
-    std::string p = std::string("C:\\msys64\\ucrt64\\bin;") + (old ? old : "");
-    SetEnvironmentVariableA("PATH", p.c_str());
-    STARTUPINFOA si = {};
-    si.cb = sizeof si;
-    PROCESS_INFORMATION pi = {};
-    std::string log = path("build/last_game.log");
-    SECURITY_ATTRIBUTES sa = {sizeof sa, NULL, TRUE};
-    HANDLE h = CreateFileA(log.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h != INVALID_HANDLE_VALUE) {
-        si.dwFlags = STARTF_USESTDHANDLES;
-        si.hStdOutput = si.hStdError = h;
-        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-    }
-    std::vector<char> buf(cmd.begin(), cmd.end());
-    buf.push_back(0);
-    BOOL ok = CreateProcessA(exe.c_str(), buf.data(), NULL, NULL, TRUE, CREATE_NO_WINDOW, NULL, g_root.c_str(), &si, &pi);
-    if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-    if (!ok) { g_status = std::string(T("No se pudo iniciar build/xcde.exe (error ")) + std::to_string(GetLastError()) + ")"; return; }
-    CloseHandle(pi.hThread);
-    CloseHandle(pi.hProcess);
-    g_status = T("Juego iniciado. Registro: build/last_game.log");
-    g_launched_ok = true;
-#endif
+    if(g_game_proc || pc_running()) {g_status="A game or shader preparation is already running.";return;}
+    if(!save()){g_status=T("No se pudo escribir xcde.ini");return;}
+    g_game_proc=monado_launcher_windows::start(g_runtime_root,g_root,{L"targets"},"build/last_game.log");
+    if(!g_game_proc){g_status="Could not start the game (Windows error "+std::to_string(GetLastError())+").";return;}
+    g_status="Game running. Settings reload when it exits. Log: build/last_game.log";
+    g_launched_ok=true;
 }
 
 // ------------------------------------------------------------------ shader precompilation (T187)
@@ -477,62 +736,50 @@ static HANDLE g_pc_proc;
 static bool g_pc_then_play, g_pc_play_now;
 static float g_pc_frac;
 static std::string g_pc_text;
+#ifdef __linux__
+static bool g_pc_quit;
+static void llog(const char *fmt, ...);
+#endif
 
 // [XCDE] T211: done for THIS build - precompile_done.txt names the build/xcde.exe (size, time) it was made with; a new
 // build translates shaders differently, so JUGAR precompiles again (unchanged shaders are cache hits: quick)
 static bool pc_done() {
-    FILE *f = fopen(path("cache/precompile_done.txt").c_str(), "r");
+#ifdef __linux__
+    // [XCDE] LINUX-018: optional explicit preparation never gates Play. Fresh
+    // completion is checked by owned child/session, not an inherited marker.
+    return false;
+#else
+    FILE *f = monado_launcher_windows::open(path("cache/precompile_done.txt"), "r");
     if (!f) return false;
     char line[256];
     long long sz = -1, mt = -1;
     while (fgets(line, sizeof line, f)) sscanf(line, "exe %lld %lld", &sz, &mt);
     fclose(f);
-    struct stat es;
-    if (stat(path("build/xcde.exe").c_str(), &es) != 0) return true;
+    struct _stat64 es;
+    auto executable=monado_launcher_windows::wide(monado_launcher_windows::runtime_executable(g_runtime_root));
+    if (_wstat64(executable.c_str(), &es) != 0) return false;
     return sz == (long long)es.st_size && mt == (long long)es.st_mtime;
+#endif
 }
 static bool pc_running() {
 #ifdef _WIN32
     return g_pc_proc != NULL;
+#elif defined(__linux__)
+    return launcher_linux::precompile_pid != 0;
 #else
     return false;
 #endif
 }
 
 static void pc_start(bool then_play) {
-#ifdef _WIN32
-    if (g_pc_proc) return;
-    std::string exe = path("build/xcde.exe");
-    std::string cmd = "\"" + exe + "\" --precompile targets";
-    const char *old = getenv("PATH");
-    std::string p = std::string("C:\\msys64\\ucrt64\\bin;") + (old ? old : "");
-    SetEnvironmentVariableA("PATH", p.c_str());
-    CreateDirectoryA(path("cache").c_str(), NULL);
-    DeleteFileA(path("cache/precompile_progress.txt").c_str());
-    STARTUPINFOA si = {};
-    si.cb = sizeof si;
-    PROCESS_INFORMATION pi = {};
-    std::string log = path("build/last_precompile.log");
-    SECURITY_ATTRIBUTES sa = {sizeof sa, NULL, TRUE};
-    HANDLE h = CreateFileA(log.c_str(), GENERIC_WRITE, FILE_SHARE_READ, &sa, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (h != INVALID_HANDLE_VALUE) {
-        si.dwFlags = STARTF_USESTDHANDLES;
-        si.hStdOutput = si.hStdError = h;
-        si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);
-    }
-    std::vector<char> buf(cmd.begin(), cmd.end());
-    buf.push_back(0);
-    BOOL ok = CreateProcessA(exe.c_str(), buf.data(), NULL, NULL, TRUE, CREATE_NO_WINDOW | BELOW_NORMAL_PRIORITY_CLASS, NULL,
-                             g_root.c_str(), &si, &pi);
-    if (h != INVALID_HANDLE_VALUE) CloseHandle(h);
-    if (!ok) { g_status = std::string(T("No se pudo iniciar la precompilación (error ")) + std::to_string(GetLastError()) + ")"; return; }
-    CloseHandle(pi.hThread);
-    g_pc_proc = pi.hProcess;
-    g_pc_then_play = then_play;
-    g_pc_frac = 0;
-    g_pc_text = T("Buscando shaders en los archivos del juego...");
-    g_status = then_play ? T("Preparando shaders antes de la primera partida (solo esta vez)") : T("Precompilando shaders");
-#endif
+    (void)then_play;
+    if(g_pc_proc || g_game_proc)return;
+    CreateDirectoryW(monado_launcher_windows::wide(path("cache")).c_str(),nullptr);
+    DeleteFileW(monado_launcher_windows::wide(path("cache/precompile_progress.txt")).c_str());
+    g_pc_proc=monado_launcher_windows::start(g_runtime_root,g_root,{L"--precompile",L"targets"},"build/last_precompile.log",BELOW_NORMAL_PRIORITY_CLASS);
+    if(!g_pc_proc){g_status="Could not start shader preparation (Windows error "+std::to_string(GetLastError())+").";return;}
+    g_pc_then_play=g_pc_play_now=false;g_pc_frac=0;
+    g_pc_text="Scanning shader files...";g_status="Preparing shaders. The game will not start automatically.";
 }
 
 static void pc_stop() {
@@ -542,6 +789,9 @@ static void pc_stop() {
     WaitForSingleObject(g_pc_proc, 2000);
     CloseHandle(g_pc_proc);
     g_pc_proc = NULL;
+#elif defined(__linux__)
+    if (!launcher_linux::cancel_precompile()) { g_status = "Could not request cancellation: " + launcher_linux::error; return; }
+    g_status = "Stopping shader preparation; waiting for current compiler work...";
 #endif
 }
 
@@ -553,7 +803,7 @@ static void pc_poll() {
     Uint64 now = SDL_GetTicks();
     if (now - last < 200) return;
     last = now;
-    FILE *f = fopen(path("cache/precompile_progress.txt").c_str(), "r");
+    FILE *f = monado_launcher_windows::open(path("cache/precompile_progress.txt"), "r");
     if (f) {
         char phase[16] = "";
         unsigned long long fd = 0, ft = 0, found = 0, done = 0;
@@ -573,20 +823,26 @@ static void pc_poll() {
     GetExitCodeProcess(g_pc_proc, &code);
     CloseHandle(g_pc_proc);
     g_pc_proc = NULL;
-    // [XCDE] T240: a run that died while the driver was building (cache/precompile_inflight.bin left behind) starts
-    // again by itself - the new run skips what was being built (precompile.c crash-safe) - up to 3 times
-    static int retries;
-    DWORD att = GetFileAttributesA(path("cache/precompile_inflight.bin").c_str());
-    if (!(code == 0 && pc_done()) && att != INVALID_FILE_ATTRIBUTES && retries < 3) {
-        retries++;
-        bool then_play = g_pc_then_play;
-        pc_start(then_play);
-        g_status = std::string(T("El controlador gráfico falló en un shader: se salta y se sigue (intento ")) + std::to_string(retries + 1) + ")";
-        return;
+    g_status=code==0 && pc_done()?"Shader preparation complete.":"Shader preparation failed or was incomplete. See build/last_precompile.log; retry explicitly.";
+    g_pc_then_play=g_pc_play_now=false;
+#elif defined(__linux__)
+    if (!pc_running()) return;
+    const auto snapshot = launcher_linux::poll_precompile();
+    if (snapshot.valid) {
+        auto count = [&](const char *key) -> uint64_t { auto it = snapshot.counts.find(key); return it == snapshot.counts.end() ? 0 : it->second; };
+        uint64_t done = 0, total = 0;
+        const char *phase = "Checking build and input";
+        if (snapshot.phase == "scan") { phase = "Scanning files"; done = count("files_done"); total = count("files_total"); }
+        else if (snapshot.phase == "build") { phase = "Preparing shader programs"; done = count("programs_done"); total = count("programs"); }
+        else if (snapshot.phase == "seed") { phase = "Preparing recorded shader variants"; done = count("seed_done"); total = count("seed_total"); }
+        else if (snapshot.phase == "pipelines") { phase = "Preparing recorded pipelines"; done = count("variants_done"); total = count("variants_total"); }
+        g_pc_frac = total ? std::min(1.0f, (float)done / (float)total) : 0;
+        char text[256]; snprintf(text, sizeof text, "%s: %llu / %llu", phase, (unsigned long long)done, (unsigned long long)total);
+        g_pc_text = text;
+        if (snapshot.state == "cancelling") g_pc_text = "Stopping; waiting for current compiler work...";
+        if (!snapshot.message.empty()) g_status = snapshot.message;
     }
-    retries = 0;
-    g_status = code == 0 && pc_done() ? T("Shaders precompilados") : T("La precompilación falló (registro: build/last_precompile.log)");
-    if (g_pc_then_play) g_pc_play_now = true;
+    if (snapshot.exited) { g_status = snapshot.message; llog("%s (exit %d)", g_status.c_str(), snapshot.code); }
 #endif
 }
 
@@ -642,20 +898,165 @@ static bool capture_event(const SDL_Event &e) {
 }
 
 // ------------------------------------------------------------------ UI
+#if defined(__linux__) || defined(_WIN32)
+static launcher_gpu::Result gpu_probe;
+static bool gpu_probe_done;
+static void tab_gpu_configuration() {
+    if(!ImGui::CollapsingHeader(g.ui_lang?"GPU selection and diagnostics (restart)":"Selección GPU y diagnóstico (reiniciar)"))return;
+    if(!gpu_probe_done){launcher_gpu::probe(&gpu_probe);gpu_probe_done=true;}
+    if(ImGui::Button(g.ui_lang?"Refresh GPU information":"Actualizar información GPU"))launcher_gpu::probe(&gpu_probe);
+    if(*gpu_probe.error)ImGui::TextWrapped("%s",gpu_probe.error);
+    int requested=-1;
+    for(uint32_t i=0;i<gpu_probe.count;i++)if(!strcmp(g.gpu_uuid,gpu_probe.adapters[i].uuid))requested=(int)i;
+    const char *preview=!*g.gpu_uuid?(g.ui_lang?"Automatic (recommended)":"Automática (recomendada)"):
+        requested>=0?gpu_probe.adapters[requested].name:(g.ui_lang?"Saved GPU unavailable":"GPU guardada no disponible");
+    if(ImGui::BeginCombo(g.ui_lang?"Graphics adapter":"Adaptador gráfico",preview)) {
+        if(ImGui::Selectable(g.ui_lang?"Automatic (recommended)":"Automática (recomendada)",!*g.gpu_uuid))g.gpu_uuid[0]=0;
+        for(uint32_t i=0;i<gpu_probe.count;i++) {
+            const auto &a=gpu_probe.adapters[i];ImGui::PushID((int)i);ImGui::BeginDisabled(!a.eligible);
+            if(ImGui::Selectable(a.name,requested==(int)i))snprintf(g.gpu_uuid,sizeof g.gpu_uuid,"%s",a.uuid);
+            ImGui::EndDisabled();ImGui::PopID();
+        }
+        ImGui::EndCombo();
+    }
+    if(*g.gpu_uuid && (requested<0 || !gpu_probe.adapters[requested].eligible))
+        ImGui::TextWrapped("%s",g.ui_lang?"The saved GPU is unavailable or unsuitable. The game will fall back to a usable automatic choice and report why.":"La GPU guardada no está disponible o no es compatible. El juego elegirá una GPU válida e indicará el motivo.");
+    ImGui::TextWrapped("%s",g.ui_lang?"This is a request for the next game launch. Available capabilities are not active features or gameplay certification; presentation and optional providers are checked at startup.":"Esta selección se aplica al próximo inicio. Las capacidades detectadas no certifican el juego; la presentación y los proveedores se comprueban al iniciar.");
+    for(uint32_t i=0;i<gpu_probe.count;i++) {
+        const auto &a=gpu_probe.adapters[i];ImGui::PushID((int)i);
+        if(ImGui::TreeNode("adapter","%s",a.name)) {
+            ImGui::Text("Vulkan %u.%u.%u | vendor %04x | driver %u",VK_API_VERSION_MAJOR(a.api),VK_API_VERSION_MINOR(a.api),VK_API_VERSION_PATCH(a.api),a.vendor,a.driver);
+            if(*a.driver_name)ImGui::Text("%s",a.driver_name);
+            ImGui::TextWrapped("%s",a.reason);
+            ImGui::Text(g.ui_lang?"Device-local heaps: %llu MiB (not free memory)":"Memoria local: %llu MiB (no es memoria libre)",(unsigned long long)(a.local_heap>>20));
+            ImGui::Text("Storage range: %u MiB | anisotropy: %s | float16: %s | int8: %s",a.max_storage_range>>20,a.anisotropy?"yes":"no",a.float16?"yes":"no",a.int8?"yes":"no");
+            ImGui::Text("Feedback-loop extension: %s | memory-budget extension: %s",a.feedback?"yes":"no",a.memory_budget?"yes":"no");
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+    }
+    if(gpu_probe.truncated)ImGui::TextDisabled("Additional adapters were omitted from this bounded diagnostic list.");
+}
+#endif
 static void tab_graphics() {
-    ImGui::SeparatorText(T("Pantalla"));
-    ImGui::Checkbox(T("Pantalla completa"), &g.fullscreen);
+#if defined(__linux__) || defined(_WIN32)
+    Settings quality_before=quality_settings(),quality=quality_before;
+    if(monado_quality_controls_linux(&quality,g.ui_lang==1)) {
+        quality_from_settings(quality);
+        if(quality.res_mode!=quality_before.res_mode)g_custom.erase("resolution");
+    }
+#endif
+#if defined(__linux__) || defined(_WIN32)
+    tab_gpu_configuration();
+#endif
+    launcher_theme::section(T("Pantalla"));
+    launcher_theme::checkbox(T("Pantalla completa"), &g.fullscreen);
     ImGui::SetNextItemWidth(260 * g_scale);
-    ImGui::Combo(T("Tamaño de la ventana"), &g.win, k_wins, 5);
-    ImGui::SeparatorText(T("Resolución y escalado"));
+#ifdef __linux__
+    if (launcher_theme::combo(T("Tamaño de la ventana"), &g.win, k_wins, N_WINS)) g_custom.erase("window");
+    custom_note("window");
+#else
+    launcher_theme::combo(T("Tamaño de la ventana"), &g.win, k_wins, N_WINS);
+#endif
+    // [XCDE] LINUX-089: projection/culling and centered native UI, never image stretching.
+    const char *aspect_ui[N_ASPECTS] = {T("Igual que la pantalla (experimental)"), T("Original (16:9)"),
+        T("16:10 (experimental)"), T("21:9 (experimental)"), T("32:9 (experimental)")};
+    launcher_theme::combo(T("Relación de aspecto"), &g.aspect, aspect_ui, N_ASPECTS);
+    ImGui::TextDisabled("%s", T("Vista 3D adaptada; menús y HUD conservan sus proporciones en una zona central de 16:9."));
+    ImGui::TextDisabled("%s", T("Las proporciones fijas añaden bandas cuando no coinciden con la ventana o pantalla."));
+    launcher_theme::section(T("Resolución y escalado"));
     ImGui::SetNextItemWidth(360 * g_scale);
-    ImGui::Combo(T("Resolución interna"), &g.res, TL(k_res_ui, 7).p, 7);
-    ImGui::TextDisabled(T("El juego original renderiza a 720p. Más resolución = imagen más nítida y más carga para la GPU."));
+#ifdef __linux__
+    if (launcher_theme::combo(T("Resolución interna"), &g.res, TL(k_res_ui, 7).p, 7)) g_custom.erase("resolution");
+    custom_note("resolution");
+#else
+    launcher_theme::combo(T("Resolución interna"), &g.res, TL(k_res_ui, 7).p, 7);
+#endif
+    ImGui::TextDisabled("%s", T("El juego original renderiza a 720p. Más resolución = imagen más nítida y más carga para la GPU."));
     const char *ups[] = {"Bilineal (suave)", "AMD FSR 1.0 (nítido)", "AMD FSR 3.1 (temporal, cualquier GPU)",
                          "NVIDIA DLSS (temporal, GPU RTX)"};
     ImGui::SetNextItemWidth(320 * g_scale);
-    ImGui::Combo(T("Escalado / antialiasing"), &g.upscaler, TL(ups, 4).p, 4);
-    ImGui::SetItemTooltip(T("FSR 1.0: escalado espacial, solo cuando la resolución interna es menor que la ventana.\n"
+#ifdef __linux__
+    const bool have_dlss = linux_dlss_packaged();
+    const char *linux_ups[5] = {ups[0], ups[1], nullptr, nullptr, nullptr};
+    int linux_values[5] = {0, 1, 0, 0, 0}, upscaler_count=2, selected=0;
+    if(g_fsr3_available) { linux_ups[upscaler_count]="AMD FSR 3.1 (temporal)";linux_values[upscaler_count++]=2; }
+    if(have_dlss) { linux_ups[upscaler_count]="NVIDIA DLSS / DLAA (RTX)";linux_values[upscaler_count++]=3; }
+    if(linux_fsr4_available()) { linux_ups[upscaler_count]="AMD FSR 4 Lite (experimental)";linux_values[upscaler_count++]=4; }
+    for(int i=0;i<upscaler_count;i++)if(linux_values[i]==g.upscaler)selected=i;
+    if (launcher_theme::combo(T("Escalado / antialiasing"), &selected, TL(linux_ups, upscaler_count).p, upscaler_count)) {
+        // [XCDE] LINUX-056: entering DLSS starts at native 100% (DLAA).
+        // An existing DLSS quality remains editable and persists on reopening.
+        if (linux_values[selected] == 3 && g.upscaler != 3) g.uquality = 0;
+        g.upscaler = linux_values[selected];
+        linux_graphics_normalize();
+    }
+    if (g.upscaler == 2 || g.upscaler == 3 || g.upscaler==4) {
+        const char *quality[] = {"DLAA / Native (100%)", "Quality (67%)", "Balanced (59%)", "Performance (50%)", "Ultra Performance (33%)"};
+        launcher_theme::combo(T("Calidad del escalado"), &g.uquality, quality, 5);
+        ImGui::PushTextWrapPos();
+        if(g.upscaler==3)ImGui::TextDisabled("Requires a compatible NVIDIA RTX GPU. Unavailable DLSS uses FSR 3 when available, otherwise spatial scaling.");
+        else if(g.upscaler==2) ImGui::TextDisabled("Uses the packaged native FSR 3.1 provider. Runtime GPU and scene input checks still apply.");
+        else ImGui::TextDisabled("Uses your locally prepared FSR4 Lite model. Unsupported GPUs or image sizes use the existing fallback.");
+        ImGui::TextDisabled("%s","Native uses temporal antialiasing at 100%. Match the window uses the selected SR quality.");
+        ImGui::PopTextWrapPos();
+    }
+    if(!g_fsr3_available)ImGui::TextDisabled("Native FSR 3.1 component is not available in this build.");
+    if(launcher_linux::fsr4_preparing()) {
+        ImGui::TextWrapped("%s",launcher_linux::fsr4_status());
+        ImGui::ProgressBar(-float(ImGui::GetTime()),ImVec2(-1,0),"Preparing FSR4 Lite");
+        if(ImGui::Button("Cancel FSR4 preparation")) {
+            if(!launcher_linux::cancel_fsr4_prepare())g_status=launcher_linux::error;
+        }
+    } else {
+        ImGui::BeginDisabled(launcher_linux::activity_busy());
+        if(ImGui::Button(linux_fsr4_available()?"Prepare FSR4 Lite again":"Prepare FSR4 Lite (optional)")) {
+            if(!launcher_linux::request_fsr4_prepare())g_status=launcher_linux::error;
+        }
+        ImGui::EndDisabled();
+        if(*launcher_linux::fsr4_status())ImGui::TextWrapped("%s",launcher_linux::fsr4_status());
+        else if(!linux_fsr4_available()&&!g_fsr4_unavailable_reason.empty())ImGui::TextWrapped("%s",g_fsr4_unavailable_reason.c_str());
+        ImGui::TextWrapped("Downloads the official AMD tools and prepares local models using an installed Proton build. This can take a few minutes. Your chosen upscaler stays unchanged.");
+    }
+    // [XCDE] LINUX-097: choose one method. Availability is component-only;
+    // the NVIDIA driver decides whether the selected physical GPU supports FG.
+    const bool have_fg = linux_framegen_packaged() && (g.upscaler == 2 || g.upscaler == 3 || g.upscaler==4);
+    const char *fg_names[3] = {"Off", nullptr, nullptr};
+    int fg_values[3] = {0, 0, 0}, fg_count = 1;
+    if (have_fg) { fg_names[fg_count] = "FSR 3 (2x, experimental)"; fg_values[fg_count++] = 1; }
+    if (launcher_linux::smooth_motion_layer_available) {
+        fg_names[fg_count] = "NVIDIA Smooth Motion (2x, experimental)"; fg_values[fg_count++] = 2;
+    }
+    int method = g.frame_gen || g.cut_fg ? 1 : g.frame_gen_smooth_motion ? 2 : 0, selected_fg = 0;
+    for (int i = 0; i < fg_count; ++i) if (fg_values[i] == method) selected_fg = i;
+    if (launcher_theme::combo("Frame generation method", &selected_fg, fg_names, fg_count)) {
+        method = fg_values[selected_fg]; g.frame_gen = method == 1;
+        g.frame_gen_smooth_motion = method == 2; g.cut_fg = false;
+    }
+    if (method == 1) {
+        bool only_cutscenes = g.cut_fg;
+        if (launcher_theme::checkbox("Only in cutscenes (30 to 60 FPS)", &only_cutscenes)) {
+            g.cut_fg = only_cutscenes; g.frame_gen = !only_cutscenes;
+        }
+        ImGui::BeginDisabled(g.cut_fg);
+        launcher_theme::checkbox("Match display refresh with 2x generation", &g.frame_gen_match_display);
+        ImGui::SetItemTooltip("Limits the effective real-frame target to half the display refresh, without changing your saved FPS cap.\nFor a 180 Hz screen, at most 90 real / 180 output FPS. This is 2x, not multi-frame generation.\nCutscenes-only mode remains 30 game / 60 output FPS.");
+        ImGui::EndDisabled();
+        if (g.cut_fg) ImGui::TextDisabled("Cutscenes-only mode remains 30 game / 60 output FPS.");
+    }
+    ImGui::PushTextWrapPos();
+    ImGui::TextDisabled("Generation is experimental, adds latency and may cost performance. Method changes apply when restarting the game.");
+    if (method == 2) {
+        ImGui::TextDisabled("Requires a compatible NVIDIA RTX 40-series or newer GPU and driver. The driver owns generation and presentation.");
+        ImGui::TextDisabled("Measured output FPS is recorded in the game log. Generated-only FPS is unavailable. Do not combine with another FG layer.");
+    }
+    if (!have_fg) ImGui::TextDisabled("Integrated FSR generation requires temporal upscaling and the packaged native provider.");
+    if (!launcher_linux::smooth_motion_layer_available) ImGui::TextDisabled("NVIDIA Smooth Motion driver component was not detected.");
+    ImGui::PopTextWrapPos();
+#else
+    int previous_upscaler=g.upscaler;
+    if (launcher_theme::combo(T("Escalado / antialiasing"), &g.upscaler, TL(ups, 4).p, 4) && g.upscaler==3 && previous_upscaler!=3) g.uquality=0;
+    ImGui::SetItemTooltip("%s", T("FSR 1.0: escalado espacial, solo cuando la resolución interna es menor que la ventana.\n"
                           "FSR 3.1 y DLSS: reconstrucción temporal - renderizan a menos resolución (según la calidad)\n"
                           "y reconstruyen la imagen de la ventana con varios frames: más FPS y bordes sin dientes.\n"
                           "Sustituyen al antialiasing temporal del juego. DLSS necesita una GPU NVIDIA RTX; si no\n"
@@ -664,45 +1065,78 @@ static void tab_graphics() {
         const char *uq[] = {"Nativo (solo antialiasing: DLAA / FSR Native AA)", "Calidad (67 %)", "Equilibrado (59 %)",
                             "Rendimiento (50 %)", "Ultra rendimiento (33 %)"};
         ImGui::SetNextItemWidth(320 * g_scale);
-        ImGui::Combo(T("Calidad del escalado"), &g.uquality, TL(uq, 5).p, 5);
-        ImGui::SetItemTooltip(T("Con 'Resolución interna' en 'Igual que la ventana': la resolución a la que se renderiza\n"
+        launcher_theme::combo(T("Calidad del escalado"), &g.uquality, TL(uq, 5).p, 5);
+        ImGui::SetItemTooltip("%s", T("Con 'Resolución interna' en 'Igual que la ventana': la resolución a la que se renderiza\n"
                               "antes de reconstruir (porcentaje del lado de la ventana)."));
-        ImGui::Checkbox(T("Generación de frames (FSR 3)"), &g.frame_gen);
-        ImGui::SetItemTooltip(T("Inserta un frame interpolado entre cada dos del juego en todo el juego: el doble de imágenes\n"
+        launcher_theme::checkbox(T("Generación de frames (FSR 3)"), &g.frame_gen);
+        ImGui::BeginDisabled(!g.frame_gen);
+        launcher_theme::checkbox("Match display refresh with 2x generation",&g.frame_gen_match_display);
+        ImGui::SetItemTooltip("Limits the effective real-frame target to half the nominal display refresh only after native interpolation inputs succeed. Your saved FPS cap stays unchanged. Adds latency.");
+        ImGui::EndDisabled();
+        ImGui::SetItemTooltip("%s", T("Inserta un frame interpolado entre cada dos del juego en todo el juego: el doble de imágenes\n"
                               "por segundo (p. ej. FPS 30 -> 60 en pantalla). La de AMD: funciona con FSR 3.1 y con DLSS.\n"
                               "Añade algo de latencia. Se aplica al iniciar el juego."));
         ImGui::BeginDisabled(g.frame_gen);
-        ImGui::Checkbox(T("Generación de frames solo en cinemáticas"), &g.cut_fg);
+        launcher_theme::checkbox(T("Generación de frames solo en cinemáticas"), &g.cut_fg);
         ImGui::EndDisabled();
-        ImGui::SetItemTooltip(T("El juego va a tus FPS sin generación de frames; en las cinemáticas (donde el juego anima a\n"
+        ImGui::SetItemTooltip("%s", T("El juego va a tus FPS sin generación de frames; en las cinemáticas (donde el juego anima a\n"
                               "los personajes a 30) baja a 30 parejos y la generación las lleva a 60 en pantalla.\n"
                               "Pensado para jugar a 60 en un monitor de 60 Hz. Se aplica al iniciar el juego."));
     } else {
-        ImGui::TextDisabled(T("Se aplica cuando la resolución interna es menor que la ventana."));
+        ImGui::TextDisabled("%s", T("Se aplica cuando la resolución interna es menor que la ventana."));
     }
-    ImGui::SeparatorText(T("Calidad"));
-    ImGui::Checkbox(T("Antialiasing SMAA"), &g.smaa);
-    ImGui::Checkbox(T("Profundidad de campo (desenfoque del juego)"), &g.dof);
-    ImGui::SetItemTooltip(T("El desenfoque de lo cercano y lo lejano que el juego aplica también en Switch.\n"
+#endif
+    launcher_theme::section(T("Calidad"));
+    launcher_theme::checkbox(T("Antialiasing SMAA"), &g.smaa);
+    launcher_theme::checkbox(T("Profundidad de campo (desenfoque del juego)"), &g.dof);
+    ImGui::SetItemTooltip("%s", T("El desenfoque de lo cercano y lo lejano que el juego aplica también en Switch.\n"
                           "Desactivado: toda la escena nítida (y algo menos de trabajo para la GPU)."));
-    ImGui::Checkbox(T("Antialiasing y desenfoque de movimiento del juego"), &g.game_blur);
-    ImGui::SetItemTooltip(T("El antialiasing temporal (TMAA), el desenfoque de movimiento y el del pelo que el juego\n"
+    launcher_theme::checkbox(T("Antialiasing y desenfoque de movimiento del juego"), &g.game_blur);
+    ImGui::SetItemTooltip("%s", T("El antialiasing temporal (TMAA), el desenfoque de movimiento y el del pelo que el juego\n"
                           "aplica para los 720p de la Switch: a 1080p o más suavizan toda la imagen.\n"
                           "Desactivado: imagen nítida (combínalo con SMAA para los bordes)."));
-    ImGui::Checkbox(T("Mostrar FPS en la barra de título"), &g.show_fps);
-    ImGui::SeparatorText(T("Velocidad"));
+    launcher_theme::checkbox(T("Mostrar FPS en la barra de título"), &g.show_fps);
+    launcher_theme::checkbox(T("Mostrar FPS en pantalla"), &g.show_fps_overlay);
+#ifdef __linux__
+    ImGui::SetItemTooltip("Shows rendered Game FPS and measured Output FPS (accepted presentation requests).\nFrame-generation readings are also recorded in the game log while this display is hidden. Generated-only NVIDIA FPS is unavailable. Output is not physical scanout.");
+#else
+    ImGui::SetItemTooltip("%s", T("Muestra los FPS reales del juego, también en pantalla completa.\nNo incluye imágenes generadas ni presentaciones repetidas."));
+#endif
+    launcher_theme::section(T("Velocidad"));
     static const char *fps_ui[] = {"30 (como en Switch)", "60", "120", "144", "165", "Sin límite"};
-    ImGui::Combo("FPS", &g.fps, TL(fps_ui, 6).p, 6);
-    ImGui::SetItemTooltip(T("Más de 30: la velocidad del mundo, el reloj y las escenas no cambian (probado a 60 y 120);\n"
+#if defined(__linux__) || defined(_WIN32)
+    if (launcher_theme::combo("FPS", &g.fps, TL(fps_ui, 6).p, 6)) g_custom.erase("fps");
+    custom_note("fps");
+#else
+    launcher_theme::combo("FPS", &g.fps, TL(fps_ui, 6).p, 6);
+#endif
+#ifdef __linux__
+    ImGui::SetItemTooltip("Higher FPS settings are available, but Linux timing and gameplay at those rates are not yet validated. 30 is the original game rate.");
+#else
+    ImGui::SetItemTooltip("%s", T("Más de 30: la velocidad del mundo, el reloj y las escenas no cambian (probado a 60 y 120);\n"
                           "la cámara queda un poco más lejos. El V-Sync forzado en el panel de NVIDIA / AMD o el límite\n"
                           "de RivaTuner también limitan los FPS: déjalos en 'configuración de la aplicación' / 0."));
-    ImGui::Checkbox(T("V-Sync (con 30 / 60 FPS)"), &g.vsync);
-    ImGui::SetItemTooltip(T("Cada imagen se muestra exactamente una vez, sincronizada con la pantalla: movimiento\n"
+#endif
+    static const char *navigation_ui[] = {"Normal (estilo de 30 FPS)", "Rápida (estilo de 60 FPS)"};
+    ImGui::SetNextItemWidth(320 * g_scale);
+    launcher_theme::combo(T("Velocidad de navegación en menús"), &g.menu_navigation_speed, TL(navigation_ui, 2).p, 2);
+    ImGui::SetItemTooltip("%s", T("Controla las direcciones mantenidas en los menús y la selección de artes.\n"
+                          "Rápida repite al doble de velocidad. La velocidad del juego y las animaciones de los menús no cambian."));
+#ifdef __linux__
+    // [XCDE] LINUX-097: integrated FG uses FIFO at all selected base rates.
+    bool fsr_pacing = g.frame_gen || g.cut_fg;
+    launcher_theme::checkbox(fsr_pacing ? "V-Sync (FSR 3 frame generation)" : T("V-Sync (con 30 / 60 FPS)"), &g.vsync);
+    if (fsr_pacing) ImGui::SetItemTooltip("Synchronizes generated output to the display, including base rates above 60 FPS. Match display can cap real frames at half the refresh rate.");
+    else
+#else
+    launcher_theme::checkbox(T("V-Sync (con 30 / 60 FPS)"), &g.vsync);
+#endif
+    ImGui::SetItemTooltip("%s", T("Cada imagen se muestra exactamente una vez, sincronizada con la pantalla: movimiento\n"
                           "fluido (sin imágenes repetidas o saltadas). Con más de 60 FPS o sin límite no se aplica."));
     static const char *cut_ui[] = {"Como el resto del juego", "30 estables (como en Switch)"};
     ImGui::SetNextItemWidth(320 * g_scale);
-    ImGui::Combo(T("Cinemáticas"), &g.cutscenes, TL(cut_ui, 2).p, 2);
-    ImGui::SetItemTooltip(T("En las cinemáticas el juego anima a los personajes a 30 aunque juegues a más FPS: con la\n"
+    launcher_theme::combo(T("Cinemáticas"), &g.cutscenes, TL(cut_ui, 2).p, 2);
+    ImGui::SetItemTooltip("%s", T("En las cinemáticas el juego anima a los personajes a 30 aunque juegues a más FPS: con la\n"
                           "cámara a 60 encima se notan saltos (p. ej. el pelo de Dickson).\n"
                           "30 estables: las cinemáticas van a 30 parejos, cámara y personajes juntos (con V-Sync en un\n"
                           "monitor de 60 Hz cada imagen dura exactamente dos refrescos).\n"
@@ -710,64 +1144,65 @@ static void tab_graphics() {
 }
 
 static void tab_controls() {
+#if defined(__linux__) || defined(_WIN32)
+    launcher_theme::checkbox(g.ui_lang?"Controller vibration":"Vibración del mando",&g.input_rumble);
+    ImGui::TextDisabled("%s",g.ui_lang?"Optional. Requires a controller with SDL vibration support.":"Opcional. Requiere un mando compatible con vibración SDL.");
+#endif
     if (cap_dev >= 0) {
         int left = (int)((cap_until - SDL_GetTicks()) / 1000) + 1;
         if (SDL_GetTicks() > cap_until) cap_dev = -1;
         ImGui::TextColored(ImVec4(1, 0.8f, 0.2f, 1), T("Pulsa %s para \"%s\"... (%d s, Supr = ninguna)"),
                            cap_dev == 1 ? T("un botón del mando") : T("una tecla o un botón del ratón"), T(k_names[cap_slot]), left);
     } else {
-        ImGui::TextDisabled(T("Haz clic en una asignación y pulsa la tecla, botón del ratón o del mando nuevo. Si ya estaba en uso, se intercambian."));
+        ImGui::TextDisabled("%s", T("Haz clic en una asignación y pulsa la tecla, botón del ratón o del mando nuevo. Si ya estaba en uso, se intercambian."));
     }
     if (ImGui::Button(T("Restaurar teclado"))) for (int i = 0; i < NACT; i++) g.key[i] = k_def_key[i], g.key2[i] = k_def_key2[i];
-    ImGui::SameLine();
+    launcher_theme::beside(300 * g_scale);
     if (ImGui::Button(T("Restaurar mando"))) for (int i = 0; i < NPAD; i++) g.pad[i] = k_def_pad[i];
-    ImGui::SameLine();
+    launcher_theme::beside(300 * g_scale);
     int npads = 0;
     SDL_JoystickID *ids = SDL_GetGamepads(&npads);
     if (npads > 0) ImGui::Text(T("   Mando conectado: %s"), SDL_GetGamepadNameForID(ids[0]));
-    else ImGui::TextDisabled(T("   (ningún mando detectado)"));
+    else ImGui::TextDisabled("%s", T("   (ningún mando detectado)"));
     SDL_free(ids);
-    ImGui::Checkbox(T("Cambiar de personaje como en Xenoblade 3 (mantén L2 y pulsa L1 / R1: el de arriba / abajo; F2)"), &g.party_switch);
-    ImGui::SetItemTooltip(T("Pasa el control al siguiente miembro del grupo, en el campo y en combate. Cada uno se queda\n"
-                          "donde está y conserva sus recargas de artes; el anterior pasa a la IA. No funciona en menús ni\n"
-                          "escenas, y en combate salta a los miembros caídos."));
     {
         static const char *ic_ui[] = {"Automático (el mando conectado; sin mando, teclado)", "Switch", "Xbox", "PlayStation",
                                       "Teclado (las teclas asignadas)"};
         ImGui::SetNextItemWidth(340 * g_scale);
-        ImGui::Combo(T("Iconos de botones"), &g.icons, TL(ic_ui, 5).p, 5);
+        launcher_theme::combo(T("Iconos de botones"), &g.icons, TL(ic_ui, 5).p, 5);
         int ic = icons_effective(g.icons);
         if ((ic == 2 || ic == 3) && !exists((std::string("mods/") + k_icon_mod[ic - 2] + "/romfs").c_str()))  // (4: keyboard, no pack)
             ImGui::TextColored(ImVec4(1, 0.6f, 0.2f, 1), T("Falta el pack: descarga \"%s\" de GameBanana y pon su carpeta romfs en mods\\%s"),
                                ic == 2 ? "Xbox control layout" : "PS5 DualSense control layout", k_icon_mod[ic - 2]);
-        ImGui::SetItemTooltip(T("Xbox / PlayStation: packs de iconos de CompC (GameBanana). Teclado: el juego dibuja en cada\n"
+        ImGui::SetItemTooltip("%s", T("Xbox / PlayStation: packs de iconos de CompC (GameBanana). Teclado: el juego dibuja en cada\n"
                               "icono la tecla asignada a ese botón (también ratón). Se aplica al iniciar el juego."));
     }
     {
         static const char *ml_ui[] = {"No", "Manteniendo el botón derecho", "Siempre"};
         ImGui::SetNextItemWidth(260 * g_scale);
-        ImGui::Combo(T("Cámara con el ratón"), &g.mouse_look, TL(ml_ui, 3).p, 3);
-        ImGui::SetItemTooltip(T("Siempre: el ratón mueve la cámara directamente y el cursor queda oculto dentro del juego.\n"
+        launcher_theme::combo(T("Cámara con el ratón"), &g.mouse_look, TL(ml_ui, 3).p, 3);
+        ImGui::SetItemTooltip("%s", T("Siempre: el ratón mueve la cámara directamente y el cursor queda oculto dentro del juego.\n"
                               "F1 (menú) o Alt+Tab lo liberan; al mover el ratón sobre el juego vuelve a capturarse."));
     }
     ImGui::BeginDisabled(!g.mouse_look);
-    ImGui::SameLine();
+    launcher_theme::beside(300 * g_scale);
     ImGui::SetNextItemWidth(140 * g_scale);
     ImGui::SliderInt(T("Sensibilidad"), &g.mouse_sens, 1, 100);
-    ImGui::SameLine();
-    ImGui::Checkbox(T("Invertir eje Y"), &g.mouse_invert);
+    launcher_theme::beside(300 * g_scale);
+    launcher_theme::checkbox(T("Invertir eje Y"), &g.mouse_invert);
     ImGui::EndDisabled();
     ImGui::SetNextItemWidth(140 * g_scale);
     ImGui::SliderInt(T("Zona muerta de los sticks (%)"), &g.stick_deadzone, 0, 30);
-    ImGui::SetItemTooltip(T("Para un mando con drift (el personaje o la cámara se mueven solos): esa parte del recorrido\n"
+    ImGui::SetItemTooltip("%s", T("Para un mando con drift (el personaje o la cámara se mueven solos): esa parte del recorrido\n"
                           "del stick cuenta como centrada. 0 = sin cambios (el juego ya tiene la suya)."));
-    ImGui::TextDisabled(T("Artes 1-8 y talento: en combate seleccionan el arte de ese hueco de la paleta y lo usan."));
-    if (ImGui::BeginTable("binds", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY,
-                          ImVec2(0, ImGui::GetContentRegionAvail().y))) {
+    ImGui::TextDisabled("%s", T("Artes 1-8 y talento: en combate seleccionan el arte de ese hueco de la paleta y lo usan."));
+    if (ImGui::BeginTable("binds", 4, ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_ScrollY | ImGuiTableFlags_ScrollX,
+                          ImVec2(0, ImMax(240 * g_scale, ImGui::GetContentRegionAvail().y)),
+                          ImMax(980 * g_scale, ImGui::GetContentRegionAvail().x))) {
         ImGui::TableSetupColumn(T("Acción (botón de Switch)"), ImGuiTableColumnFlags_WidthFixed, 220 * g_scale);
         ImGui::TableSetupColumn(T("Tecla"), ImGuiTableColumnFlags_WidthFixed, 130 * g_scale);
         ImGui::TableSetupColumn(T("Tecla 2"), ImGuiTableColumnFlags_WidthFixed, 130 * g_scale);
-        ImGui::TableSetupColumn(T("Mando"));
+        ImGui::TableSetupColumn(T("Mando"), ImGuiTableColumnFlags_WidthStretch);
         ImGui::TableSetupScrollFreeze(0, 1);
         ImGui::TableHeadersRow();
         for (int i = 0; i < NACT; i++) {
@@ -787,9 +1222,9 @@ static void tab_controls() {
                 snprintf(lbl, sizeof lbl, "%s##p", cap_dev == 1 && cap_slot == i ? "..." : T(k_pad_label[g.pad[i]]));
                 if (ImGui::Button(lbl, ImVec2(-1, 0))) { cap_dev = 1; cap_slot = i; cap_since = SDL_GetTicks(); cap_until = cap_since + 5000; }
             } else if (i < NSTICK) {
-                ImGui::TextDisabled(T("(stick del mando)"));
+                ImGui::TextDisabled("%s", T("(stick del mando)"));
             } else if (i < NACT - 2) {
-                ImGui::TextDisabled(T("(cruceta + A)"));
+                ImGui::TextDisabled("%s", T("(cruceta + A)"));
             } else {
                 ImGui::TextDisabled(i == NACT - 2 ? "(L2 + L1)" : "(L2 + R1)");
             }
@@ -803,20 +1238,35 @@ static void tab_controls() {
 // a later one wins for the same file); xcde.ini mod_<folder> = 0/1, on by default.
 static void scan_mods() {
     std::vector<Mod> found;
-    WIN32_FIND_DATAA fd;
-    HANDLE h = FindFirstFileA(path("mods\\*").c_str(), &fd);
-    if (h != INVALID_HANDLE_VALUE) {
+#ifdef _WIN32
+    WIN32_FIND_DATAW fd;
+    HANDLE h=FindFirstFileW(monado_launcher_windows::wide(path("mods/*")).c_str(),&fd);
+    if(h!=INVALID_HANDLE_VALUE) {
         do {
-            if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) || fd.cFileName[0] == '.') continue;
-            std::string rf = path((std::string("mods\\") + fd.cFileName + "\\romfs").c_str());
-            DWORD a = GetFileAttributesA(rf.c_str());
-            if (a == INVALID_FILE_ATTRIBUTES || !(a & FILE_ATTRIBUTE_DIRECTORY)) continue;
-            Mod m{fd.cFileName, true};
-            for (const Mod &o : g_mods) if (o.name == m.name) m.on = o.on;
-            found.push_back(m);
-        } while (FindNextFileA(h, &fd));
+            if(!(fd.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY) || (fd.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT) || fd.cFileName[0]==L'.')continue;
+            std::string name=monado_launcher_windows::utf8(fd.cFileName);
+            if(name.empty() || name.find_first_of("=\r\n")!=std::string::npos)continue;
+            DWORD attributes=GetFileAttributesW(monado_launcher_windows::wide(path(("mods/"+name+"/romfs").c_str())).c_str());
+            if(attributes==INVALID_FILE_ATTRIBUTES || !(attributes&FILE_ATTRIBUTE_DIRECTORY) || (attributes&FILE_ATTRIBUTE_REPARSE_POINT))continue;
+            Mod m{name,true};for(const Mod &old:g_mods)if(old.name==m.name)m.on=old.on;found.push_back(m);
+        } while(FindNextFileW(h,&fd));
         FindClose(h);
     }
+#elif defined(__linux__)
+    DIR *dir = opendir(path("mods").c_str());
+    if (dir) {
+        while (dirent *entry = readdir(dir)) {
+            if (entry->d_name[0] == '.' || strpbrk(entry->d_name, "=\r\n")) continue;
+            std::string rf = path((std::string("mods/") + entry->d_name + "/romfs").c_str());
+            struct stat st;
+            if (lstat(rf.c_str(), &st) || !S_ISDIR(st.st_mode)) continue;
+            Mod m{entry->d_name, true};
+            for (const Mod &old : g_mods) if (old.name == m.name) m.on = old.on;
+            found.push_back(m);
+        }
+        closedir(dir);
+    }
+#endif
     std::sort(found.begin(), found.end(), [](const Mod &a, const Mod &b) { return a.name < b.name; });
     for (const Mod &o : g_mods) {  // (keep the settings of folders not present now)
         bool here = false;
@@ -826,86 +1276,128 @@ static void scan_mods() {
     g_mods = found;
 }
 
+#if defined(__linux__) || defined(_WIN32)
+// [XCDE] LINUX-009: the launcher stays alive while the game owns settings.
+// Refresh all UI state after reaping it; never save during this reload or lose
+// the child's exit/error message. Rescan because load marks remembered mods
+// absent, and the Mods tab may already have completed its initial scan.
+static void reload_after_game() {
+    g = Cfg{};
+    g_mods.clear();
+    g_custom.clear();
+    g_extra.clear();
+    cap_dev = -1;
+    load();
+
+    scan_mods();
+}
+#endif
+
 // [XCDE] "Crear reporte": reports\xcde_report_<date>.zip with what a bug report needs - the last two game logs (this
 // run's and the previous one, build\lasrecomp*.log), xcde.ini and the newest crash report (crash\, text + minidump).
 // No saves or game files. Zipped by the tar.exe that Windows 10+ ships; the folder opens when it is done.
 static void make_report() {
-    std::vector<std::string> files;
-    for (const char *f : {"build/lasrecomp.log", "build/lasrecomp.prev.log", "xcde.ini"})
-        if (GetFileAttributesA(path(f).c_str()) != INVALID_FILE_ATTRIBUTES) files.push_back(f);
-    WIN32_FIND_DATAA fd;
-    std::string newest;
-    HANDLE h = FindFirstFileA(path("crash/crash_*.txt").c_str(), &fd);
-    if (h != INVALID_HANDLE_VALUE) {
-        do if (newest.empty() || strcmp(fd.cFileName, newest.c_str()) > 0) newest = fd.cFileName; while (FindNextFileA(h, &fd));
-        FindClose(h);
-    }
-    if (!newest.empty()) {  // (crash_<stamp>.txt sorts by date)
-        files.push_back("crash/" + newest);
-        std::string dmp = "crash/" + newest.substr(0, newest.size() - 4) + ".dmp";
-        if (GetFileAttributesA(path(dmp.c_str()).c_str()) != INVALID_FILE_ATTRIBUTES) files.push_back(dmp);
-    }
-    if (files.empty()) { g_status = T("No hay nada que reportar todavía (ni logs ni xcde.ini)"); return; }
-    CreateDirectoryA(path("reports").c_str(), NULL);
-    char stamp[32];
-    time_t now = time(NULL);
-    strftime(stamp, sizeof stamp, "%Y%m%d_%H%M%S", localtime(&now));
-    std::string zip = std::string("reports/xcde_report_") + stamp + ".zip";
-    char sys[MAX_PATH];
-    GetSystemDirectoryA(sys, sizeof sys);
-    std::string tar = std::string(sys) + "\\tar.exe";
-    std::string cmd = "\"" + tar + "\" -a -c -f \"" + zip + "\"";
-    for (const std::string &f : files) cmd += " \"" + f + "\"";
-    std::vector<char> buf(cmd.begin(), cmd.end());
-    buf.push_back(0);
-    STARTUPINFOA si = {sizeof si};
-    PROCESS_INFORMATION pi;
-    if (!CreateProcessA(tar.c_str(), buf.data(), NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, g_root.c_str(), &si, &pi)) {
-        g_status = T("No se pudo crear el reporte (falta tar.exe de Windows)");
-        return;
-    }
-    WaitForSingleObject(pi.hProcess, 30000);
-    DWORD code = 1;
-    GetExitCodeProcess(pi.hProcess, &code);
-    CloseHandle(pi.hProcess);
-    CloseHandle(pi.hThread);
-    if (code) { g_status = T("No se pudo crear el reporte"); return; }
-    g_status = std::string(T("Reporte creado: ")) + zip + T(" (adjúntalo al reportar el problema)");
-    ShellExecuteA(NULL, "open", path("reports").c_str(), NULL, NULL, SW_SHOWNORMAL);
+    std::string output,error;
+    if(monado_report::create(g_root,output,error))g_status="Local report created: "+output+". Review it before sharing.";
+    else g_status="Could not create local report: "+error;
 }
 
 static void tab_mods() {
+#ifdef __linux__
+    // [XCDE] LINUX-039: authored built-in option; does not require a romfs mod.
+    launcher_theme::section(T("Monado II"));
+    launcher_theme::checkbox(T("Ranura exclusiva de Paso rápido"), &g.quickstep_slot);
+    ImGui::TextWrapped("%s", T("Equipa una gema de Paso rápido en una ranura propia del personaje, incluso sin botas."));
+    ImGui::TextWrapped("%s", T("Función opcional estable. Desactivada por defecto para quienes prefieren el sistema de equipo original."));
+#endif
+    // [XCDE] LINUX-072: keep the existing setting/behavior, grouped with built-in mods.
+    launcher_theme::checkbox(T("Cambiar de personaje como en Xenoblade 3 (mantén L2 y pulsa L1 / R1: el de arriba / abajo; F2)"), &g.party_switch);
+    ImGui::SetItemTooltip("%s", T("Pasa el control al siguiente miembro del grupo, en el campo y en combate. Cada uno se queda\n"
+                          "donde está y conserva sus recargas de artes; el anterior pasa a la IA. No funciona en menús ni\n"
+                          "escenas, y en combate salta a los miembros caídos."));
+    ImGui::Separator();
     static bool scanned;
     if (!scanned) { scanned = true; scan_mods(); }
-    ImGui::TextWrapped(T("Pon cada mod en su carpeta: mods\\<nombre>\\romfs\\... (la misma estructura que en Ryujinx / yuzu). "
+#ifdef __linux__
+    ImGui::TextWrapped("Put each mod under mods/<name>/romfs/ inside the private state folder. Files apply alphabetically; later folders override earlier ones. Code mods (exefs, .pchtxt or IPS patches) are not supported.");
+#else
+    ImGui::TextWrapped("%s", T("Pon cada mod en su carpeta: mods\\<nombre>\\romfs\\... (la misma estructura que en Ryujinx / yuzu). "
                        "Sus archivos reemplazan o añaden archivos del juego. Se aplican en orden alfabético: si dos mods "
                        "cambian el mismo archivo, gana el último. Los mods de código (exefs, parches .pchtxt / IPS) no "
                        "funcionan en esta versión recompilada."));
+#endif
+#ifdef __linux__
+    if (ImGui::Button("Copy mods folder path")) {
+#else
     if (ImGui::Button(T("Abrir carpeta de mods"))) {
+#endif
+#ifdef _WIN32
         CreateDirectoryA(path("mods").c_str(), NULL);
         ShellExecuteA(NULL, "open", path("mods").c_str(), NULL, NULL, SW_SHOWNORMAL);
+#elif defined(__linux__)
+        if (mkdir(path("mods").c_str(), 0700) && errno != EEXIST) g_status = strerror(errno);
+        else { SDL_SetClipboardText(path("mods").c_str()); g_status = "Mods folder copied: " + path("mods"); }
+#endif
     }
-    ImGui::SameLine();
+    launcher_theme::beside(300 * g_scale);
     if (ImGui::Button(T("Actualizar lista"))) scan_mods();
     ImGui::Separator();
     int shown = 0;
     for (Mod &m : g_mods) {
         if (!m.present || is_icon_mod(m.name)) continue;
-        ImGui::Checkbox(m.name.c_str(), &m.on);
+        launcher_theme::checkbox(m.name.c_str(), &m.on);
         shown++;
     }
-    if (!shown) ImGui::TextDisabled(T("No hay mods instalados."));
+    if (!shown) ImGui::TextDisabled("%s", T("No hay mods instalados."));
+}
+
+// [XCDE] LINUX-072: integer-percentage values; Ctrl+navigation gives precise 0.01x steps.
+static void cheat_slider(int index, const char *label) {
+    ImGui::PushID(index);
+    launcher_theme::checkbox(T(label), &g.cheat_enabled[index]);
+    ImGui::BeginDisabled(!g.cheat_enabled[index]);
+    const float number_width = ImGui::CalcTextSize("20.00x").x;
+    const float available = ImGui::GetContentRegionAvail().x;
+    const float width = ImMax(40.0f, ImMin(360 * g_scale, available - number_width - ImGui::GetStyle().ItemInnerSpacing.x));
+    ImGui::SetNextItemWidth(width);
+    ImGui::SliderInt("##multiplier", &g.cheat_percent[index], 0, 2000, "%d%%", ImGuiSliderFlags_AlwaysClamp);
+    ImGui::SetItemTooltip("%s", T("Ctrl+clic para escribir un porcentaje. Con el control activo, Ctrl+flecha ajusta 1%."));
+    ImGui::SameLine(0, ImGui::GetStyle().ItemInnerSpacing.x);
+    ImGui::Text("%.2fx", g.cheat_percent[index] / 100.0);
+    ImGui::EndDisabled();
+    ImGui::PopID();
+}
+
+static void tab_cheats() {
+    ImGui::TextWrapped("%s", T("Cada truco se activa por separado y se aplica al iniciar el juego."));
+    ImGui::TextWrapped("%s", T("Multiplicadores: de 0x a 20x, en pasos de 0.01x (1%). 1x mantiene la cantidad original."));
+    launcher_theme::section(T("Combate"));
+    cheat_slider(0, "Daño causado por el grupo");
+    cheat_slider(1, "Daño recibido por el grupo");
+    launcher_theme::section(T("Recompensas"));
+    cheat_slider(2, "EXP obtenida");
+    cheat_slider(3, "AP obtenidos");
+    cheat_slider(4, "SP obtenidos");
+    cheat_slider(5, "Dinero obtenido");
+    ImGui::TextWrapped("%s", T("La EXP, AP, SP y el dinero ganados permanecen en la partida al desactivar los trucos."));
+    launcher_theme::section(T("Exploración"));
+    launcher_theme::checkbox(T("Sin daño por caídas"), &g.cheat_no_fall_damage);
 }
 
 static void tab_audio() {
-    ImGui::SeparatorText(T("Audio"));
+    launcher_theme::section(T("Audio"));
     ImGui::SetNextItemWidth(300 * g_scale);
     ImGui::SliderInt(T("Volumen"), &g.volume, 0, 200, "%d%%");
-    ImGui::Checkbox(T("Sonido de los vídeos"), &g.movie_audio);
-    ImGui::SeparatorText(T("Idioma del juego"));
+    launcher_theme::checkbox(T("Sonido de los vídeos"), &g.movie_audio);
+    launcher_theme::section(T("Idioma del juego"));
     ImGui::SetNextItemWidth(260 * g_scale);
-    ImGui::Combo(T("Idioma"), &g.lang, TL(k_lang_ui, 7).p, 7);
-    ImGui::TextDisabled(T("Textos del juego. Solo los idiomas que incluya tu copia; si uno falla, vuelve a Inglés."));
+#ifdef __linux__
+    if (launcher_theme::combo(T("Idioma"), &g.lang, TL(k_lang_ui, 7).p, 7)) g_custom.erase("language");
+    custom_note("language");
+#else
+    launcher_theme::combo(T("Idioma"), &g.lang, TL(k_lang_ui, 7).p, 7);
+#endif
+    ImGui::TextDisabled("%s", T("Textos del juego. Solo los idiomas que incluya tu copia; si uno falla, vuelve a Inglés."));
 }
 
 // [XCDE] start-up trace (build/launcher.log) and a visible error instead of a silent exit: a PC where the launcher "did
@@ -922,11 +1414,21 @@ static void llog(const char *fmt, ...) {
 }
 static int fail(const char *what) {
     char msg[1024];
+#ifdef __linux__
+    snprintf(msg, sizeof msg, "%s\n\n%s\n\n(logs/launcher.log in the private state folder)", what, SDL_GetError());
+#else
     snprintf(msg, sizeof msg, "%s\n\n%s\n\n(build\\launcher.log)", what, SDL_GetError());
+#endif
     llog("ERROR: %s: %s", what, SDL_GetError());
+#ifdef _WIN32
     MessageBoxA(NULL, msg, "Monado II - Launcher", MB_OK | MB_ICONERROR);
+#else
+    fprintf(stderr, "%s\n", msg);
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Monado II - Launcher", msg, NULL);
+#endif
     return 1;
 }
+#ifdef _WIN32
 static LONG WINAPI crash_filter(EXCEPTION_POINTERS *e) {
     char msg[256];
     snprintf(msg, sizeof msg, "The launcher crashed (exception %#lx at %p).\n\n(build\\launcher.log)",
@@ -936,26 +1438,158 @@ static LONG WINAPI crash_filter(EXCEPTION_POINTERS *e) {
     return EXCEPTION_EXECUTE_HANDLER;
 }
 
+#endif
+
+#ifdef __linux__
+static void linux_update_popup() {
+    auto &s = launcher_linux::update_snapshot;
+    if (launcher_linux::game_pid || launcher_linux::precompile_pid) return;
+    const char *title = "Monado II update###linux-update";
+    if ((s.offered || s.applying) && !ImGui::IsPopupOpen(title)) ImGui::OpenPopup(title);
+    ImGui::SetNextWindowSize(ImVec2(540 * g_scale, 0), ImGuiCond_Appearing);
+    if (!ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize)) return;
+    ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 500 * g_scale);
+    if (s.offered) {
+        ImGui::Text("A newer stable release is available: %s", s.version.c_str());
+        ImGui::TextWrapped("%s", s.message.c_str());
+        if (s.rebuild) ImGui::TextWrapped("Game rebuilding uses your existing local game files. This can take a while.");
+        ImGui::TextWrapped("Settings will be saved before updating. The launcher restarts when the update is ready; the game will not start automatically.");
+        if (ImGui::Button("Update now")) {
+            if (!save()) s.message = g_status = "Could not save settings; the update has not started.";
+            else launcher_linux::update_apply();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Later")) { launcher_linux::update_defer(); ImGui::CloseCurrentPopup(); }
+    } else {
+        ImGui::TextWrapped("%s", s.message.c_str());
+        if (s.applying) {
+            ImGui::ProgressBar(s.fraction < 0 ? 0 : s.fraction, ImVec2(500 * g_scale, 0), s.phase.c_str());
+            if (!s.ready) {
+                ImGui::BeginDisabled(s.cancelling);
+                if (ImGui::Button("Cancel update")) launcher_linux::update_cancel();
+                ImGui::EndDisabled();
+            }
+        } else if (ImGui::Button("Close")) ImGui::CloseCurrentPopup();
+    }
+    ImGui::PopTextWrapPos();
+    ImGui::EndPopup();
+}
+#endif
+
 int main(int argc, char **argv) {
+    int result = 0;
+#ifdef __linux__
+    if (argc > 1 && !strcmp(argv[1], "--locate-game-files")) return launcher_input_recovery::run(argc, argv);
+    const char *project = nullptr, *game_project = nullptr, *input = nullptr, *game = nullptr, *state = nullptr, *shot = nullptr, *script = nullptr;
+    int update_channel = -1, game_channel = -1;
+    int shot_tab = 0, shot_frame = 5, frame_no = 0;
+    bool shot_pc = false, exit_after_child = false, child_started = false;
+    for (int i = 1; i < argc; ++i) {
+        const char *arg = argv[i];
+        if (!strcmp(arg, "--test-exit-after-child")) { exit_after_child = true; continue; }
+        if (i + 1 == argc) { fprintf(stderr, "Missing value for %s\n", arg); return 2; }
+        const char *value = argv[++i];
+        if (!strcmp(arg, "--project-root")) project = value;
+        else if (!strcmp(arg, "--game-project-root")) game_project = value;
+        else if (!strcmp(arg, "--input-root")) input = value;
+        else if (!strcmp(arg, "--game-executable")) game = value;
+        else if (!strcmp(arg, "--state-root")) state = value;
+        else if (!strcmp(arg,"--fsr3-available")) {
+            if(!linux_component_hint(value,&g_fsr3_available)){fprintf(stderr,"Invalid FSR3 availability flag\n");return 2;}
+        } else if (!strcmp(arg,"--fsr4-available")) {
+            if(!linux_component_hint(value,&g_fsr4_available)){fprintf(stderr,"Invalid FSR4 availability flag\n");return 2;}
+        } else if (!strcmp(arg,"--fsr4-unavailable-reason")) {
+            if(strlen(value)>512){fprintf(stderr,"FSR4 reason too long\n");return 2;}g_fsr4_unavailable_reason=value;
+        }
+        else if (!strcmp(arg, "--smooth-motion-layer-available")) {
+            if (!launcher_linux::smooth_motion_hint(value)) { fprintf(stderr, "Invalid Smooth Motion component flag\n"); return 2; }
+        }
+        else if (!strcmp(arg, "--shot")) { shot = value; if (i + 1 < argc && argv[i + 1][0] != '-') shot_tab = atoi(argv[++i]); }
+        else if (!strcmp(arg, "--shot-frame")) shot_frame = atoi(value);
+        else if (!strcmp(arg, "--shot-tab")) shot_tab = atoi(value);
+        else if (!strcmp(arg, "--ui-script")) script = value;
+        else if (!strcmp(arg, "--lock-fd")) { char *end = nullptr; long fd = strtol(value, &end, 10);
+            if (!end || *end || fd < 3 || fd > INT_MAX || fcntl((int)fd, F_GETFD) < 0) { fprintf(stderr, "Invalid lock descriptor\n"); return 2; } }
+        else if (!strcmp(arg, "--game-fd")) {char *end=nullptr;long fd=strtol(value,&end,10);
+            if(!end||*end||fd<3||fd>INT_MAX||game_channel>=0){fprintf(stderr,"Invalid host game descriptor\n");return 2;}game_channel=(int)fd;}
+        else if (!strcmp(arg, "--update-fd")) { char *end = nullptr; long fd = strtol(value, &end, 10);
+            if (!end || *end || fd < 3 || fd > INT_MAX || update_channel >= 0) { fprintf(stderr, "Invalid update descriptor\n"); return 2; }
+            update_channel = (int)fd; }
+        else if (!strcmp(arg, "--test-child-env")) {
+            std::string entry = value, key = entry.substr(0, entry.find('='));
+            const char *allowed[] = {"XCDE_SHOTS", "XCDE_EXIT_AFTER_SHOTS", "LARECOMP_NO_USER_INPUT", "LARECOMP_AUDIO_GAIN", "XCDE_USAGE", "XCDE_HLE_COVERAGE", "XCDE_STALL", "XCDE_PRESENT_STATS", "XCDE_TRACE_PRESENT", "XCDE_DUP_CHECK"};
+            if (entry.find('=') == std::string::npos || find(allowed, sizeof allowed / sizeof *allowed, key.c_str()) < 0) { fprintf(stderr, "Unsupported test child control\n"); return 2; }
+            launcher_linux::test_environment.push_back(entry);
+        } else { fprintf(stderr, "Unknown launcher argument: %s\n", arg); return 2; }
+    }
+    if (!script && (exit_after_child || !launcher_linux::test_environment.empty())) { fprintf(stderr, "Test child controls require --ui-script\n"); return 2; }
+    if (!launcher_linux::canonical(project, launcher_linux::project, true) ||
+        !launcher_linux::canonical(game_project ? game_project : project, launcher_linux::game_project, true) ||
+        !launcher_linux::canonical(input, launcher_linux::input, true) ||
+        !launcher_linux::canonical(game, launcher_linux::game, false) || !state || state[0] != '/' ||
+        shot_tab < 0 || shot_tab > 4 || shot_frame < 1 || shot_frame > 10000) {
+        fprintf(stderr, "Supply canonical absolute project/input/game paths, absolute private state and valid capture options\n"); return 2;
+    }
+    if (update_channel >= 0 && (shot || script || !launcher_linux::update_adopt_fd(update_channel))) {
+        fprintf(stderr, "Update IPC requires a valid host channel and an ordinary unscripted launcher\n"); return 2;
+    }
+    if(game_channel>=0&&(shot||script||!launcher_linux::game_adopt_fd(game_channel))){
+        fprintf(stderr,"Host Play IPC requires a valid host channel and an ordinary unscripted launcher\n");return 2;}
+    char error[1024]; umask(0077);
+    if (!rt_paths_init_linux(input, state, error, sizeof error) || !rt_linux_state_guard(rt_data_root(), error, sizeof error)) {
+        fprintf(stderr, "Launcher state initialization failed: %s\n", error); return 1;
+    }
+    g_root = rt_data_root();
+    if (shot) {
+        struct stat st;
+        if (!launcher_linux::output_path(shot, g_root) || !lstat(shot, &st)) { fprintf(stderr, "Capture must be a fresh path inside private state\n"); return 2; }
+    }
+    if (script && !launcher_linux::load_events(script)) { fprintf(stderr, "%s\n", launcher_linux::error.c_str()); return 2; }
+    g_llog = fopen(path("logs/launcher.log").c_str(), "ae");
+    if (!g_llog) { fprintf(stderr, "Cannot open launcher log: %s\n", strerror(errno)); return 1; }
+#else
     // root: the folder above the launcher's build/ folder (or the working directory)
     const char *base = SDL_GetBasePath();
     g_root = base ? base : ".";
     while (!g_root.empty() && (g_root.back() == '/' || g_root.back() == '\\')) g_root.pop_back();
     if (g_root.size() > 6 && (g_root.compare(g_root.size() - 6, 6, "\\build") == 0 || g_root.compare(g_root.size() - 6, 6, "/build") == 0))
         g_root.resize(g_root.size() - 6);
-    // --shot <file.bmp> [tab] [precompile]: render a few frames of that tab, save the window as a BMP and quit (tests)
-    const char *shot = argc > 2 && !strcmp(argv[1], "--shot") ? argv[2] : NULL;
-    int shot_tab = argc > 3 ? atoi(argv[3]) : 0, frame_no = 0;
-    bool shot_pc = shot && argc > 4 && !strcmp(argv[4], "precompile");  // (... <tab> precompile: the bar after ~5 s of a run)
-    g_llog = fopen((g_root + "\\build\\launcher.log").c_str(), "w");
+    g_runtime_root=g_root;
+    std::vector<std::string> arguments;
+    for(int i=1;i<argc;i++)arguments.emplace_back(argv[i]);
+    monado_launcher_windows::Options options;
+    std::string profile_error;
+    if(!monado_launcher_windows::parse_options(arguments,options,profile_error)) {fprintf(stderr,"%s\n",profile_error.c_str());return 2;}
+    monado_launcher_windows::ProfileLease profile_lease;
+    if(!profile_lease.acquire(options.profile.empty()?g_runtime_root:options.profile,g_root,profile_error)) {
+        fprintf(stderr,"%s\n",profile_error.c_str());return 2;
+    }
+    const char *shot=options.shot.empty()?nullptr:options.shot.c_str();
+    int shot_tab=options.shot_tab,frame_no=0;
+    bool shot_pc=options.shot_precompile;
+    g_llog = monado_launcher_windows::open_append(path("build/launcher.log"));
+    if(!g_llog){fprintf(stderr,"Cannot open ordinary single-link profile launcher log\n");return 2;}
     SetUnhandledExceptionFilter(crash_filter);
+#endif
     llog("launcher start, root %s", g_root.c_str());
+#ifdef __linux__
+    // [XCDE] LINUX-016: desktop filename identity, before SDL initialization.
+    SDL_SetHint(SDL_HINT_APP_ID, "monado-linux-port");
+#endif
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         llog("SDL_Init with gamepads failed (%s): video only", SDL_GetError());
         if (!SDL_Init(SDL_INIT_VIDEO)) return fail("Could not start SDL (video).");
     }
-    SDL_Window *win = SDL_CreateWindow("Monado II - Launcher", 980, 680, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
+    // [XCDE] LINUX-077: inventory without opening a second reference to pads
+    // already owned by the ImGui SDL backend.
+    rt_input_inventory(g_llog, "launcher", "startup");
+    // [XCDE] LINUX-019: use the user's expanded client size so the artwork is visible on opening.
+    const int launcher_w = 1267, launcher_h = 804;
+    SDL_Window *win = SDL_CreateWindow("Monado II - Launcher", launcher_w, launcher_h, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
     if (!win) return fail("Could not create the launcher window.");
+#ifdef __linux__
+    rt_window_icon(win); // [XCDE] LINUX-016: same adjacent PNG as the game.
+#endif
     SDL_Renderer *ren = SDL_CreateRenderer(win, NULL);
     if (!ren) {  // (an old or missing graphics driver: the CPU renderer still shows the launcher)
         llog("GPU renderer failed (%s): software renderer", SDL_GetError());
@@ -972,30 +1606,88 @@ int main(int argc, char **argv) {
     float scale = SDL_GetWindowDisplayScale(win);
     if (scale <= 0) scale = 1;
     g_scale = scale;
-    SDL_SetWindowSize(win, (int)(980 * scale), (int)(680 * scale));
+    SDL_SetWindowSize(win, (int)(launcher_w * scale), (int)(launcher_h * scale));
+    // [XCDE] LINUX-015: retain room for the wrapped footer at compact sizes.
+    // This native launcher constraint is independent of the game's window key.
+    if (!SDL_SetWindowMinimumSize(win, (int)(640 * scale), (int)(480 * scale)))
+        llog("Could not set the launcher minimum size: %s", SDL_GetError());
     SDL_SetWindowPosition(win, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
+#ifdef __linux__
+    if (!shot || script) SDL_ShowWindow(win);
+    if (!launcher_theme::fonts(io, scale)) {
+    const char *font = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf";
+    if (access(font, R_OK) == 0) io.Fonts->AddFontFromFileTTF(font, 17.0f * scale);
+    if (io.Fonts->Fonts.empty()) io.Fonts->AddFontDefault();
+    }
+#else
     if (!shot) SDL_ShowWindow(win);
-    if (!io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 17.0f * scale)) io.Fonts->AddFontDefault();
-    ImGui::StyleColorsDark();
-    ImGuiStyle &st = ImGui::GetStyle();
-    st.WindowRounding = 0; st.FrameRounding = 4; st.FramePadding = ImVec2(8, 5); st.ItemSpacing = ImVec2(10, 8);
-    st.ScaleAllSizes(scale);
-    st.Colors[ImGuiCol_Button] = ImVec4(0.18f, 0.35f, 0.55f, 1);
-    st.Colors[ImGuiCol_ButtonHovered] = ImVec4(0.25f, 0.47f, 0.72f, 1);
+    if (!launcher_theme::fonts(io, scale) && !io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", 17.0f * scale)) io.Fonts->AddFontDefault();
+#endif
+    launcher_theme::style(scale);
+    SDL_Texture *art = launcher_theme::artwork(ren);
+    if (!art) llog("Scenic artwork unavailable; using solid theme fallback: %s", SDL_GetError());
     ImGui_ImplSDL3_InitForSDLRenderer(win, ren);
     ImGui_ImplSDLRenderer3_Init(ren);
     load();
+#ifdef __linux__
+    if ((g.upscaler == 2 && !g_fsr3_available) || (g.upscaler==4&&!linux_fsr4_available()) || (g.upscaler == 3 && !linux_dlss_packaged()) ||
+        ((g.frame_gen || g.cut_fg) && ((g.upscaler != 2 && g.upscaler != 3 && g.upscaler!=4) || !linux_framegen_packaged())))
+        g_status = "Unavailable graphics options replaced with supported Linux settings.";
+    linux_graphics_normalize();
+    bool have_game = access((launcher_linux::input + "/exefs/main").c_str(), R_OK) == 0;
+    bool have_exe = access(launcher_linux::game.c_str(), X_OK) == 0;
+#else
     bool have_game = exists("targets/exefs/main") || exists("targets/exefs");
     bool have_exe = exists("build/xcde.exe");
+#endif
     bool run = true, launched = false;
     if (shot_pc) pc_start(false);
     while (run) {
+#ifdef _WIN32
+        if(g_game_proc && WaitForSingleObject(g_game_proc,0)==WAIT_OBJECT_0) {
+            DWORD code=1;GetExitCodeProcess(g_game_proc,&code);CloseHandle(g_game_proc);g_game_proc=nullptr;
+            launched=g_launched_ok=false;reload_after_game();
+            g_status=code==0?"Game exited. Settings reloaded.":"Game exited with code "+std::to_string(code)+". See build/last_game.log.";
+        }
+#endif
+#ifdef __linux__
+        bool had_child = launcher_linux::game_pid != 0;
+        std::string process_message = launcher_linux::poll_game();
+        if (!process_message.empty()) { g_status = process_message; llog("%s", g_status.c_str()); }
+        if (had_child && !launcher_linux::game_pid) {
+            if ((exit_after_child && child_started) || result) { result = result ? result : launcher_linux::last_result; run = false; }
+            else reload_after_game();
+        }
+        launcher_linux::update_poll(launcher_linux::game_pid || launcher_linux::precompile_pid);
+        static unsigned update_revision;
+        const auto &update = launcher_linux::update_snapshot;
+        if (update.revision != update_revision) {
+            update_revision = update.revision;
+            if (update.failed || update.phase == "cancelled") g_status = update.message;
+        }
+        if (update.ready && !launcher_linux::game_pid && !launcher_linux::precompile_pid) { result = 75; run = false; }
+        if (script && !launcher_linux::push_events(frame_no, win)) {
+            result = 1; script = nullptr; run = launcher_linux::activity_busy();
+            if (pc_running()) { g_pc_quit = true; pc_stop(); }
+            g_status = "UI script failed: " + launcher_linux::error; llog("%s", g_status.c_str());
+        }
+#endif
         SDL_Event e;
         while (SDL_PollEvent(&e)) {
             if (capture_event(e)) continue;
             ImGui_ImplSDL3_ProcessEvent(&e);
-            if (e.type == SDL_EVENT_QUIT) run = false;
-            if (e.type == SDL_EVENT_GAMEPAD_ADDED) SDL_OpenGamepad(e.gdevice.which);
+            if (e.type == SDL_EVENT_QUIT) {
+#ifdef __linux__
+                if (launcher_linux::game_pid && !launcher_linux::game_broker_configured) g_status = "Close the game window before quitting the launcher.";
+                else if (pc_running()) { g_pc_quit = true; pc_stop(); }
+                else if (launcher_linux::update_applying()) launcher_linux::update_cancel();
+                else run = false;
+#else
+                run = false;
+#endif
+            }
+            if (e.type == SDL_EVENT_GAMEPAD_ADDED || e.type == SDL_EVENT_GAMEPAD_REMOVED)
+                rt_input_inventory(g_llog, "launcher", e.type == SDL_EVENT_GAMEPAD_ADDED ? "gamepad added" : "gamepad removed");
         }
         ImGui_ImplSDLRenderer3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
@@ -1003,19 +1695,22 @@ int main(int argc, char **argv) {
         const ImGuiViewport *vp = ImGui::GetMainViewport();
         ImGui::SetNextWindowPos(vp->WorkPos);
         ImGui::SetNextWindowSize(vp->WorkSize);
-        ImGui::Begin("main", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings);
-        ImGui::SetWindowFontScale(1.5f);
-        ImGui::TextColored(ImVec4(0.55f, 0.85f, 1, 1), "Xenoblade Chronicles: Definitive Edition");
-        ImGui::SetWindowFontScale(1.0f);
-        ImGui::TextDisabled("%s", T("Recompilación nativa para PC · configuración"));
-        {   // [XCDE] the launcher's own language (Spanish / English), saved with the settings
+        ImGui::Begin("main", NULL, ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoBackground);
+        const char *actions[] = {T("JUGAR"), T("Precompilar shaders"), T("Guardar ajustes"), T("Crear reporte"), T("Salir")};
+        const auto layout = launcher_theme::layout(vp->WorkPos, vp->WorkSize, scale, actions, pc_running());
+        launcher_theme::backdrop(layout);
+        launcher_theme::branding(layout, T("Recompilación nativa para PC · configuración"));
+#ifdef __linux__
+        ImGui::BeginDisabled(launcher_linux::activity_busy() || g_pc_quit);
+#endif
+        {   // The existing language control remains in the original root ID scope.
             static const char *ll[] = {"Español", "English"};
-            ImGui::SameLine(ImGui::GetContentRegionMax().x - 330 * scale);
-            ImGui::SetNextItemWidth(150 * scale);
-            ImGui::Combo(T("Idioma del launcher"), &g.ui_lang, ll, 2);
+            launcher_theme::language_position(layout, T("Idioma del launcher"));
+            launcher_theme::combo(T("Idioma del launcher"), &g.ui_lang, ll, 2);
         }
-        float bottom = ImGui::GetFrameHeightWithSpacing() * (pc_running() ? 3.3f : 2.2f);
-        ImGui::BeginChild("tabs", ImVec2(0, -bottom));
+        ImGui::SetCursorScreenPos(ImVec2(vp->WorkPos.x + layout.panel_x + 16 * scale, vp->WorkPos.y + layout.header + 12 * scale));
+        ImGui::BeginChild("tabs", ImVec2(layout.panel_width - 32 * scale, ImMax(40 * scale, layout.content_bottom - layout.header - 12 * scale)));
+        ImGui::PushTextWrapPos(0);
         if (ImGui::BeginTabBar("t")) {
             ImGuiTabItemFlags f0 = shot && shot_tab == 0 ? ImGuiTabItemFlags_SetSelected : 0, f1 = shot && shot_tab == 1 ? ImGuiTabItemFlags_SetSelected : 0,
                               f2 = shot && shot_tab == 2 ? ImGuiTabItemFlags_SetSelected : 0;
@@ -1024,23 +1719,45 @@ int main(int argc, char **argv) {
             if (ImGui::BeginTabItem(T("Audio e idioma"), NULL, f2)) { tab_audio(); ImGui::EndTabItem(); }
             ImGuiTabItemFlags f3 = shot && shot_tab == 3 ? ImGuiTabItemFlags_SetSelected : 0;
             if (ImGui::BeginTabItem(T("Mods"), NULL, f3)) { tab_mods(); ImGui::EndTabItem(); }
+            ImGuiTabItemFlags f4 = shot && shot_tab == 4 ? ImGuiTabItemFlags_SetSelected : 0;
+            if (ImGui::BeginTabItem(T("Trucos"), NULL, f4)) { tab_cheats(); ImGui::EndTabItem(); } // [XCDE] LINUX-072
             ImGui::EndTabBar();
         }
+        ImGui::PopTextWrapPos();
         ImGui::EndChild();
-        ImGui::Separator();
+#ifdef __linux__
+        ImGui::EndDisabled();
+#endif
+        ImGui::SetCursorScreenPos(ImVec2(vp->WorkPos.x + layout.panel_x + 16 * scale, vp->WorkPos.y + layout.footer_top + 10 * scale));
+        ImGui::BeginChild("status", ImVec2(layout.panel_width - 32 * scale, ImGui::GetTextLineHeight() * 2 + 10 * scale), ImGuiChildFlags_None, ImGuiWindowFlags_NoNavInputs | ImGuiWindowFlags_NoNavFocus);
+        ImGui::PushTextWrapPos(0);
+#ifdef __linux__
+        if (!have_game || !have_exe) ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "Selected game input or executable is unavailable.");
+        else ImGui::TextWrapped("%s", g_status.empty() ? "Ready. Private saves: save/   Settings: xcde.ini" : g_status.c_str());
+#else
         if (!have_game) ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", T("Faltan los archivos del juego en targets/ (exefs y romfs de tu copia)."));
         else if (!have_exe) ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", T("Falta build/xcde.exe (compila el juego primero)."));
         else ImGui::TextDisabled(T("%s"), g_status.empty() ? (pc_done() ? T("Listo. Guardado: save/   Ajustes: xcde.ini")
-                                                                   : T("Listo. La primera vez, JUGAR prepara los shaders antes (unos minutos)"))
+                                                                   : "Ready. Shader preparation is optional.")
                                                        : g_status.c_str());
+#endif
+        ImGui::PopTextWrapPos();
+        ImGui::EndChild();
         pc_poll();
+#ifdef __linux__
+        if (g_pc_quit && !pc_running()) run = false;
+#endif
         if (pc_running()) {
+            ImGui::SetCursorScreenPos(ImVec2(vp->WorkPos.x + layout.panel_x + 16 * scale,
+                vp->WorkPos.y + layout.footer_top + 20 * scale + ImGui::GetTextLineHeight() * 2));
             ImGui::ProgressBar(g_pc_frac, ImVec2(-150 * scale, 0), g_pc_text.c_str());
             ImGui::SameLine();
             if (ImGui::Button(g_pc_then_play ? T("Omitir") : T("Detener"), ImVec2(-1, 0))) {
                 pc_stop();
+#ifndef __linux__
                 g_status = T("Precompilación detenida (se puede seguir otro día: lo ya hecho se conserva)");
                 if (g_pc_then_play) g_pc_play_now = true;
+#endif
             }
         }
         if (g_pc_play_now) {
@@ -1049,46 +1766,107 @@ int main(int argc, char **argv) {
             launched = g_launched_ok;
             if (launched) run = false;
         }
-        ImGui::BeginDisabled(!have_game || !have_exe || launched || pc_running());
-        ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.15f, 0.55f, 0.3f, 1));
-        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.2f, 0.7f, 0.4f, 1));
-        if (ImGui::Button(T("JUGAR"), ImVec2(200 * scale, 0))) {
-            if (!pc_done()) pc_start(true);
-            else { launch(); launched = g_launched_ok; if (launched) run = false; }
+#ifdef __linux__
+        ImGui::BeginDisabled(!have_game || !have_exe || launcher_linux::activity_busy() || g_pc_quit);
+#else
+        ImGui::BeginDisabled(!have_game || !have_exe || g_game_proc || pc_running());
+#endif
+        launcher_theme::footer_button(layout, 0);
+        ImGui::PushStyleColor(ImGuiCol_Button, launcher_theme::color(0xC91542));
+        ImGui::PushStyleColor(ImGuiCol_ButtonHovered, launcher_theme::color(0xE32954));
+        ImGui::PushStyleColor(ImGuiCol_ButtonActive, launcher_theme::color(0x9D1034));
+        if (launcher_theme::heading_font) ImGui::PushFont(launcher_theme::heading_font);
+        if (ImGui::Button(T("JUGAR"), layout.button_sizes[0])) {
+#ifdef __linux__
+            launch(); child_started |= launcher_linux::game_pid != 0;
+#else
+            launch(); launched = g_launched_ok;
+#endif
         }
-        ImGui::PopStyleColor(2);
-        ImGui::SameLine();
-        if (ImGui::Button(T("Precompilar shaders"))) pc_start(false);
+        if (launcher_theme::heading_font) ImGui::PopFont();
+        ImGui::PopStyleColor(3);
+        launcher_theme::footer_button(layout, 1);
+#ifdef __linux__
+        if (ImGui::Button(T("Precompilar shaders"), layout.button_sizes[1])) pc_start(false);
+        if (ImGui::IsItemHovered()) {
+            ImGui::BeginTooltip();
+            ImGui::PushTextWrapPos(300 * scale);
+            ImGui::TextUnformatted("Prepares supported shaders in this private profile. Remaining variants compile during play. This does not launch the game.");
+            ImGui::PopTextWrapPos();
+            ImGui::EndTooltip();
+        }
+#else
+        if (ImGui::Button(T("Precompilar shaders"), layout.button_sizes[1])) pc_start(false);
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip(T("Traduce y compila todos los shaders del juego por adelantado, para que la primera visita\n"
+            ImGui::SetTooltip("%s", T("Traduce y compila todos los shaders del juego por adelantado, para que la primera visita\n"
                               "a una zona no se detenga a compilarlos. Solo hace falta una vez (o tras actualizar el juego)."));
+#endif
         ImGui::EndDisabled();
-        ImGui::SameLine();
-        if (ImGui::Button(T("Guardar ajustes"))) g_status = save() ? T("Ajustes guardados en xcde.ini") : T("No se pudo escribir xcde.ini");
-        ImGui::SameLine();
-        if (ImGui::Button(T("Crear reporte"))) make_report();
-        ImGui::SetItemTooltip(T("Junta en un .zip los logs de las dos últimas partidas, xcde.ini y el último informe de\n"
+        launcher_theme::footer_button(layout, 2);
+#ifdef __linux__
+        ImGui::BeginDisabled(launcher_linux::activity_busy() || g_pc_quit);
+#endif
+        ImGui::BeginDisabled(g_game_proc!=nullptr);
+        if (ImGui::Button(T("Guardar ajustes"), layout.button_sizes[2])) g_status = save() ? T("Ajustes guardados en xcde.ini") : T("No se pudo escribir xcde.ini");
+#ifdef __linux__
+        ImGui::EndDisabled();
+#endif
+        ImGui::EndDisabled();
+        launcher_theme::footer_button(layout, 3);
+        if (ImGui::Button(T("Crear reporte"), layout.button_sizes[3])) make_report();
+#ifdef __linux__
+        ImGui::SetItemTooltip("Copies selected local logs and xcde.ini into a new reports folder; no saves, game input or uploads.");
+#else
+        ImGui::SetItemTooltip("%s", T("Junta en un .zip los logs de las dos últimas partidas, xcde.ini y el último informe de\n"
                               "cierre inesperado (sin partidas guardadas ni archivos del juego), para adjuntarlo a un reporte."));
-        ImGui::SameLine();
-        if (ImGui::Button(T("Salir"))) run = false;
+#endif
+        launcher_theme::footer_button(layout, 4);
+        if (ImGui::Button(T("Salir"), layout.button_sizes[4])) {
+#ifdef __linux__
+            if (launcher_linux::game_pid && !launcher_linux::game_broker_configured) g_status = "Close the game window before quitting the launcher.";
+            else if (pc_running()) { g_pc_quit = true; pc_stop(); }
+            else if (launcher_linux::update_applying()) launcher_linux::update_cancel();
+            else run = false;
+#else
+            run = false;
+#endif
+        }
         ImGui::End();
+#ifdef __linux__
+        linux_update_popup();
+#endif
         ImGui::Render();
-        SDL_SetRenderDrawColor(ren, 18, 20, 26, 255);
+        SDL_SetRenderDrawColor(ren, 10, 20, 32, 255);
         SDL_RenderClear(ren);
+        launcher_theme::render_art(ren, art);
         ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), ren);
+#ifdef __linux__
+        ++frame_no;
+        if (shot && frame_no == shot_frame) {
+            SDL_Surface *sf = SDL_RenderReadPixels(ren, NULL);
+            if (!sf || !SDL_SaveBMP(sf, shot)) { result = 1; llog("Screenshot failed: %s", SDL_GetError()); }
+            if (sf) SDL_DestroySurface(sf);
+            if (!launcher_linux::activity_busy()) run = false;
+        }
+#else
         if (shot && ++frame_no == (shot_pc ? 300 : 5)) {
             SDL_Surface *sf = SDL_RenderReadPixels(ren, NULL);
             if (sf) { SDL_SaveBMP(sf, shot); SDL_DestroySurface(sf); }
             run = false;
         }
+#endif
         SDL_RenderPresent(ren);
     }
+    if(g_game_proc){CloseHandle(g_game_proc);g_game_proc=nullptr;}
     if (!launched) pc_stop();  // (closing the launcher stops a precompilation; what it wrote is kept)
     ImGui_ImplSDLRenderer3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
+    if (art) SDL_DestroyTexture(art);
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     SDL_Quit();
-    return 0;
+    llog("launcher exit %d", result);
+    if (g_llog) fclose(g_llog);
+    return result;
 }

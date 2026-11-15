@@ -8,7 +8,7 @@ import sys
 import tempfile
 import unittest
 
-PORT = Path(__file__).resolve().parents[1] / 'Monado_Linux'
+from native_renderer_support import PORT, WINDOWS, compiler_command, compiler_environment, binary_name, native_flags
 CMDBUF = PORT / 'runtime/nvn/cmdbuf.c'
 EXEC = PORT / 'runtime/nvn/vulkan/exec.c'
 
@@ -27,33 +27,32 @@ def function(source, name):
     return source[start:end] + '\n'
 
 
-@unittest.skipUnless(sys.platform == 'linux', 'native Linux NVN fixtures')
+@unittest.skipUnless(sys.platform in ('linux', 'win32'), 'native Linux or Windows NVN fixtures')
 class NvnProgramBindingTests(unittest.TestCase):
     def compile_run(self, native, headers):
-        local = PORT / '.deps/bin/clang-cc'
-        compiler = os.environ.get('MONADO_TEST_CC') or (str(local) if local.is_file() else shutil.which('clang'))
+        compiler = compiler_command()
         if not compiler:
             self.skipTest('Clang is required for the native CPU header')
         with tempfile.TemporaryDirectory(prefix='monado-program-binding-') as temporary:
             folder = Path(temporary)
             for name, source in headers.items():
                 (folder / name).write_text(source)
-            binary = folder / 'contracts'
-            command = [compiler, '-std=gnu11', '-O1', '-UNDEBUG', '-ffp-contract=off',
-                       '-fno-strict-aliasing', '-Wall', '-Wextra', '-Werror',
-                       '-Wno-unused-function', '-ffunction-sections', '-fdata-sections',
-                       '-Wl,--gc-sections', '-pthread', '-I', str(PORT / 'runtime'),
-                       '-I', str(PORT / 'runtime/nvn'), '-I', str(folder),
-                       '-DMONADO_PROGRAM_CMDBUF_SOURCE="' + str(CMDBUF) + '"',
+            binary = folder / binary_name('contracts')
+            command = compiler + native_flags() + [
+                       '-I', str(PORT / 'runtime'), '-I', str(PORT / 'runtime/nvn'), '-I', str(folder),
+                       '-DMONADO_PROGRAM_CMDBUF_SOURCE="' + CMDBUF.as_posix() + '"',
                        str(PORT / 'tests/native' / native), '-o', str(binary)]
             if os.environ.get('MONADO_TEST_UBSAN') == '1':
                 command[1:1] = ['-fsanitize=undefined', '-fno-sanitize-recover=all']
-            result = subprocess.run(command, capture_output=True, text=True, timeout=120)
+            result = subprocess.run(command, env=compiler_environment(), capture_output=True, text=True, timeout=120)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             result = subprocess.run([str(binary)], cwd=temporary, capture_output=True, text=True, timeout=45)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertIn('contracts: PASS', result.stdout)
-            self.assertEqual({p.name for p in folder.iterdir()}, {'contracts', *headers})
+            expected = {binary_name('contracts'), *headers}
+            if WINDOWS:
+                expected.add('contracts.pdb')
+            self.assertEqual({p.name for p in folder.iterdir()}, expected)
 
     def test_recording_and_independent_stage_bindings(self):
         source = EXEC.read_text()

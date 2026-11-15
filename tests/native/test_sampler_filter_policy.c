@@ -1,6 +1,6 @@
 #include <assert.h>
 #include <stdio.h>
-#include "../../Monado_Linux/runtime/nvn/vulkan/sampler_filter_policy.h"
+#include "nvn/vulkan/sampler_filter_policy.h"
 int main(void) {
     for(unsigned choice=0;choice<7;choice++)
       for(unsigned mf=0;mf<7;mf++)for(unsigned mag=0;mag<2;mag++)

@@ -5,6 +5,11 @@
 #include "../hle.h"
 #include "../ipc.h"
 #include "../settings.h"
+#include "../hle/rumble_ipc.h" // [XCDE] LINUX-103
+
+extern void input_rumble_offer(uint32_t handle, const float value[4], void *user);
+extern void input_rumble_permit(bool permitted);
+extern bool input_rumble_permitted(void);
 
 static uint32_t new_event_handle(void) {
     uint32_t w, r;
@@ -33,7 +38,21 @@ SERVICE("hid", hid) {
     case 101: OUT(uint32_t, 0) = 0x1F; resp_size(resp, 4); break;  // GetSupportedNpadStyleSet
     case 121: OUT(int64_t, 0) = 0; resp_size(resp, 8); break;      // GetNpadJoyHoldType
     case 129: OUT(int64_t, 0) = 0; resp_size(resp, 8); break;      // GetNpadHandheldActivationMode
-    case 201: case 202: case 203: case 206: case 207: case 208: case 209: break;  // vibration
+    // [XCDE] LINUX-103: bounded single/array vibration payloads (libnx ABI).
+    case 201: case 206:
+        if (!rt_rumble_ipc(req, input_rumble_offer, NULL)) {
+            resp->result = 0xC801; // malformed argument/buffer, no vibration offered
+            LOG("[hid] rejected malformed vibration payload cmd=%u\n", req->cmd);
+        }
+        break;
+    case 204:
+        if (req->data_size >= 1) input_rumble_permit(req->data[0] != 0);
+        else resp->result = 0xC801;
+        break;
+    case 205: OUT(uint8_t,0) = input_rumble_permitted(); resp_size(resp,1); break;
+    case 210: input_rumble_permit(false); break;
+    case 209: input_rumble_permit(true); break;
+    case 202: case 203: case 207: case 208: break; // inherited simplified query/activation
     case 200: memset(resp->data, 0, 0x10); OUT(uint32_t, 0) = 1; resp_size(resp, 0x10); break;
     default: break;  // Activate*/Set*: accept
     }

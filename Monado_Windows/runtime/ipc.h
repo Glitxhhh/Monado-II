@@ -11,6 +11,7 @@ typedef struct IpcReq {
     uint32_t cmd;
     const uint8_t *data;  // payload after the SFCI header
     uint32_t data_size;
+    bool has_pid;      // descriptor presence; pid may be a zero guest placeholder
     uint64_t pid;
     uint32_t copy_handles[8], move_handles[8];
     int ncopy, nmove;

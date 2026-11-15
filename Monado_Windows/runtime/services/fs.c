@@ -13,9 +13,30 @@
 #include "../hle.h"
 #include "../rando.h"
 #include "../ipc.h"
+#include "../hle/quickstep_save.h"
 #include "romfs_virtual.h"  // [XCDE]
 #ifndef O_BINARY
 #define O_BINARY 0
+#endif
+
+#ifdef _WIN32
+#include "../platform/windows_save_io.h"
+#include "../platform/windows_save_dir.h"
+#define open ws_open
+#define _stat64(...) ws_stat(__VA_ARGS__)
+#undef mkdir
+#define mkdir ws_mkdir
+#define unlink ws_unlink
+#define rmdir ws_rmdir
+#define rename ws_move
+#define DIR WsDir
+#define dirent ws_dirent
+#define opendir ws_opendir
+#define readdir ws_readdir
+#define closedir ws_closedir
+#define telldir ws_telldir
+#define rewinddir ws_rewinddir
+#define seekdir ws_seekdir
 #endif
 
 #define FS_PATH_NOT_FOUND MAKE_RESULT(2, 1)
@@ -162,7 +183,12 @@ static void add_new_files(int fd, const uint64_t *h, const uint8_t *dmeta, uint6
     // the file-meta table to extend: the override-patched copy if there is one
     const uint8_t *base_meta = ov_meta;
     uint8_t *tmp = NULL;
-    if (!base_meta) { tmp = malloc(fsz); pread(fd, tmp, fsz, (off_t)h[7]); base_meta = tmp; }
+    if (!base_meta) {
+        tmp = malloc(fsz);
+        if (!tmp || pread(fd, tmp, fsz, (off_t)h[7]) != (ssize_t)fsz)
+            FATAL("[fs] RomFS metadata read failed\n");
+        base_meta = tmp;
+    }
     uint64_t extra = 0;
     for (int i = 0; i < n; i++) {
         const char *name = strrchr(nf[i].rel, '/');
@@ -359,7 +385,7 @@ static void storage(Service *s, IpcReq *req, IpcResp *resp) {
         if (size > b->size) size = b->size;
         ssize_t n = st->virt ? (ssize_t)rvfs_read((uint8_t *)(uintptr_t)b->addr, size, off)  // [XCDE]
                              : romfs_read(st->fd, (uint8_t *)(uintptr_t)b->addr, size, off);
-        if (n < 0) LOG("[fs] storage read failed at %llx: %s\n", off, strerror(errno));
+        if (n < 0) LOG("[fs] storage read failed at %llx: %s\n", (unsigned long long)off, strerror(errno));
         {
             const char *path = st->virt ? rvfs_file_at(off) : romfs_file_at(off);
             static const char *last;
@@ -372,7 +398,7 @@ static void storage(Service *s, IpcReq *req, IpcResp *resp) {
         static uint64_t reads, bytes;
         reads++;
         bytes += size;
-        if ((reads & (reads - 1)) == 0) LOG("[fs] romfs reads: %llu (%llu KB)\n", reads, bytes >> 10);
+        if ((reads & (reads - 1)) == 0) LOG("[fs] romfs reads: %llu (%llu KB)\n", (unsigned long long)reads, (unsigned long long)(bytes >> 10));
         break;
     }
     case 4: OUT(uint64_t, 0) = st->virt ? rvfs_size() : (ov_n ? ov_end : st->size); resp_size(resp, 8); break;  // GetSize
@@ -413,9 +439,14 @@ static Service *open_romfs_storage(void) {
 
 // ------------------------------------------------------------------ host-directory filesystem
 typedef struct { char root[1024]; bool save; int journal; } HostFs;  // (save: a save_N mount; journal: below, or -1)
-typedef struct { int fd; char path[1100]; bool save; int journal; } HostFile;
+typedef struct { int fd; char path[1100], root[1024]; bool save; int journal; } HostFile;
 typedef struct { DIR *d; char path[1024]; int mode; } HostDir;
-static void journal_touch(int j);  // (save commits, below)
+static int journal_touch(int j);  // (save commits, below)
+static void journal_poison(int j);
+static bool journal_poisoned(int j);
+// A Commit cannot cut between a native payload operation and its paired state.
+// No guest call or unwind point is executed while this host mutex is held.
+static pthread_mutex_t g_save_transaction_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static const char *in_path(IpcReq *req, int i) {
     if (i < req->nx) return (const char *)(uintptr_t)req->x[i].addr;
@@ -436,6 +467,10 @@ static uint32_t errno_result(void) {
 
 static void file(Service *s, IpcReq *req, IpcResp *resp) {
     HostFile *f = s->state;
+    if (f->save) pthread_mutex_lock(&g_save_transaction_lock);
+    if (f->save && req->cmd <= 4 && journal_poisoned(f->journal)) {
+        errno = EIO; resp->result = errno_result(); pthread_mutex_unlock(&g_save_transaction_lock); return;
+    }
     switch (req->cmd) {
     case 0: {  // Read(option, offset, size) -> B
         int64_t off = IN(int64_t, 8), size = IN(int64_t, 16);
@@ -443,13 +478,18 @@ static void file(Service *s, IpcReq *req, IpcResp *resp) {
         if ((uint64_t)size > b->size) size = (int64_t)b->size;
         ssize_t n = pread(f->fd, (void *)(uintptr_t)b->addr, (size_t)size, off);
         if (f->save) {
+            if (n > 0) quickstep_save_observe(f->root, f->path, (void *)(uintptr_t)b->addr, off, n);
             LOG("[save] read %s off %lld size %lld -> guest %llx\n", f->path, (long long)off, (long long)size, (unsigned long long)b->addr);
             extern void save_editor_file_read(const char *path, uint64_t addr, int64_t off, int64_t size);
             save_editor_file_read(f->path, b->addr, off, n);
             extern void flags_ext_save_read(const char *path, uint64_t addr, int64_t off, int64_t size);
             flags_ext_save_read(f->path, b->addr, off, n);
         }
-        OUT(int64_t, 0) = n < 0 ? 0 : n;
+        // [XCDE] LINUX-044: IpcResp.data follows a 32-bit result and is not
+        // int64-aligned. Keep the same wire bytes without an undefined store.
+        int64_t count = n < 0 ? 0 : n;
+        memcpy(resp->data, &count, sizeof count);
+        if (n < 0) resp->result = errno_result();
         resp_size(resp, 8);
         break;
     }
@@ -458,9 +498,25 @@ static void file(Service *s, IpcReq *req, IpcResp *resp) {
         IpcBuf *a = in_buf(req, 0);
         if (f->save)
             LOG("[save] write %s off %lld size %lld <- guest %llx\n", f->path, (long long)off, (long long)size, (unsigned long long)a->addr);
-        journal_touch(f->journal);
-        if (pwrite(f->fd, (void *)(uintptr_t)a->addr, (size_t)size, off) < 0) resp->result = errno_result();
-        else if (f->save) {
+        if (off < 0 || size < 0 || (uint64_t)size > a->size) { errno = EINVAL; resp->result = errno_result(); break; }
+        QuickstepSaveWrite plan = {0};
+        if (f->save && quickstep_save_prepare(f->root, f->path, (void *)(uintptr_t)a->addr, off, size, &plan)) {
+            resp->result = errno_result(); break;
+        }
+        if (plan.tracked && f->journal < 0) { errno = ENOTSUP; resp->result = errno_result(); break; }
+        if (journal_touch(f->journal) || (plan.tracked && quickstep_save_stage(f->root, &plan))) {
+            resp->result = errno_result(); break;
+        }
+        int64_t written = 0;
+        while (written < size) {
+            ssize_t n = pwrite(f->fd, (void *)(uintptr_t)(a->addr + (uint64_t)written), (size_t)(size - written), off + written);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) { if (!n) errno = EIO; resp->result = errno_result(); break; }
+            written += n;
+        }
+        // A failed/partial write leaves the staged pair blocked by its payload
+        // digest at Commit; an unrelated flush cannot discard its rollback.
+        if (!resp->result && f->save) {
             extern void flags_ext_save_written(const char *path, uint64_t addr, int64_t off, int64_t size);
             flags_ext_save_written(f->path, a->addr, off, size);
         }
@@ -468,10 +524,11 @@ static void file(Service *s, IpcReq *req, IpcResp *resp) {
     }
     case 2:
         if (f->save) LOG("[save] flush %s\n", f->path);
-        fsync(f->fd);
+        // [XCDE] LINUX-008: a failed flush must reach the guest's save handler.
+        if (fsync(f->fd)) resp->result = errno_result();
         break;
     case 3:
-        journal_touch(f->journal);
+        if (journal_touch(f->journal)) { resp->result = errno_result(); break; }
         if (ftruncate(f->fd, IN(int64_t, 0))) resp->result = errno_result();
         break;
     case 4: {
@@ -481,8 +538,12 @@ static void file(Service *s, IpcReq *req, IpcResp *resp) {
         resp_size(resp, 8);
         break;
     }
-    default: diag_unimplemented("ipc", "[fs] IFile cmd %u", req->cmd);
+    default:
+        if (f->save) pthread_mutex_unlock(&g_save_transaction_lock);
+        diag_unimplemented("ipc", "[fs] IFile cmd %u", req->cmd);
+        return;
     }
+    if (f->save) pthread_mutex_unlock(&g_save_transaction_lock);
 }
 
 // [XCDE] The game closed the file / directory: release the host one. An open host file can't be deleted on Windows, so
@@ -547,6 +608,13 @@ static void directory(Service *s, IpcReq *req, IpcResp *resp) {
     }
 }
 
+#ifdef _WIN32
+static int rm_rf(const char *path, bool keep_root) {
+    bool directory;
+    if (!ws_exists(path, &directory)) return -1;
+    return directory ? ws_tree(path, NULL, WS_TREE_DELETE, keep_root, 0) : ws_unlink(path);
+}
+#else
 static int rm_rf(const char *p, bool keep_root) {
     DIR *d = opendir(p);
     if (!d) return unlink(p);
@@ -561,59 +629,116 @@ static int rm_rf(const char *p, bool keep_root) {
     return keep_root ? 0 : rmdir(p);
 }
 
+#endif
+
 // [XCDE] Save commits (Horizon semantics: a save mount's changes become final on Commit). Before the first change since
 // the last Commit the mount's directory is copied to <root>.journal (built as .journal.tmp, then renamed); Commit flushes
 // the files to disk and drops it. The first mount that finds a journal (the game crashed or was killed mid-save) puts it
 // back, so the game never reads a torn save: it gets the last committed one, as on the console.
-typedef struct { char root[1024]; bool dirty; } SaveJournal;
+typedef struct { char root[1024]; bool dirty, poisoned; } SaveJournal;
 static SaveJournal g_journals[8];
 static int g_njournals;
 static pthread_mutex_t g_journal_lock = PTHREAD_MUTEX_INITIALIZER;
 
+// In-place reboot stops every guest thread before reset callbacks. Leave disk
+// rollback intact; the next mount must recover it rather than reuse host state.
+RT_ON_RESET(fs_save_journal_reset) {
+    pthread_mutex_lock(&g_journal_lock);
+    memset(g_journals, 0, sizeof g_journals); g_njournals = 0;
+    pthread_mutex_unlock(&g_journal_lock);
+}
+
+#ifdef _WIN32
+static int copy_tree(const char *from, const char *to) {
+    return ws_tree(from, to, WS_TREE_COPY, false, 0);
+}
+static int fsync_tree(const char *path) {
+    return ws_tree(path, NULL, WS_TREE_FLUSH, true, 0);
+}
+#else
 static int copy_tree(const char *from, const char *to) {
     DIR *d = opendir(from);
     if (!d) return -1;
-    mkdir(to, 0755);
-    int rc = 0;
+    int error = 0;
+    if (mkdir(to, 0755) && errno != EEXIST) error = errno;
     struct dirent *e;
-    while (!rc && (e = readdir(d))) {
+    while (!error) {
+        errno = 0; e = readdir(d); if (!e) { error = errno; break; }
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
         char a[2048], b[2048];
-        snprintf(a, sizeof a, "%s/%s", from, e->d_name);
-        snprintf(b, sizeof b, "%s/%s", to, e->d_name);
+        int na = snprintf(a, sizeof a, "%s/%s", from, e->d_name);
+        int nb = snprintf(b, sizeof b, "%s/%s", to, e->d_name);
+        if (na < 0 || nb < 0 || (size_t)na >= sizeof a || (size_t)nb >= sizeof b) { error = ENAMETOOLONG; break; }
         struct stat sb;
-        if (stat(a, &sb)) { rc = -1; break; }
-        if (S_ISDIR(sb.st_mode)) { rc = copy_tree(a, b); continue; }
-        int in = open(a, O_RDONLY | O_BINARY), out = open(b, O_CREAT | O_TRUNC | O_WRONLY | O_BINARY, 0644);
+        if (lstat(a, &sb)) { error = errno; break; }
+        if (S_ISDIR(sb.st_mode)) { if (copy_tree(a, b)) error = errno; continue; }
+        if (!S_ISREG(sb.st_mode)) { error = ENOTSUP; break; }
+        int in = open(a, O_RDONLY | O_BINARY | O_NOFOLLOW);
+        int out = in < 0 ? -1 : open(b, O_CREAT | O_TRUNC | O_WRONLY | O_BINARY | O_NOFOLLOW, 0644);
         char buf[65536];
-        ssize_t n;
-        if (in < 0 || out < 0) rc = -1;
-        while (!rc && (n = read(in, buf, sizeof buf)) > 0)
-            if (write(out, buf, (size_t)n) != n) rc = -1;
-        if (!rc && fsync(out)) rc = -1;
-        if (in >= 0) close(in);
-        if (out >= 0) close(out);
+        if (in < 0 || out < 0) error = errno;
+        while (!error) {
+            ssize_t n = read(in, buf, sizeof buf);
+            if (n < 0 && errno == EINTR) continue;
+            if (n < 0) { error = errno; break; }
+            if (!n) break;
+            ssize_t at = 0;
+            while (at < n) {
+                ssize_t put = write(out, buf + at, (size_t)(n - at));
+                if (put < 0 && errno == EINTR) continue;
+                if (put <= 0) { error = put < 0 ? errno : EIO; break; }
+                at += put;
+            }
+        }
+        if (!error && fsync(out)) error = errno;
+        if (in >= 0 && close(in) && !error) error = errno;
+        if (out >= 0 && close(out) && !error) error = errno;
     }
-    closedir(d);
-    return rc;
+    if (closedir(d) && !error) error = errno;
+    if (!error) {
+        int fd = open(to, O_RDONLY | O_DIRECTORY | O_NOFOLLOW);
+        if (fd < 0) error = errno;
+        else { if (fsync(fd)) error = errno; if (close(fd) && !error) error = errno; }
+    }
+    if (error) { errno = error; return -1; } return 0;
 }
 
-static void fsync_tree(const char *p) {
+// [XCDE] LINUX-008: do not discard rollback data after a failed flush or a
+// partially visited tree. Preserve the first error through descriptor cleanup.
+static int fsync_tree(const char *p) {
     DIR *d = opendir(p);
-    if (!d) return;
+    if (!d) return -1;
+    int error = 0;
     struct dirent *e;
-    while ((e = readdir(d))) {
+    while (!error) {
+        errno = 0;
+        e = readdir(d);
+        if (!e) { error = errno; break; }
         if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, "..")) continue;
         char c[2048];
-        snprintf(c, sizeof c, "%s/%s", p, e->d_name);
+        int n = snprintf(c, sizeof c, "%s/%s", p, e->d_name);
+        if (n < 0 || (size_t)n >= sizeof c) { error = ENAMETOOLONG; break; }
         struct stat sb;
-        if (stat(c, &sb)) continue;
-        if (S_ISDIR(sb.st_mode)) { fsync_tree(c); continue; }
+        if (stat(c, &sb)) { error = errno; break; }
+        if (S_ISDIR(sb.st_mode)) {
+            if (fsync_tree(c)) error = errno;
+            continue;
+        }
         int fd = open(c, O_RDWR | O_BINARY);
-        if (fd >= 0) { fsync(fd); close(fd); }
+        if (fd < 0) { error = errno; break; }
+        if (fsync(fd)) error = errno;
+        if (close(fd) && !error) error = errno;
     }
-    closedir(d);
+#ifdef __linux__
+    // File contents alone do not persist directory entries on Linux.
+    if (!error && fsync(dirfd(d))) error = errno;
+#endif
+    if (closedir(d) && !error) error = errno;
+    if (error) { errno = error; return -1; }
+    return 0;
 }
+
+#endif
 
 // [XCDE] a copy of the save as the session starts (after any restore): <save dir>/backup/<save_N>_<date>, the newest
 // 5 kept. XCDE_SAVE_BACKUPS=0: none.
@@ -658,32 +783,46 @@ static int journal_mount(const char *root) {
     pthread_mutex_lock(&g_journal_lock);
     int j = 0;
     while (j < g_njournals && strcmp(g_journals[j].root, root)) j++;
-    if (j == g_njournals) {
+    if (j == g_njournals || g_journals[j].poisoned) {
         if (j == (int)(sizeof g_journals / sizeof g_journals[0])) { pthread_mutex_unlock(&g_journal_lock); return -1; }
-        g_njournals++;
+        if (j == g_njournals) g_njournals++;
+        memset(&g_journals[j], 0, sizeof g_journals[j]);
         snprintf(g_journals[j].root, sizeof g_journals[j].root, "%s", root);
         char jp[1100], tp[1100];
         snprintf(jp, sizeof jp, "%s.journal", root);
         snprintf(tp, sizeof tp, "%s.journal.tmp", root);
         rm_rf(tp, false);  // (a copy cut short: the save itself was not touched yet)
         struct stat sb;
-        if (!stat(jp, &sb) && S_ISDIR(sb.st_mode)) {
+        int journal_status = stat(jp, &sb);
+#ifdef _WIN32
+        // Native path validation can refuse a locked/reparse/hardlinked path.
+        // Only a genuinely absent journal permits skipping crash recovery.
+        // Otherwise even reads must wait for a safe, complete remount.
+        if ((journal_status && errno != ENOENT) || (!journal_status && !S_ISDIR(sb.st_mode))) {
+            LOG("[save] journal of %s is inaccessible or invalid; mount refuses IO\n", root);
+            g_journals[j].poisoned = true;
+        }
+#endif
+        if (!journal_status && S_ISDIR(sb.st_mode)) {
             LOG("[save] %s: a save was not committed (the game stopped mid-save) - the last committed one is put back\n", root);
-            rm_rf(root, true);
-            if (copy_tree(jp, root)) LOG("[save] restoring %s failed: %s kept\n", root, jp);
+            if (rm_rf(root, true) || copy_tree(jp, root)) {
+                LOG("[save] restoring %s failed: %s kept; mount refuses IO\n", root, jp);
+                g_journals[j].poisoned = true;
+            }
             else rm_rf(jp, false);
         }
-        save_backup(root);
+        if (!g_journals[j].poisoned) save_backup(root);
     }
     pthread_mutex_unlock(&g_journal_lock);
     return j;
 }
 
 // a save file / directory is about to change
-static void journal_touch(int j) {
-    if (j < 0) return;
+static int journal_touch(int j) {
+    if (j < 0) return 0;
     pthread_mutex_lock(&g_journal_lock);
     SaveJournal *sj = &g_journals[j];
+    if (sj->poisoned) { pthread_mutex_unlock(&g_journal_lock); errno = EIO; return -1; }
     if (!sj->dirty) {
         char jp[1100], tp[1100];
         snprintf(jp, sizeof jp, "%s.journal", sj->root);
@@ -691,26 +830,44 @@ static void journal_touch(int j) {
         rm_rf(tp, false);
         rm_rf(jp, false);
         if (copy_tree(sj->root, tp) || rename(tp, jp)) {
-            LOG("[save] journal of %s could not be written (the save is not protected this time)\n", sj->root);
+            int error = errno;
+            LOG("[save] journal of %s failed; mutation refused\n", sj->root);
             rm_rf(tp, false);
+            pthread_mutex_unlock(&g_journal_lock); errno = error; return -1;
         }
         sj->dirty = true;
     }
     pthread_mutex_unlock(&g_journal_lock);
+    return 0;
 }
 
-static void journal_commit(int j) {
+static void journal_poison(int j) {
     if (j < 0) return;
+    pthread_mutex_lock(&g_journal_lock); g_journals[j].poisoned = true; pthread_mutex_unlock(&g_journal_lock);
+}
+static bool journal_poisoned(int j) {
+    if (j < 0) return false;
+    pthread_mutex_lock(&g_journal_lock); bool poisoned = g_journals[j].poisoned; pthread_mutex_unlock(&g_journal_lock);
+    return poisoned;
+}
+
+static int journal_commit(int j) {
+    if (j < 0) return 0;
     pthread_mutex_lock(&g_journal_lock);
     SaveJournal *sj = &g_journals[j];
+    int error = 0;
+    if (sj->poisoned) error = EIO;
     if (sj->dirty) {
         char jp[1100];
         snprintf(jp, sizeof jp, "%s.journal", sj->root);
-        fsync_tree(sj->root);
-        rm_rf(jp, false);
-        sj->dirty = false;
+        // [XCDE] LINUX-008: keep the last committed copy and dirty state when
+        // persistence fails; the guest can retry or report the failed save.
+        if (!error && (quickstep_save_flush(sj->root) || fsync_tree(sj->root) || rm_rf(jp, false))) error = errno;
+        if (!error) { sj->dirty = false; quickstep_save_committed(sj->root); }
     }
     pthread_mutex_unlock(&g_journal_lock);
+    if (error) { errno = error; return -1; }
+    return 0;
 }
 
 static void filesystem(Service *s, IpcReq *req, IpcResp *resp) {
@@ -719,7 +876,14 @@ static void filesystem(Service *s, IpcReq *req, IpcResp *resp) {
     host_path(fs, in_path(req, 0), p, sizeof p);
     if (fs->save && req->cmd != 7 && req->cmd != 8 && req->cmd != 9)  // (not the lookups)
         LOG("[save] fs cmd %u %s\n", req->cmd, p);
-    if (req->cmd <= 6 || req->cmd == 13) journal_touch(fs->journal);  // (the changes: create, delete, rename, clean)
+    bool transaction = fs->save && (req->cmd <= 6 || req->cmd == 10 || req->cmd == 13);
+    if (transaction) pthread_mutex_lock(&g_save_transaction_lock);
+    if (fs->save && req->cmd <= 14 && journal_poisoned(fs->journal)) {
+        errno = EIO; resp->result = errno_result(); if (transaction) pthread_mutex_unlock(&g_save_transaction_lock); return;
+    }
+    if ((req->cmd <= 6 || req->cmd == 13) && journal_touch(fs->journal)) {
+        resp->result = errno_result(); if (transaction) pthread_mutex_unlock(&g_save_transaction_lock); return;
+    }
     switch (req->cmd) {
     case 0: {  // CreateFile(option, size)
         int fd = open(p, O_CREAT | O_EXCL | O_RDWR, 0644);
@@ -728,13 +892,21 @@ static void filesystem(Service *s, IpcReq *req, IpcResp *resp) {
         close(fd);
         break;
     }
-    case 1: if (unlink(p)) resp->result = errno_result(); break;
+    case 1:
+        if (unlink(p)) resp->result = errno_result();
+        else if (fs->save && quickstep_save_changed(fs->root, p, NULL)) {
+            journal_poison(fs->journal); resp->result = errno_result();
+        }
+        break;
     case 2: if (mkdir(p, 0755)) resp->result = errno_result(); break;
     case 3: if (rmdir(p)) resp->result = errno_result(); break;
     case 4: if (rm_rf(p, false)) resp->result = errno_result(); break;
     case 5: case 6:
         host_path(fs, in_path(req, 1), p2, sizeof p2);
         if (rename(p, p2)) resp->result = errno_result();
+        else if (fs->save && quickstep_save_changed(fs->root, p, p2)) {
+            journal_poison(fs->journal); resp->result = errno_result();
+        }
         break;
     case 7: {  // GetEntryType
         struct stat sb;
@@ -750,6 +922,7 @@ static void filesystem(Service *s, IpcReq *req, IpcResp *resp) {
         HostFile *f = calloc(1, sizeof *f);
         f->fd = fd;
         strlcpy(f->path, p, sizeof f->path);
+        strlcpy(f->root, fs->root, sizeof f->root);
         f->save = fs->save;
         f->journal = fs->journal;
         Service *fs_ = service_new("IFile", file, f);
@@ -769,12 +942,22 @@ static void filesystem(Service *s, IpcReq *req, IpcResp *resp) {
         ipc_return_object(resp, ds_);
         break;
     }
-    case 10: journal_commit(fs->journal); break;  // Commit
+    case 10: if (journal_commit(fs->journal)) resp->result = errno_result(); break;  // Commit
     case 11: case 12: OUT(int64_t, 0) = 0x40000000; resp_size(resp, 8); break;
-    case 13: rm_rf(p, true); break;
+    case 13:
+        if (rm_rf(p, true)) resp->result = errno_result();
+        else if (fs->save) {
+            size_t n = strlen(fs->root);
+            if (!strncmp(p, fs->root, n) && (!p[n] || !strcmp(p + n, "/"))) quickstep_save_committed(fs->root);
+        }
+        break;
     case 14: memset(resp->data, 0, 0x20); resp_size(resp, 0x20); break;
-    default: diag_unimplemented("ipc", "[fs] IFileSystem cmd %u", req->cmd);
+    default:
+        if (transaction) pthread_mutex_unlock(&g_save_transaction_lock);
+        diag_unimplemented("ipc", "[fs] IFileSystem cmd %u", req->cmd);
+        return;
     }
+    if (transaction) pthread_mutex_unlock(&g_save_transaction_lock);
 }
 
 static Service *open_host_fs(const char *sub) {
@@ -785,7 +968,11 @@ static Service *open_host_fs(const char *sub) {
         snprintf(seed_save, sizeof seed_save, "%s/save", rando_seed_dir());
         g_save_dir = seed_save;
     }
-    snprintf(fs->root, sizeof fs->root, "%s/%s", g_save_dir, sub);
+    // [XCDE] LINUX-004: never mount a different save after truncating an absolute
+    // state/save root. Reject before mkdir, journal recovery or backup touches it.
+    int root_len = snprintf(fs->root, sizeof fs->root, "%s/%s", g_save_dir, sub);
+    if (root_len < 0 || (size_t)root_len >= sizeof fs->root)
+        FATAL("save mount path is too long (root plus %s)\n", sub);
     fs->save = !strncmp(sub, "save_", 5);
     fs->journal = -1;
     char cmd[1200];
@@ -814,7 +1001,7 @@ SERVICE("fsp-srv", fsp_srv) {
     }
     case 200: ipc_return_object(resp, open_romfs_storage()); break;  // OpenDataStorageByCurrentProcess
     case 202:  // OpenDataStorageByDataId (system data archives)
-        LOG("[fs] OpenDataStorageByDataId %llx (not available)\n", IN(uint64_t, 8));
+        LOG("[fs] OpenDataStorageByDataId %llx (not available)\n", (unsigned long long)IN(uint64_t, 8));
         resp->result = MAKE_RESULT(2, 1001);
         break;
     case 1005: OUT(uint32_t, 0) = 0; resp_size(resp, 4); break;  // GetGlobalAccessLogMode

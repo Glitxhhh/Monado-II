@@ -7,20 +7,40 @@
 // (marked "al reiniciar"). "Guardar" writes xcde.ini (settings_save) for the launcher and the next start.
 #include <SDL3/SDL.h>
 #include <math.h>
+#include <stdlib.h>
 #include <mutex>
 #include <string.h>
 
 #include "imgui.h"
 #include "imgui_impl_vulkan.h"
+#include "quality_controls_linux.h" // shared portable quality UI
+#include "fps_meter.h" // [XCDE] LINUX-094: sample real game frames, not UI presents.
+#ifdef _WIN32
+#include "fps_provider_counter.h"
+#endif
+#include "fps_overlay_draw.h"
+#ifdef __linux__
+#include "fps_output_diagnostics_linux.h"
+#endif
 
 extern "C" {
 #include "../nvn/vulkan/vk.h"
+#include "../nvn/vulkan/temporal.h"
 #include "../settings.h"
+#include "graphics_options.h"  // [XCDE] LINUX-006: available modes, retaining settings' C linkage
 #include "menu.h"
 bool vk_imgui_backend_init(void);
+void vk_imgui_backend_shutdown(void);
 void input_reset(void);
 void vk_request_swapchain_recreate(void);
 bool dlss_available(void);
+bool tmp_fg_supported(void);
+#ifndef _WIN32
+bool vk_external_fps(double *rate,bool *ready);
+#endif
+#ifdef __linux__
+bool vk_external_fps_snapshot(MonadoPresentObserverSnapshot *snapshot,uint64_t *now_ns);
+#endif
 }
 
 static std::mutex q_lock;
@@ -28,6 +48,202 @@ static SDL_Event q[256];
 static int q_n;
 static volatile bool open_, want_window;
 static bool fs_applied = false, fs_init;
+
+// [XCDE] LINUX-094: the FPS display owns a separate, noninteractive context.
+// Device presentation calls it after interpolation, so it never enters FG history.
+static FpsMeter fps_meter;
+static FpsPresentMeter fps_present_meter; // [XCDE] LINUX-097: successful outputs, not configured FPS
+static bool fps_generation_mode, fps_external_mode;
+#ifdef _WIN32
+static FpsProviderCounter fps_provider_counter;
+static bool fps_provider_output_available;
+#endif
+static bool fps_has_frame, fps_backend_failed;
+static ImGuiContext *fps_context;
+static uint64_t fps_last_ui_time;
+#ifdef __linux__
+static FpsOutputLogClock fps_output_log_clock;
+static uint64_t fps_meter_epoch;
+static MonadoPresentObserverSnapshot fps_driver_snapshot;
+static uint64_t fps_driver_now_ns;
+static bool fps_driver_available;
+static void fps_bump_meter_epoch(void) {if(fps_meter_epoch!=UINT64_MAX)++fps_meter_epoch;}
+#endif
+
+static bool fps_sample_enabled(void) {
+#if defined(__linux__) || defined(_WIN32)
+    if(g_settings.frame_gen||g_settings.cutscene_mode==2||g_settings.frame_gen_smooth_motion||fps_external_mode)return true;
+#endif
+    return g_settings.show_fps_overlay;
+}
+
+extern "C" void fps_overlay_reset(void) {
+    fps_meter_reset(&fps_meter);
+    fps_present_meter_reset(&fps_present_meter);
+    fps_generation_mode = fps_external_mode = false;
+    fps_has_frame = false;
+    fps_backend_failed = false;
+    fps_last_ui_time = 0;
+#ifdef _WIN32
+    fps_provider_reset(&fps_provider_counter);fps_provider_output_available=false;
+#endif
+#ifdef __linux__
+    fps_bump_meter_epoch();
+    fps_driver_snapshot={};fps_driver_now_ns=0;fps_driver_available=false;
+#endif
+}
+
+extern "C" void fps_overlay_frame(uint64_t now) {
+    if (!fps_sample_enabled()) {
+        if (fps_has_frame) fps_overlay_reset();
+        return;
+    }
+#ifdef __linux__
+    if(fps_meter.started&&(now<fps_meter.last_ns||now-fps_meter.last_ns>UINT64_C(2000000000)))fps_bump_meter_epoch();
+#endif
+    fps_present_meter_tick(&fps_present_meter, now);
+    fps_meter_frame(&fps_meter, now);
+    fps_has_frame = true;
+}
+
+// Mode changes invalidate only output history; native rendering remains an
+// independently measured clock. The selected integrated mode includes warmup.
+extern "C" void fps_overlay_generation(bool active, bool external) {
+#if !defined(__linux__) && !defined(_WIN32)
+    active = active && g_settings.show_fps_overlay;
+#endif
+    external = active && external;
+    if (active != fps_generation_mode || external != fps_external_mode) {
+        fps_present_meter_reset(&fps_present_meter);
+#ifdef __linux__
+        fps_bump_meter_epoch();
+#endif
+    }
+#ifdef _WIN32
+    if(active!=fps_generation_mode || external!=fps_external_mode) {
+        fps_provider_reset(&fps_provider_counter);fps_provider_output_available=false;
+    }
+#endif
+    fps_generation_mode = active;
+    fps_external_mode = external;
+}
+
+#ifdef _WIN32
+extern "C" void fps_overlay_provider_output(uint64_t now,uint64_t count,bool available) {
+    fps_provider_output_available=available;
+    fps_provider_sample(&fps_provider_counter,now,count,available);
+}
+// Measurement continues while the overlay is hidden; no generated-rate inference.
+extern "C" void fps_overlay_diagnostics(uint64_t now,unsigned method,bool inputs_ready) {
+    static uint64_t logged;
+    if(method!=1 || !fps_has_frame || (logged && now>=logged && now-logged<UINT64_C(2000000000)))return;
+    logged=now;double game=0;bool game_ready=fps_meter_value(&fps_meter,&game);
+    fprintf(stderr,"[fps-output] windows-sdk game_ready=%d game_fps=%.3f output_available=%d output_ready=%d output_fps=%.3f accepted_total=%llu generated=unavailable inputs_ready=%d (not scanout)\n",
+        game_ready,game,fps_provider_output_available,fps_provider_counter.ready,
+        fps_provider_counter.ready?fps_provider_counter.rate:0.,(unsigned long long)fps_provider_counter.last_count,inputs_ready);
+}
+#endif
+
+extern "C" void fps_overlay_present(uint64_t now, bool generated, bool repeated) {
+    if (!fps_sample_enabled() || !fps_has_frame || (generated && repeated)) return;
+    fps_present_meter_event(&fps_present_meter, now, generated ? FPS_PRESENT_GENERATED :
+                            repeated ? FPS_PRESENT_REPEATED : FPS_PRESENT_NATIVE);
+}
+
+#ifdef __linux__
+// Render-thread tick, called once per real frame independently of ImGui drawing.
+// The very same validated driver snapshot supplies the next overlay and log row.
+extern "C" void fps_overlay_diagnostics(uint64_t now,unsigned method,bool fsr_inputs_ready) {
+    static const bool precompile=getenv("XCDE_PRECOMPILING")!=nullptr;
+    if(precompile||!fps_has_frame||(method!=1&&method!=2))return;
+    bool due=fps_output_log_due(&fps_output_log_clock,now,true);
+    if(method==2&&(due||g_settings.show_fps_overlay))
+        fps_driver_available=vk_external_fps_snapshot(&fps_driver_snapshot,&fps_driver_now_ns);
+    else if(method!=2) {fps_driver_available=false;fps_driver_snapshot={};fps_driver_now_ns=0;}
+    if(!due)return;
+    FpsOutputLogSample sample{};
+    sample.sdl_ns=now;sample.meter_epoch=fps_meter_epoch;sample.method=method;
+    sample.game_ready=fps_meter_value(&fps_meter,&sample.game_fps);
+    sample.fsr_inputs_ready=fsr_inputs_ready;
+    sample.output_available=method!=2||fps_driver_available;
+    memcpy(sample.application_accepted,fps_present_meter.accepted,sizeof sample.application_accepted);
+    if(method==2) {
+        sample.driver=fps_driver_snapshot;sample.driver_now_ns=fps_driver_now_ns;
+        sample.output_ready=(sample.driver.flags&MONADO_PRESENT_OBSERVER_READY)!=0;
+        sample.output_fps=sample.driver.output_fps;
+    } else {
+        sample.output_ready=fps_present_meter_value(&fps_present_meter,&sample.application);
+        sample.output_fps=sample.application.total;
+    }
+    char line[1152];
+    if(fps_output_log_format(line,sizeof line,getenv("MONADO_RUN_ID"),&sample))fputs(line,stderr);
+}
+#endif
+
+extern "C" bool fps_overlay_visible(void) {
+    return g_settings.show_fps_overlay && fps_has_frame && !fps_backend_failed;
+}
+
+extern "C" void fps_overlay_render(void *cmd, uint32_t w, uint32_t h) {
+    if (!fps_overlay_visible() || !w || !h) return;
+    ImGuiContext *previous = ImGui::GetCurrentContext();
+    if (!fps_context) {
+        fps_context = ImGui::CreateContext();
+        ImGui::SetCurrentContext(fps_context);
+        ImGuiIO &io = ImGui::GetIO();
+        io.IniFilename = nullptr; io.LogFilename = nullptr;
+        io.ConfigFlags = ImGuiConfigFlags_NoMouse | ImGuiConfigFlags_NoKeyboard | ImGuiConfigFlags_NoMouseCursorChange;
+        io.MouseDrawCursor = false;
+        ImFontConfig config{}; config.SizePixels = 48.0f;
+        io.Fonts->AddFontDefault(&config);
+        if (!vk_imgui_backend_init()) {
+            ImGui::DestroyContext(fps_context); fps_context = nullptr; fps_backend_failed = true;
+            ImGui::SetCurrentContext(previous); return;
+        }
+        if (!ImGui_ImplVulkan_CreateFontsTexture()) {
+            vk_imgui_backend_shutdown();
+            ImGui::DestroyContext(fps_context); fps_context = nullptr; fps_backend_failed = true;
+            ImGui::SetCurrentContext(previous); return;
+        }
+    }
+    ImGui::SetCurrentContext(fps_context);
+    ImGuiIO &io = ImGui::GetIO();
+    io.DisplaySize = ImVec2((float)w, (float)h);
+    uint64_t now = SDL_GetTicksNS();
+    io.DeltaTime = fps_last_ui_time && now > fps_last_ui_time ? (float)((now - fps_last_ui_time) / 1e9) : 1.0f / 60;
+    fps_last_ui_time = now;
+    ImGui_ImplVulkan_NewFrame(); ImGui::NewFrame();
+    double value = 0;
+    bool ready = fps_meter_value(&fps_meter, &value);
+    fps_overlay_detail::Rates rates;
+    rates.game_ready = ready; rates.game = value;
+    rates.generation = fps_generation_mode; rates.external = fps_external_mode;
+    FpsPresentRates output;
+    rates.output_ready = fps_present_meter_value(&fps_present_meter, &output);
+    rates.output = output.total;
+    rates.generated_ready = rates.output_ready && !rates.external;
+    rates.generated = output.generated;
+#ifdef _WIN32
+    if(rates.generation&&!rates.external) {
+        rates.output_ready=fps_provider_output_available&&fps_provider_counter.ready;
+        rates.output=fps_provider_counter.rate;
+        rates.generated_ready=false; // the SDK total provides no native/generated split
+    }
+#endif
+    if(rates.external) {
+#ifdef __linux__
+        rates.external_measured=fps_driver_available;
+        rates.output=fps_driver_snapshot.output_fps;
+        rates.output_ready=fps_driver_available&&(fps_driver_snapshot.flags&MONADO_PRESENT_OBSERVER_READY)!=0;
+#else
+        rates.external_measured=false;rates.output_ready=false; // native driver identity unavailable
+#endif
+    }
+    fps_overlay_detail::draw(true, rates, (float)w, (float)h);
+    ImGui::Render();
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), (VkCommandBuffer)cmd);
+    ImGui::SetCurrentContext(previous);
+}
 
 static bool is_input(Uint32 t) {
     switch (t) {
@@ -156,6 +372,7 @@ static const char *const k_en[][2] = {
     {"Gráficos", "Graphics"}, {"Pantalla", "Display"}, {"Pantalla completa", "Fullscreen"},
     {"Resolución y escalado", "Resolution and scaling"}, {"Resolución interna", "Internal resolution"},
     {"Bilineal (suave)", "Bilinear (soft)"}, {"AMD FSR 1.0 (nítido)", "AMD FSR 1.0 (sharp)"}, {"Escalado / antialiasing", "Upscaling / anti-aliasing"},
+    {"FSR 3, DLSS y generación de frames no disponibles en Linux.", "FSR 3, DLSS and frame generation are unavailable on Linux."},
     {"DLSS se carga al iniciar el juego: hasta reiniciar se usa FSR 3.1.", "DLSS loads when the game starts: FSR 3.1 is used until a restart."},
     {"Nativo (solo antialiasing)", "Native (anti-aliasing only)"}, {"Calidad (67 %)", "Quality (67 %)"}, {"Equilibrado (59 %)", "Balanced (59 %)"},
     {"Rendimiento (50 %)", "Performance (50 %)"}, {"Ultra rendimiento (33 %)", "Ultra performance (33 %)"}, {"Calidad del escalado", "Upscaling quality"},
@@ -163,7 +380,8 @@ static const char *const k_en[][2] = {
     {"Calidad", "Quality"}, {"Antialiasing SMAA", "SMAA anti-aliasing"}, {"(no se usa con FSR 3.1 / DLSS)", "(not used with FSR 3.1 / DLSS)"},
     {"Profundidad de campo", "Depth of field"},
     {"Antialiasing y desenfoque de movimiento del juego (al reiniciar)", "The game's anti-aliasing and motion blur (after a restart)"},
-    {"Mostrar FPS en la barra de título", "Show FPS in the title bar"}, {"Velocidad", "Speed"}, {"30 (como en Switch)", "30 (like Switch)"},
+    {"Mostrar FPS en la barra de título", "Show FPS in the title bar"}, {"Mostrar FPS en pantalla", "Show FPS on screen"},
+    {"Velocidad", "Speed"}, {"30 (como en Switch)", "30 (like Switch)"},
     {"Sin límite", "Unlimited"}, {"FPS (al reiniciar)", "FPS (after a restart)"}, {"V-Sync (con 30 / 60 FPS)", "V-Sync (at 30 / 60 FPS)"},
     {"Volumen", "Volume"}, {"Audio de los vídeos (al reiniciar)", "Video sound (after a restart)"}, {"Controles", "Controls"},
     {"La asignación de teclas y botones se cambia en el launcher (Play Monado.bat), pestaña Controles.",
@@ -192,42 +410,103 @@ static void ui(void) {
                  ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoSavedSettings);
     if (ImGui::BeginTabBar("tabs")) {
         if (ImGui::BeginTabItem(T("Gráficos"))) {
+#if defined(__linux__) || defined(_WIN32)
+            if(monado_quality_controls_linux(&g_settings,g_settings.ui_lang==1))xcde_graphics_publish(&g_settings.graphics);
+#endif
             ImGui::SeparatorText(T("Pantalla"));
             if (ImGui::Checkbox(T("Pantalla completa"), &g_settings.fullscreen)) want_window = true;
             ImGui::SeparatorText(T("Resolución y escalado"));
             int ri = 0;
             for (int i = 0; i < 7; i++) if (k_res_mode[i] == g_settings.res_mode) ri = i;
             if (ImGui::Combo(T("Resolución interna"), &ri, TL(k_res_ui, 7).p, 7)) g_settings.res_mode = k_res_mode[ri];
-            static const char *ups[] = {"Bilineal (suave)", "AMD FSR 1.0 (nítido)", "AMD FSR 3.1 (temporal)", "NVIDIA DLSS (temporal, RTX)"};
-            static const int upv[] = {UPSCALE_BILINEAR, UPSCALE_FSR1, UPSCALE_FSR3, UPSCALE_DLSS};
             int ui_ = 0;
-            for (int i = 0; i < 4; i++) if (upv[i] == g_settings.upscaler) ui_ = i;
-            if (ImGui::Combo(T("Escalado / antialiasing"), &ui_, TL(ups, 4).p, 4)) g_settings.upscaler = upv[ui_];
+            for (int i = 0; i < MENU_UPSCALER_COUNT; i++) if (menu_upscale_values[i] == g_settings.upscaler) ui_ = i;
+            if (ImGui::Combo(T("Escalado / antialiasing"), &ui_, TL(menu_upscale_names, MENU_UPSCALER_COUNT).p,
+                             MENU_UPSCALER_COUNT)) {
+                int previous=g_settings.upscaler;
+                g_settings.upscaler = menu_upscale_values[ui_];
+                if(g_settings.upscaler==UPSCALE_DLSS && previous!=UPSCALE_DLSS)g_settings.upscale_quality=UQ_NATIVE;
+#if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
+                if (g_settings.upscaler != UPSCALE_DLSS && g_settings.upscaler != UPSCALE_FSR3 && g_settings.upscaler!=UPSCALE_FSR4_LITE) {
+                    bool was_fg = g_settings.frame_gen || g_settings.cutscene_mode == 2;
+                    g_settings.frame_gen = false;
+                    if (g_settings.cutscene_mode == 2) g_settings.cutscene_mode = 1;
+                    if (was_fg) vk_request_swapchain_recreate();
+                }
+#endif
+            }
+#ifdef __linux__
+#ifndef XCDE_LINUX_FSR3
+            ImGui::TextDisabled("Native FSR 3.1 component is not available in this build.");
+#endif
+            if (g_settings.upscaler == UPSCALE_DLSS || g_settings.upscaler == UPSCALE_FSR3 || g_settings.upscaler==UPSCALE_FSR4_LITE) {
+#ifdef XCDE_LINUX_DLSS
+                if (g_settings.upscaler==UPSCALE_DLSS && !dlss_available()) ImGui::TextColored(ImVec4(1, .8f, .3f, 1), "DLSS requires a compatible RTX GPU and a game restart; using FSR 3 when available, otherwise spatial scaling.");
+#endif
+#ifdef XCDE_LINUX_FSR3
+                if(g_settings.upscaler==UPSCALE_FSR3 && !tmp_fsr3_supported())
+                    ImGui::TextColored(ImVec4(1,.8f,.3f,1),"The native FSR 3.1 component failed its identity/API check; using spatial scaling.");
+#endif
+#ifdef XCDE_LINUX_FSR4
+                if(g_settings.upscaler==UPSCALE_FSR4_LITE)ImGui::TextWrapped("%s",tmp_fsr4_status());
+#endif
+                const char *uq[] = {"Native AA (100%)", "Quality (67%)", "Balanced (59%)", "Performance (50%)", "Ultra Performance (33%)"};
+                ImGui::Combo(T("Calidad del escalado"), &g_settings.upscale_quality, uq, 5);
+                ImGui::TextDisabled("%s","Native uses temporal antialiasing at 100%. Match the window uses the selected SR quality.");
+#ifdef XCDE_LINUX_FRAMEGEN
+                const char *smooth = getenv("NVPRESENT_ENABLE_SMOOTH_MOTION");
+                bool external = smooth && !strcmp(smooth, "1");
+                ImGui::BeginDisabled(external || g_settings.frame_gen_smooth_motion || !tmp_fg_supported());
+                if (ImGui::Checkbox("Frame generation (FSR 3, 2x, experimental)", &g_settings.frame_gen))
+                    vk_request_swapchain_recreate();
+                ImGui::BeginDisabled(!g_settings.frame_gen);
+                ImGui::Checkbox("Match display with 2x generation", &g_settings.frame_gen_match_display);
+                ImGui::EndDisabled();
+                ImGui::EndDisabled();
+                ImGui::TextWrapped("2x generates one intermediate image. Match display limits real FPS to half the refresh rate, up to your FPS limit. Adds latency.");
+                if (external) ImGui::TextDisabled("NVIDIA Smooth Motion is requested from the driver. Change methods in the launcher and restart.");
+                else if (g_settings.frame_gen_smooth_motion) ImGui::TextDisabled("NVIDIA Smooth Motion selected; restart from the launcher to apply it.");
+#endif
+            }
+#else
             if (g_settings.upscaler == UPSCALE_DLSS && !dlss_available())
-                ImGui::TextColored(ImVec4(1, 0.8f, 0.3f, 1), T("DLSS se carga al iniciar el juego: hasta reiniciar se usa FSR 3.1."));
+                ImGui::TextColored(ImVec4(1, 0.8f, 0.3f, 1), "%s", T("DLSS se carga al iniciar el juego: hasta reiniciar se usa FSR 3.1."));
             if (g_settings.upscaler == UPSCALE_FSR3 || g_settings.upscaler == UPSCALE_DLSS) {
                 static const char *uq[] = {"Nativo (solo antialiasing)", "Calidad (67 %)", "Equilibrado (59 %)", "Rendimiento (50 %)",
                                            "Ultra rendimiento (33 %)"};
                 ImGui::Combo(T("Calidad del escalado"), &g_settings.upscale_quality, TL(uq, 5).p, 5);
-                ImGui::BeginDisabled(g_settings.upscaler != UPSCALE_FSR3);
+                ImGui::BeginDisabled(!tmp_fg_supported());
                 ImGui::Checkbox(T("Generación de frames (FSR 3; activarla por primera vez: al reiniciar)"), &g_settings.frame_gen);
+                ImGui::BeginDisabled(!g_settings.frame_gen);
+                ImGui::Checkbox("Match display with 2x generation",&g_settings.frame_gen_match_display);
                 ImGui::EndDisabled();
+                ImGui::EndDisabled();
+                ImGui::TextWrapped("Match display limits real FPS to half the nominal display refresh, up to your saved FPS cap, only while the native provider accepts interpolation inputs. Adds latency.");
+                if(!tmp_fg_supported())ImGui::TextDisabled("Native FidelityFX component is unavailable; ordinary presentation remains active.");
+                else if(!tmp_fg_active()&&g_settings.frame_gen)ImGui::TextDisabled("Restart to reserve the native generation queues and swapchain.");
             }
+#endif
             ImGui::SeparatorText(T("Calidad"));
             bool smaa = g_settings.antialias == AA_SMAA;
             if (ImGui::Checkbox(T("Antialiasing SMAA"), &smaa)) g_settings.antialias = smaa ? AA_SMAA : AA_OFF;
-            if (g_settings.upscaler == UPSCALE_FSR3 || g_settings.upscaler == UPSCALE_DLSS) ImGui::SameLine(), ImGui::TextDisabled(T("(no se usa con FSR 3.1 / DLSS)"));
+#ifndef __linux__
+            if (g_settings.upscaler == UPSCALE_FSR3 || g_settings.upscaler == UPSCALE_DLSS || g_settings.upscaler==UPSCALE_FSR4_LITE) ImGui::SameLine(), ImGui::TextDisabled("(not used with temporal reconstruction)");
+#endif
             bool dof = !g_settings.dof_off;
             if (ImGui::Checkbox(T("Profundidad de campo"), &dof)) g_settings.dof_off = !dof;
             ImGui::Checkbox(T("Antialiasing y desenfoque de movimiento del juego (al reiniciar)"), &g_settings.game_blur);
             ImGui::Checkbox(T("Mostrar FPS en la barra de título"), &g_settings.show_fps);
+            ImGui::Checkbox(T("Mostrar FPS en pantalla"), &g_settings.show_fps_overlay);
+            ImGui::SetItemTooltip("Game counts rendered frames. Output counts successful presentation requests, not physical scanout.\nMeasured FG readings are also logged when this display is off. Windows SDK generated-only FPS is unavailable.");
             ImGui::SeparatorText(T("Velocidad"));
             static const int fpsv[] = {30, 60, 120, 144, 165, 0};
             static const char *fpsu[] = {"30 (como en Switch)", "60", "120", "144", "165", "Sin límite"};
             int fi = 0;
             for (int i = 0; i < 6; i++) if (fpsv[i] == g_settings.fps) fi = i;
             if (ImGui::Combo(T("FPS (al reiniciar)"), &fi, TL(fpsu, 6).p, 6)) g_settings.fps = fpsv[fi];
-            if (ImGui::Checkbox(T("V-Sync (con 30 / 60 FPS)"), &g_settings.vsync)) vk_request_swapchain_recreate();
+            const char *vsync_label = (g_settings.frame_gen || g_settings.cutscene_mode == 2)
+                ? "V-Sync (also paces FSR frame generation)" : T("V-Sync (con 30 / 60 FPS)");
+            if (ImGui::Checkbox(vsync_label, &g_settings.vsync)) vk_request_swapchain_recreate();
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(T("Audio"))) {
@@ -237,7 +516,10 @@ static void ui(void) {
             ImGui::EndTabItem();
         }
         if (ImGui::BeginTabItem(T("Controles"))) {
-            ImGui::TextWrapped(T("La asignación de teclas y botones se cambia en el launcher (Play Monado.bat), pestaña Controles."));
+#if defined(__linux__) || defined(_WIN32)
+            ImGui::Checkbox(g_settings.ui_lang?"Controller vibration":"Vibración del mando",&g_settings.input_rumble);
+#endif
+            ImGui::TextWrapped("%s", T("La asignación de teclas y botones se cambia en el launcher (Play Monado.bat), pestaña Controles."));
             ImGui::EndTabItem();
         }
         ImGui::EndTabBar();
@@ -246,7 +528,7 @@ static void ui(void) {
     if (ImGui::Button(T("Guardar"))) { settings_save(); saved_note = true; }
     ImGui::SameLine();
     if (ImGui::Button(T("Volver al juego"))) { open_ = false; input_reset(); }
-    if (saved_note) { ImGui::SameLine(); ImGui::TextDisabled(T("Guardado en xcde.ini")); }
+    if (saved_note) { ImGui::SameLine(); ImGui::TextDisabled("%s", T("Guardado en xcde.ini")); }
     ImGui::End();
 }
 
@@ -263,8 +545,15 @@ extern "C" void menu_render(void *cmd, uint32_t w, uint32_t h) {
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard | ImGuiConfigFlags_NavEnableGamepad;
         io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
         font_h = fmaxf(16.0f, h / 1080.0f * 22.0f);
+#ifdef __linux__
+        // [XCDE] LINUX-006: the bundled font avoids a Windows-only file lookup.
+        ImFontConfig font_config{};
+        font_config.SizePixels = font_h;
+        io.Fonts->AddFontDefault(&font_config);
+#else
         if (!io.Fonts->AddFontFromFileTTF("C:\\Windows\\Fonts\\segoeui.ttf", font_h, nullptr, io.Fonts->GetGlyphRangesDefault()))
             io.Fonts->AddFontDefault();
+#endif
         ImGui::StyleColorsDark();
         ImGui::GetStyle().ScaleAllSizes(font_h / 16.0f);
         if (!vk_imgui_backend_init()) { ImGui::DestroyContext(ctx); ctx = nullptr; open_ = false; return; }

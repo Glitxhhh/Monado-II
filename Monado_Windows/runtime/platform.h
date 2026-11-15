@@ -37,6 +37,7 @@ void plat_sleep_until_ns(uint64_t t);      // precise wait for plat_now_ns() >= 
 void plat_thread_realtime(uint64_t period_ns);  // periodic timing thread (vsync): don't coalesce its timers
 
 // ---- process
+bool plat_guest_fp_init(void);  // establish and verify the guest-thread host FP baseline
 void plat_init(void);                                // first thing in main()
 bool plat_exe_path(char *buf, size_t size);
 void plat_exec(char *const argv[]);  // replace the process (NULL = same command line); returns only on failure

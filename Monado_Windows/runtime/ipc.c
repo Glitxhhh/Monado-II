@@ -103,7 +103,7 @@ int ipc_handle_request(Cpu *c, uint32_t handle) {
     uint32_t *p = msg + 2;
     if (msg[1] & 0x80000000u) {
         uint32_t hd = *p++;
-        if (hd & 1) { req.pid = p[0] | ((uint64_t)p[1] << 32); p += 2; }
+        if (hd & 1) { req.has_pid = true; req.pid = p[0] | ((uint64_t)p[1] << 32); p += 2; }
         req.ncopy = (hd >> 1) & 0xF;
         req.nmove = (hd >> 5) & 0xF;
         for (int i = 0; i < req.ncopy; i++) req.copy_handles[i] = *p++;
@@ -145,8 +145,15 @@ int ipc_handle_request(Cpu *c, uint32_t handle) {
     uint8_t *payload = (uint8_t *)aligned;
     bool dom = false;  // response is domain-wrapped
     if (req.type == 4 || req.type == 6) {
+        // [XCDE] LINUX-008: domain CMIF size excludes its 16-byte domain
+        // header/object IDs. Counting that header as service payload allowed
+        // short boolean/policy requests to read unprovided bytes as valid data.
+        const uint8_t *raw_end = (const uint8_t *)(raw + raw_words);
+        uint32_t domain_payload_size = 0;
         if (sess->domain) {
             dom = true;
+            if ((const uint8_t *)payload > raw_end || raw_end - payload < 16)
+                FATAL("[ipc] truncated domain header\n");
             uint8_t dcmd = payload[0];
             uint8_t nin = payload[1];
             uint16_t dsize = *(uint16_t *)(payload + 2);
@@ -159,10 +166,16 @@ int ipc_handle_request(Cpu *c, uint32_t handle) {
                 }
                 goto write_response;
             }
+            if (dcmd != 1 || nin > 8 || dsize < 16 ||
+                (size_t)(raw_end - payload) < 16u + dsize + 4u * nin)
+                FATAL("[ipc] invalid domain payload bounds\n");
+            domain_payload_size = dsize - 16;
             req.ndomain_in = nin;
             for (int i = 0; i < nin; i++) req.domain_in_objs[i] = *(uint32_t *)(payload + 16 + dsize + 4 * i);
             payload += 16;
         }
+        if ((const uint8_t *)payload > raw_end || raw_end - payload < 16)
+            FATAL("[ipc] truncated CMIF header\n");
         if (memcmp(payload, "SFCI", 4)) {
             LOG("[ipc] bad SFCI magic on %s (domain=%d):", sess->svc->name, sess->domain != NULL);
             for (int i = 0; i < 24; i++) LOG(" %08x", msg[i]);
@@ -170,7 +183,7 @@ int ipc_handle_request(Cpu *c, uint32_t handle) {
         }
         req.cmd = *(uint32_t *)(payload + 8);
         req.data = payload + 16;
-        req.data_size = raw_words * 4 > 32 ? raw_words * 4 - 32 : 0;
+        req.data_size = dom ? domain_payload_size : (raw_words * 4 > 32 ? raw_words * 4 - 32 : 0);
         Service *target = sess->svc;
         if (sess->domain) {
             target = req.domain_obj < 256 ? sess->domain->objs[req.domain_obj] : NULL;

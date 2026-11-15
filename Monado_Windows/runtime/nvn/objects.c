@@ -653,7 +653,11 @@ NvnDescPool *nvn_find_pool(NvnDescPool **reg, uint64_t guest_pool) {
 }
 
 // ================================================================== programs
-NVN(nvnProgramInitialize) { SET_HOST(A(0), calloc(1, sizeof(NvnProgram))); RET(1); }
+NVN(nvnProgramInitialize) {
+    NvnProgram *p = calloc(1, sizeof *p);
+    if (!p) FATAL("[shader] cannot allocate program object\n");
+    SET_HOST(A(0), p); RET(1);
+}
 NVN(nvnProgramFinalize) { free(HOST(NvnProgram, A(0))); SET_HOST(A(0), 0); }
 NVN(nvnProgramSetDebugLabel) { (void)c; }
 NVN(nvnProgramSetSampleShading) { (void)c; }
@@ -665,65 +669,136 @@ NVN(nvnProgramSetSubroutineLinkage) { RET(1); }
 // frames, a black weapon; most often on a cold driver cache, when the queue is long). The blob is copied when it is
 // registered (the content its hash describes) and the translator reads the copy. One copy per distinct content (the
 // same shaders registered again share it), kept for the run: the translator may need it for any later variant.
-#define SNAP_TAB (1u << 15)
-static struct { uint64_t h, len; uint8_t *p; } snap_tab[SNAP_TAB];
+// [XCDE] LINUX-046: both translation and c1 uploads consume this immutable
+// registration. The old fixed tables/debug bypasses could fall back to a live
+// object after the game had recycled it. Interning now grows or fails explicitly.
+#define SHADER_SNAPSHOT_MAX (4u << 20)
+#define SHADER_GRAPHICS_CONTROL_SIZE 0x704u // last graphics read: uint32_t at 0x700
+#define SHADER_COMPUTE_CONTROL_SIZE 0x754u  // also compute local[3] at 0x748..0x750
+#define SNAP_INITIAL 1024u
+static struct SnapshotEntry { uint64_t h, len; uint8_t *p; } *snap_tab;
+static struct FrozenEntry { uint64_t h; NvnProgram *p; } *frozen_tab;
+static size_t snap_cap, snap_n, frozen_cap, frozen_n;
 static pthread_mutex_t snap_lock = PTHREAD_MUTEX_INITIALIZER;
-static uint64_t snap_bytes, snap_n;
-static const uint8_t *code_snapshot(uint64_t code, uint32_t const_offset) {
-    if (getenv("XCDE_NO_CODE_SNAPSHOT")) return NULL;
-    // what the translator may read: up to the constants (translate_program's cmax), or 64 KB without them
-    uint64_t len = const_offset ? const_offset : 0x10000;
-    if (code >= HEAP_BASE && code < HEAP_BASE + kernel_heap_size() && code + len > HEAP_BASE + kernel_heap_size())
-        len = HEAP_BASE + kernel_heap_size() - code;
-    if (len < 0x80 || len > (4u << 20)) return NULL;
-    const uint64_t *w = (const uint64_t *)(uintptr_t)code;
+static uint64_t snap_bytes;
+
+static uint64_t snapshot_hash(const void *data, size_t len) {
+    const uint8_t *b = data;
     uint64_t h = 0xcbf29ce484222325ull ^ len;
-    for (uint64_t k = 0; k < len / 8; k++) h = (h ^ w[k]) * 0x100000001b3ull;
-    if (!h) h = 1;
-    uint8_t *r = NULL;
-    pthread_mutex_lock(&snap_lock);
-    for (uint32_t i = (uint32_t)h & (SNAP_TAB - 1), n = 0; n < SNAP_TAB; i = (i + 1) & (SNAP_TAB - 1), n++) {
-        if (snap_tab[i].h == h && snap_tab[i].len == len) { r = snap_tab[i].p; break; }
-        if (!snap_tab[i].h) {
-            if (n > SNAP_TAB / 2 || !(r = malloc(len))) { r = NULL; break; }  // (table full: the live address as before)
-            memcpy(r, (const void *)(uintptr_t)code, len);
-            snap_tab[i].h = h; snap_tab[i].len = len; snap_tab[i].p = r;
-            snap_bytes += len;
-            if ((++snap_n & (snap_n - 1)) == 0) LOG("[shader] %llu shader blobs copied at registration (%.1f MB)\n", (unsigned long long)snap_n, snap_bytes / 1048576.0);
-            break;
-        }
+    size_t i = 0;
+    // Retain the old word-at-a-time registration cost, but include tail bytes.
+    for (; len - i >= sizeof(uint64_t); i += sizeof(uint64_t)) {
+        uint64_t word; memcpy(&word, b + i, sizeof word);
+        h = (h ^ word) * 0x100000001b3ull;
     }
-    pthread_mutex_unlock(&snap_lock);
-    return r;
+    for (; i < len; i++) h = (h ^ b[i]) * 0x100000001b3ull;
+    return h ? h : 1;
 }
 
-// [XCDE] T240: the frozen copies BindProgram records (cmdbuf.c), one per distinct set of shaders, kept for the run
-// (draws recorded with one may still be waiting for the render worker; the same shaders set again share it)
-#define FROZEN_TAB (1u << 15)
-static struct { uint64_t h; NvnProgram *p; } frozen_tab[FROZEN_TAB];
+static bool shader_guest_span(uint64_t addr, uint64_t len) {
+    if (addr < GUEST_LO || addr >= GUEST_HI || len > GUEST_HI - addr) return false;
+    uint64_t heap_size = kernel_heap_size();
+    if (addr >= HEAP_BASE && addr - HEAP_BASE < heap_size && len > heap_size - (addr - HEAP_BASE)) return false;
+    return true;
+}
+
+// Called under snap_lock. Failed growth leaves all old entries valid. Fatal
+// reporting occurs after unlocking so no renderer/registration waiter is stuck.
+static bool grow_snapshots(void) {
+    size_t cap = snap_cap ? snap_cap * 2 : SNAP_INITIAL;
+    if (cap < snap_cap || cap > SIZE_MAX / sizeof *snap_tab) return false;
+    struct SnapshotEntry *tab = calloc(cap, sizeof *tab);
+    if (!tab) return false;
+    for (size_t k = 0; k < snap_cap; k++) if (snap_tab[k].h) {
+        size_t i = (size_t)snap_tab[k].h & (cap - 1);
+        while (tab[i].h) i = (i + 1) & (cap - 1);
+        tab[i] = snap_tab[k];
+    }
+    free(snap_tab); snap_tab = tab; snap_cap = cap;
+    return true;
+}
+
+static const uint8_t *shader_snapshot(uint64_t addr, uint64_t len, const char *kind) {
+    if (!len || len > SHADER_SNAPSHOT_MAX || !shader_guest_span(addr, len))
+        FATAL("[shader] invalid %s snapshot address=0x%llx size=0x%llx\n", kind,
+              (unsigned long long)addr, (unsigned long long)len);
+    // Hash the same owned bytes we publish, including non-word-aligned tails.
+    uint8_t *copy = malloc((size_t)len);
+    if (!copy) FATAL("[shader] cannot allocate %s snapshot (%llu bytes)\n", kind, (unsigned long long)len);
+    memcpy(copy, (const void *)(uintptr_t)addr, (size_t)len);
+    uint64_t h = snapshot_hash(copy, (size_t)len);
+    pthread_mutex_lock(&snap_lock);
+    if ((!snap_cap || snap_n >= snap_cap / 2) && !grow_snapshots()) {
+        size_t count = snap_n;
+        pthread_mutex_unlock(&snap_lock); free(copy);
+        FATAL("[shader] cannot grow immutable snapshot registry (%zu entries)\n", count);
+    }
+    size_t i = (size_t)h & (snap_cap - 1);
+    while (snap_tab[i].h) {
+        if (snap_tab[i].h == h && snap_tab[i].len == len && !memcmp(snap_tab[i].p, copy, (size_t)len)) {
+            const uint8_t *found = snap_tab[i].p;
+            pthread_mutex_unlock(&snap_lock); free(copy); return found;
+        }
+        i = (i + 1) & (snap_cap - 1);
+    }
+    snap_tab[i] = (struct SnapshotEntry){h, len, copy};
+    snap_bytes += len;
+    ++snap_n;
+    if ((snap_n & (snap_n - 1)) == 0)
+        LOG("[shader] %zu immutable shader/control blobs (%.1f MB)\n", snap_n, snap_bytes / 1048576.0);
+    pthread_mutex_unlock(&snap_lock);
+    return copy;
+}
+
+static bool grow_frozen(void) {
+    size_t cap = frozen_cap ? frozen_cap * 2 : SNAP_INITIAL;
+    if (cap < frozen_cap || cap > SIZE_MAX / sizeof *frozen_tab) return false;
+    struct FrozenEntry *tab = calloc(cap, sizeof *tab);
+    if (!tab) return false;
+    for (size_t k = 0; k < frozen_cap; k++) if (frozen_tab[k].h) {
+        size_t i = (size_t)frozen_tab[k].h & (cap - 1);
+        while (tab[i].h) i = (i + 1) & (cap - 1);
+        tab[i] = frozen_tab[k];
+    }
+    free(frozen_tab); frozen_tab = tab; frozen_cap = cap;
+    return true;
+}
+
+// One immutable metadata set per distinct registration, retained for pending
+// command lists and queued prewarm work. No allocation occurs per BindProgram.
 static const NvnProgram *program_freeze(const NvnProgram *p) {
-    if (getenv("XCDE_NO_PROGRAM_FREEZE")) return NULL;
     NvnProgram q;
     memset(&q, 0, sizeof q);
     memcpy(q.stages, p->stages, sizeof q.stages);
     for (int i = 0; i < 6; i++) q.stages[i].backend = NULL;
     q.stage_mask = p->stage_mask;
-    uint64_t h = 0xcbf29ce484222325ull;
-    const uint8_t *b = (const uint8_t *)&q;
-    for (size_t i = 0; i < sizeof q; i++) h = (h ^ b[i]) * 0x100000001b3ull;
-    if (!h) h = 1;
-    NvnProgram *r = NULL;
+    uint64_t h = snapshot_hash(&q, sizeof q);
     pthread_mutex_lock(&snap_lock);
-    for (uint32_t i = (uint32_t)h & (FROZEN_TAB - 1), n = 0; n < FROZEN_TAB; i = (i + 1) & (FROZEN_TAB - 1), n++) {
-        if (frozen_tab[i].h == h && frozen_tab[i].p->stage_mask == q.stage_mask && !memcmp(frozen_tab[i].p->stages, q.stages, sizeof q.stages)) { r = frozen_tab[i].p; break; }
-        if (!frozen_tab[i].h) {
-            if (n > FROZEN_TAB / 2 || !(r = malloc(sizeof q))) { r = NULL; break; }  // (table full: the object as before)
-            memcpy(r, &q, sizeof q);
-            r->frozen = r;
-            frozen_tab[i].h = h; frozen_tab[i].p = r;
-            break;
-        }
+    if ((!frozen_cap || frozen_n >= frozen_cap / 2) && !grow_frozen()) {
+        size_t count = frozen_n;
+        pthread_mutex_unlock(&snap_lock);
+        FATAL("[shader] cannot grow immutable program registry (%zu entries)\n", count);
     }
+    size_t i = (size_t)h & (frozen_cap - 1);
+    while (frozen_tab[i].h) {
+        if (frozen_tab[i].h == h && frozen_tab[i].p->stage_mask == q.stage_mask &&
+            !memcmp(frozen_tab[i].p->stages, q.stages, sizeof q.stages)) {
+            const NvnProgram *found = frozen_tab[i].p;
+            pthread_mutex_unlock(&snap_lock); return found;
+        }
+        i = (i + 1) & (frozen_cap - 1);
+    }
+    NvnProgram *r = malloc(sizeof *r);
+    if (!r) {
+        pthread_mutex_unlock(&snap_lock);
+        FATAL("[shader] cannot allocate immutable program metadata\n");
+    }
+    memcpy(r, &q, sizeof q); r->frozen = r;
+    frozen_tab[i] = (struct FrozenEntry){h, r};
+    ++frozen_n;
+    if ((frozen_n & (frozen_n - 1)) == 0)
+        LOG("[shader] %zu immutable program registrations (%.1f MB metadata)\n", frozen_n,
+            frozen_n * sizeof *r / 1048576.0);
     pthread_mutex_unlock(&snap_lock);
     return r;
 }
@@ -732,14 +807,18 @@ static void set_shaders(Cpu *c, int stride) {
     NvnProgram *p = HOST(NvnProgram, A(0));
     int n = (int)A(1);
     const uint8_t *data = AP(2);  // NVNshaderData[n] = {u64 data (GPU addr), const void* control}
-    memset(p->stages, 0, sizeof p->stages);
-    p->stage_mask = 0;
-    p->backend = NULL;
+    if (!p || n < 0 || n > 6 || (n && !shader_guest_span(A(2), (uint64_t)n * stride)))
+        FATAL("[shader] invalid shader registration count=%d data=0x%llx\n", n, (unsigned long long)A(2));
+    // Publish only after all stages have complete owned storage. A registration
+    // error cannot leave the previous program half-cleared for an async worker.
+    NvnProgram q;
+    memset(&q, 0, sizeof q);
     for (int i = 0; i < n; i++) {
-        uint64_t code = *(uint64_t *)(data + i * stride);
-        const uint8_t *control = (const uint8_t *)(uintptr_t) * (uint64_t *)(data + i * stride + 8);
-        // stage from the Maxwell shader program header (after the 0x30-byte NVN header)
-        uint32_t sph0 = *(uint32_t *)(uintptr_t)(code + 0x30);
+        uint64_t code = *(const uint64_t *)(data + i * stride);
+        uint64_t control_addr = *(const uint64_t *)(data + i * stride + 8);
+        if (!shader_guest_span(code, 0x34))
+            FATAL("[shader] invalid code header address=0x%llx\n", (unsigned long long)code);
+        uint32_t sph0 = *(const uint32_t *)(uintptr_t)(code + 0x30);
         uint32_t stage;
         switch ((sph0 >> 10) & 0xF) {
         case 1: stage = 0; break;  // vertex
@@ -749,31 +828,42 @@ static void set_shaders(Cpu *c, int stride) {
         case 3: stage = 4; break;  // tess eval
         default: stage = 5; break; // compute (no SPH)
         }
-        if (*(uint32_t *)(uintptr_t)code != 0x12345678) stage = 5;
-        p->stages[stage].stage = stage;
-        p->stages[stage].code_addr = code;
-        p->stages[stage].control = control;
-        p->stages[stage].const_offset = *(const uint32_t *)(control + 0x700);
-        p->stages[stage].const_size = *(const uint32_t *)(control + 0x6FC);
-        {   // [XCDE] T125: content hash (the backend's program cache key; streamed shaders reuse addresses)
-            uint64_t end = (uint64_t)p->stages[stage].const_offset + p->stages[stage].const_size, h = 0xcbf29ce484222325ull;
-            if (end < 0x30 || end > (4u << 20)) end = 0x800;  // (no constants recorded: the header and first instructions)
-            const uint64_t *w = (const uint64_t *)(uintptr_t)code;
-            for (uint64_t k = 0; k < end / 8; k++) h = (h ^ w[k]) * 0x100000001b3ull;
-            p->stages[stage].code_hash = h;
-            p->stages[stage].code_copy = code_snapshot(code, p->stages[stage].const_offset);
-        }
-        p->stage_mask |= 1u << stage;
-        if (getenv("XCDE_DUMP_CONTROL")) {  // [XCDE] debugging: build/ctrl/<stage>_<code>.bin = the first 0x1000 bytes of the control section
+        if (*(const uint32_t *)(uintptr_t)code != 0x12345678) stage = 5;
+        size_t control_size = stage == 5 ? SHADER_COMPUTE_CONTROL_SIZE : SHADER_GRAPHICS_CONTROL_SIZE;
+        const uint8_t *control = shader_snapshot(control_addr, control_size, "control");
+        NvnShaderStage *ss = &q.stages[stage];
+        ss->stage = stage; ss->code_addr = code; ss->control = control;
+        ss->const_offset = *(const uint32_t *)(control + 0x700);
+        ss->const_size = *(const uint32_t *)(control + 0x6FC);
+        uint64_t end = (uint64_t)ss->const_offset + ss->const_size;
+        if (end > SHADER_SNAPSHOT_MAX)
+            FATAL("[shader] invalid compiler constants stage=%u offset=0x%x size=0x%x\n",
+                  stage, ss->const_offset, ss->const_size);
+        uint64_t hash_end = end < 0x30 ? 0x800 : end;
+        uint64_t len = ss->const_offset ? ss->const_offset : 0x10000;
+        if (len < end) len = end;
+        if (len < hash_end) len = hash_end;
+        if (len < 0x80) len = 0x80;
+        ss->code_copy = shader_snapshot(code, len, "code/constants");
+        ss->code_copy_size = len;
+        // Preserve the existing public shader hashes: authored feature matches
+        // depend on them. The backend separately keys the constant range.
+        uint64_t h = 0xcbf29ce484222325ull;
+        const uint64_t *w = (const uint64_t *)ss->code_copy;
+        for (uint64_t k = 0; k < hash_end / 8; k++) h = (h ^ w[k]) * 0x100000001b3ull;
+        ss->code_hash = h;
+        q.stage_mask |= 1u << stage;
+        if (getenv("XCDE_DUMP_CONTROL")) {
             char fn[96];
             snprintf(fn, sizeof fn, "build/ctrl/%u_%llx.bin", stage, (unsigned long long)code);
             FILE *f = fopen(fn, "rb");
-            if (!f && (f = fopen(fn, "wb"))) fwrite(control, 1, 0x1000, f);
+            if (!f && (f = fopen(fn, "wb"))) fwrite(control, 1, control_size, f);
             if (f) fclose(f);
         }
     }
-    p->frozen = program_freeze(p);
-    { extern void vk_program_registered(const NvnProgram *); vk_program_registered(p); }  // [XCDE] T163: precompile its known variants
+    q.frozen = program_freeze(&q);
+    *p = q;
+    { extern void vk_program_registered(const NvnProgram *); vk_program_registered(p); }
     RET(1);
 }
 

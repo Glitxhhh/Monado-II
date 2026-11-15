@@ -37,6 +37,9 @@
 #include <time.h>
 #include <unistd.h>
 #include <zlib.h>
+#ifdef _WIN32
+#include <windows.h>
+#endif
 
 #include "../../rt.h"
 #include "shaders.h"
@@ -655,8 +658,15 @@ int vk_precompile_main(const char *root) {
         // [XCDE] T211: the build that precompiled. A new build may translate shaders differently (every translator fix
         // changes SPIR-V): its pieces would no longer match and the game compiled them while playing (10-58 ms hitches
         // on the first draws of each area). The launcher compares this line with build/xcde.exe and precompiles again.
+#ifdef _WIN32
+        wchar_t executable[4096];struct _stat64 es;
+        DWORD length=GetModuleFileNameW(NULL,executable,4096);
+        if(length&&length<4096&&_wstat64(executable,&es)==0)
+            fprintf(f,"exe %lld %lld%c",(long long)es.st_size,(long long)es.st_mtime,10);
+#else
         struct stat es;
         if (stat("build/xcde.exe", &es) == 0) fprintf(f, "exe %lld %lld%c", (long long)es.st_size, (long long)es.st_mtime, 10);
+#endif
         fclose(f);
     }
     fflush(stdout);
