@@ -1,74 +1,104 @@
-# Current Windows development target
+# Native Windows development builds
 
-**Preparation only: implement the accepted Linux dev104 R5 feature set natively
-on Windows.** Read [AGENTS](../AGENTS.md) and the complete
-[Windows handoff](WINDOWS_PORT_HANDOFF.md) before executing inherited setup/build
-scripts. The first updated Windows release must include the portable graphical
-.exe builder/launcher and all applicable current Linux functionality. Root
-Build_Monado_II.bat and Play_Monado_II.bat are fallback requirements to implement;
-they are not supplied or validated by this preparation. No installer is required.
+This branch is bringing the accepted Linux dev104 R5 behavior into the native
+Windows port. It has produced native game/settings builds and a physically
+confirmed title screen on Windows 11, RTX 4070 SUPER, driver 595.97. Gameplay,
+save/reload, long sessions, all providers, other GPUs and full DE/Future Connected
+coverage still require maintainer testing. See [platform status](PLATFORM_STATUS.md)
+and the acceptance matrix in the [handoff](WINDOWS_PORT_HANDOFF.md).
 
-Use Monado_Windows as the implementation target, retain native Win32/provider
-behavior, validate owned extracted DE2.0.0 input, generate game code locally and
-keep all Windows state/output separate. Audit and fix compiler-failure propagation,
-process-name-wide taskkill, hardcoded/unquoted paths and broad system setup before
-running the historical recipe below. Source CI does not establish a native build.
-Existing original-Windows release instructions remain historical; they do not
-describe a completed parity build. No Linux distro/sysroot/glibc prerequisites apply
-to Windows. The detailed handoff supplies phased implementation and acceptance gates.
+There is no new public Windows release. The existing
+`monado-ii-windows-original-implementation-setup.zip` download remains the
+historical implementation; Linux version numbers never identify Windows updates.
+Local receipts use `windows-parity-development`, without borrowing a Linux release
+number. The accepted Linux source and deferred notes remain unchanged.
 
-# Local Windows build
+## Portable graphical setup
 
-Download **`monado-ii-windows-original-implementation-setup.zip`** from the GitHub
-Release. **This is the original Windows implementation, without the Linux
-additions.** Linux release numbers do not indicate a Windows update. The filename
-and implementation identity remain unchanged until Windows itself is updated.
+The authored native setup frontend and backend support selecting already-extracted
+input, a fresh installation directory, worker limits 1–6, real build progress,
+cancellation/retry and optional shader preparation. A private development setup
+EXE can be built with `Monado_Windows/tools/build_windows_builder.py` from a clean
+reviewed Windows source export, the original pinned Python/wheel archives and a
+successful native dependency receipt. It embeds a checked persistent local tool
+cache; reopening uses that cache and the installation registry. It opens settings
+only when requested and never presses Play.
 
-The kit contains reviewed source and inherited build tools, not a ready-to-run
-Windows app. Quiver recognizing the archive does not establish Windows setup or
-gameplay compatibility. The original author reported playability; this fork has
-not independently built or validated Windows.
+This development payload is not approved for public redistribution. Dependency,
+GPL/corresponding-source and optional vendor/model obligations require a separate
+review. No extracted game data, generated game C, game-code DLL, shader cache or
+save belongs in a setup payload. Users generate their own game library locally.
 
-The new Linux launcher, high-refresh corrections, expanded saves, dedicated Quick
-Step slot, Cheats tab, updater, controller/RADV corrections and other Linux work
-have **not** been backported. [TODO](../TODO.md) records deferred parity references.
-The containing source snapshot is recorded separately as provenance, not as a new
-Windows implementation version. Windows has no updater in this kit.
+Adopt checks a completed native build without importing or resetting its profile.
+Locate requires the same original executable and RomFS inventories before changing
+only the two recorded input junctions. Unknown/edited destinations and original
+receipts remain intact. Updates use a dedicated Windows channel and verified source;
+a Linux release is never offered as a Windows update. Failed/cancelled preparation
+keeps the current selection. Activation changes the checked runtime selection while
+the original profile remains stable. Obsolete owned update transactions are eligible
+for cleanup only after success; busy, changed or unsafe trees are deferred.
 
-You need your own legally dumped DE2.0.0 game files from your own legally obtained
-Switch and game. No game files, keys, acquisition links or dumping instructions are
-provided. Use root `game_files/exefs` and `game_files/romfs` as the shared read-only
-input. Keep outputs and runtime state under `Monado_Windows`, separate from Linux.
+## Source and BAT fallback
 
-The inherited route uses Windows10/11 x86-64, Git Bash, Python3.12+, MSYS2 UCRT64
-at its expected path and the SDL3/Vulkan/shaderc/VMA/FFmpeg/Opus development
-libraries. See the inherited per-port README/NOTICE for dependency descriptions.
-Review `tools/setup_windows.ps1` before any explicit invocation: it installs and
-updates system tools; publication preparation did not run it. No system/toolchain
-installation is implied by unpacking the source kit.
+Use Windows 10/11 x86-64 and a native CPython 3.14 interpreter. Run normal builds
+unelevated. Your own extracted DE 2.0.0 input must contain `exefs` and `romfs`;
+root `game_files` is the default. Input stays read-only. No keys, firmware,
+downloaded game data or package extraction are supported.
 
-After installing the prerequisites yourself, open Git Bash at the Monado II root:
+After auditing the project setup script, explicitly prepare its hash-pinned local
+Python packages and native dependencies with PowerShell:
 
-```sh
-cd Monado_Windows
-python -m venv .venv
-.venv/Scripts/python -m pip install capstone unicorn lz4 ziglang==0.14.1
-# Select the already-extracted shared input using the inherited local-folder UI.
-powershell.exe -NoProfile -File tools/setup_game_files.ps1
-.venv/Scripts/python -X utf8 tools/extract/check_dump.py targets
-# Explicitly setting XCDE_EXE bypasses inherited taskkill while retaining the
-# filename expected by the Windows launcher. Close your game before rebuilding.
-XCDE_EXE=build/xcde.exe bash scripts/build_all.sh
+```powershell
+& .\Monado_Windows\tools\setup_windows.ps1 -PythonPath 'C:\path\to\Python314\python.exe' -DownloadDependencies
 ```
 
-Select root `game_files` in the folder UI. It links input rather than bundling or
-copying it. When the local build succeeds, open `build/xcde_launcher.exe` manually.
-This inspected recipe has not been executed on Windows; clean-machine validation
-remains TODO. The inherited `Build Monado.bat` route uses the expected filename,
-offers setup, and may terminate a running process named xcde.exe during rebuilding;
-close your own game before choosing that route. It was not executed here.
+The script uses a project-local environment and pinned dependency lock. It does
+not install or upgrade system packages, alter system PATH or accept vendor terms.
+An existing environment with the wrong interpreter is preserved and refused.
 
-No vendor DLLs, system/game fonts, private SDKs, generated game executable or shader
-caches are shipped. The public source supports plain TTF/OTF/TTC input only. Never
-run inherited development packaging scripts to create public releases; the unsafe
-game-copying packager is excluded. Use only [source release tooling](RELEASING.md).
+Build from the repository root:
+
+```powershell
+.\Build_Monado_II.bat -InputFolder 'C:\My extracted game' -Jobs 4 --split-game
+```
+
+The explicit Python equivalent is:
+
+```powershell
+& .\Monado_Windows\.venv\Scripts\python.exe -B .\Monado_Windows\scripts\build_windows.py --stage all --split-game --input 'C:\My extracted game' --jobs 4
+```
+
+If present, the BAT wrapper prefers the checked project-local embedded interpreter
+at `Monado_Windows/.deps/python314/python.exe`. Each fresh build has a separate
+output/profile under `Monado_Windows/build`; its receipt records exact source,
+input, compiler, flags, dependency and binary identities. Compiler/link failures
+are fatal. Cancellation terminates only the build's owned job, retains diagnostics
+and does not replace the active game/settings pair.
+
+Open the checked settings launcher manually with `Play_Monado_II.bat`, then choose
+Play yourself. Build never starts the game. For runtime/UI-only rebuilds,
+`--reuse-game-library 'C:\absolute\checked\build-root' --split-game` can reuse a
+compatible locally generated DLL after complete identity/ABI/PE/receipt checks.
+Input, generator, guest-header, compiler or ABI changes require regeneration;
+corrupt receipts/libraries are failures. Omitting `--split-game` retains the
+full static-game source fallback.
+
+## Runtime and qualification boundaries
+
+New profiles keep Quick Step, cheats, rumble, on-screen FPS and frame generation
+OFF. Original quality/aspect choices remain default; first DLSS selection is
+Native 100%. Unknown INI keys and saved choices survive settings updates. Native
+Win32 fibers, FP/TLS, memory, Unicode processes and provider loading remain native.
+
+Windows presents once per real frame by default while retaining FIFO V-Sync and
+the game limiter. A focused mixed-display defect in the inherited repeat policy
+was reproduced at about 10 real FPS on a nominal 179.88-Hz monitor; the corrected
+policy reached about 30 real FPS at the same size/display. Accepted presentation
+calls are not a physical scanout measurement. No effects or simulation steps were
+removed. Explicit `XCDE_REPEAT_PRESENT=1` retains legacy diagnostic repetition.
+
+Optional SDK/model components require their own valid local preparation and real
+provider capability. Missing components remain unavailable. Authored component
+fixtures, native compilation and title-screen startup are separate evidence;
+none proves full gameplay or provider performance. Preserve every existing
+profile/save and use disposable authored fixtures for recovery tests.

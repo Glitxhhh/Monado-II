@@ -1,12 +1,24 @@
-# Windows parity branch status
+# Windows parity development status
 
-This preparation targets accepted Linux **dev104 R5**, not only public release020
-or older016. All Windows implementation files remain original; source CI is not a
-native Windows build or game pass. See the [current handoff](WINDOWS_PORT_HANDOFF.md)
-and [source inventory](WINDOWS_PARITY_INVENTORY.json). Historical public-release
-status below predates the new FSR3/optionalFSR4/portable2.39/GameLib dev work; use
-the frozen source and handoff for port requirements. No new Windows release/version
-is claimed by this branch.
+This branch targets accepted Linux **dev104 R5**, including its exact frozen
+source inventory. Native Windows runtime/gameplay/renderer/build bundles now
+compile and link with pinned native tools; an actual split runtime plus local
+game-code DLL has reached the title screen on Windows 11, RTX4070SUPER,
+NVIDIA595.97. A focused mixed-display repeat-present defect was reproduced and
+corrected, restoring about30 real FPS at the same size on the179.88Hz display.
+Native authored fixtures cover CPU/FP/fibers, startup loader ordering, save
+transactions, service lifecycle, settings, renderer policies and build/setup
+boundaries. This is development evidence, not a full-game or provider pass.
+
+The native portable setup/update workflow is under final integration. Optional
+prepared FSR4 and external driver methods retain explicit availability boundaries;
+actual assets, provider/GPU behavior, gameplay/save-reload, full DE/FC, other GPUs
+and clean-machine distribution remain unqualified. See the [Windows guide](BUILD_WINDOWS.md)
+and [handoff acceptance matrix](WINDOWS_PORT_HANDOFF.md). No public release,
+Windows version number, tag or parity-completion claim is made.
+
+The public release history below still describes the historical downloads. Its
+original Windows ZIP has not been replaced by these private development builds.
 
 # Platform status
 

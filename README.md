@@ -3,10 +3,11 @@
 > **On Windows: tell Codex "Read START_WINDOWS_PORT.md and follow it."**
 > [Open the complete start prompt](START_WINDOWS_PORT.md).
 >
-> **Windows parity development branch, preparation only.** This branch targets
+> **Windows parity development branch.** This branch targets
 > the maintainer-accepted Linux **dev104 R5**, including the latest renderer,
 > temporal upscalers, frame generation, graphics controls and portable builder.
-> The original Windows implementation is still unchanged. Start with
+> Native Windows development builds now reach the title screen; full gameplay,
+> provider and portable setup qualification remain in progress. Start with
 > [the complete Windows handoff](docs/WINDOWS_PORT_HANDOFF.md). This is not a
 > new Windows release. Linux polish/performance follow-up is deferred until Windows
 > parity is complete.
@@ -15,7 +16,8 @@
 
 A community fork of **Monado** by **TheMonadoGuy / Monado contributors**, built
 on **Peiikai’s LASRecomp**. Monado II adds a native Linux port and optional
-quality-of-life features, while preserving the original Windows implementation.
+quality-of-life features. This branch is adapting them to the native Windows
+implementation; existing public Windows downloads remain historical.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/69fabc08-665d-41bc-8900-f707138d630f" alt="Monado II’s native Linux launcher, with artwork, graphics settings and build tools" width="1000" />

@@ -1,6 +1,7 @@
 """LINUX-099: native observer companion ABI/receipt transaction checks, no ELF execution."""
 from pathlib import Path
 import importlib.util
+import os
 import tempfile
 import unittest
 SPEC = importlib.util.spec_from_file_location('test_observer_builder', Path(__file__).resolve().parents[1] / 'Monado_Linux/scripts/setup_present_observer_linux.py')
@@ -47,7 +48,13 @@ class ObserverBuild(unittest.TestCase):
     def test_existing_or_dangling_output_is_preserved(self):
         for suffix in ('', '.partial'):
             with self.subTest(suffix=suffix):
-                b = self.builder(); target = b.output / 'missing'; path = b.output / (helper.RESOURCE + suffix); path.symlink_to(target)
+                b = self.builder(); target = b.output / 'missing'; path = b.output / (helper.RESOURCE + suffix)
+                try:
+                    path.symlink_to(target)
+                except OSError as error:
+                    if os.name == 'nt' and error.winerror == 1314:
+                        self.skipTest('Windows symbolic-link privilege unavailable for Linux observer fixture')
+                    raise
                 with self.assertRaises(ValueError): helper.build(b)
                 self.assertTrue(path.is_symlink()); self.assertFalse(target.exists()); self.assertFalse(b.saved)
 

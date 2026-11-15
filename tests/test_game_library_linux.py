@@ -35,7 +35,12 @@ class Identity(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             p = Path(directory)
             (p / 'runtime').mkdir()
-            (p / 'runtime/cpu.h').symlink_to('/dev/null')
+            try:
+                (p / 'runtime/cpu.h').symlink_to('/dev/null')
+            except OSError as error:
+                if os.name == 'nt' and error.winerror == 1314:
+                    self.skipTest('Windows symbolic-link privilege unavailable; native Windows link guards have separate fixtures')
+                raise
             with self.assertRaisesRegex(ValueError, 'ordinary'):
                 identity.identity(p)
 

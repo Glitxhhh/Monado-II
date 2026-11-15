@@ -4,6 +4,7 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import sys
 import tarfile
@@ -383,7 +384,13 @@ class Extraction(unittest.TestCase):
     def test_existing_linked_or_noncanonical_staging_is_refused(self):
         data = archive_bytes()
         existing = self.root / 'existing'; existing.mkdir()
-        link = self.root / 'link'; link.symlink_to(existing, target_is_directory=True)
+        link = self.root / 'link'
+        try:
+            link.symlink_to(existing, target_is_directory=True)
+        except OSError as error:
+            if os.name == 'nt' and error.winerror == 1314:
+                self.skipTest('Windows symbolic-link privilege unavailable; native Windows junction fixtures run separately')
+            raise
         for path in (existing, link, link / 'stage'):
             with self.subTest(path=path), self.assertRaises(update.UpdateError):
                 update.fetch_and_extract(offer(data), path, opener=response(data))
