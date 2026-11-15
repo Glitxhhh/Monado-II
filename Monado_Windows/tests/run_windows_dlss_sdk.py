@@ -21,6 +21,21 @@ MODULES = ('sl.interposer.dll', 'sl.common.dll', 'sl.dlss.dll', 'nvngx_dlss.dll'
 LICENSES = ('LICENSE.txt', 'nvngx_dlss.license.txt', 'reflex.license.txt')
 
 
+def sdk_diagnostics(text, *, mask_format, expect_r8_errors=False):
+    """Judge real production SDK callbacks even when dispatch/exit say success."""
+    lines = text.splitlines()
+    errors = [line for line in lines if '[streamline][error]' in line.lower()]
+    undefined = [line for line in errors if 'Cannot have undefined format' in line]
+    cleanup = [line for line in lines if '[dlss] resource reset failed:' in line or '[dlss] shutdown failed:' in line]
+    result = {'sdk_errors': len(errors), 'undefined_format_errors': len(undefined), 'cleanup_errors': len(cleanup)}
+    if expect_r8_errors:
+        if mask_format != 'r8' or len(undefined) != 12 or len(errors) != 12 or cleanup:
+            raise ValueError('Expected exactly four unsupported R8-mask SDK diagnostics per frame over three frames: '+str(result))
+    elif errors or cleanup:
+        raise ValueError('SDK callback/cleanup errors invalidate the pixel-only result: '+str(result))
+    return result
+
+
 def identity(data):
     return {'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()}
 
@@ -36,7 +51,11 @@ def main():
     parser.add_argument('--output', type=Path, help='Fresh private fixture output directory')
     parser.add_argument('--prefix', type=Path, help='Checked native Vulkan/SDL dependencies prefix')
     parser.add_argument('--compile-only', action='store_true', help='Compile authored fixture; do not read/map vendor files or execute fixture')
+    parser.add_argument('--mask-format', choices=('r16','r8'), default='r16', help='Real fifth resource tag; R8 is an explicit diagnostic negative control')
+    parser.add_argument('--expect-r8-errors', action='store_true', help='Require the pinned SDK unsupported-R8 diagnostic; never a positive qualification')
     args = parser.parse_args()
+    if args.expect_r8_errors and args.mask_format != 'r8':
+        parser.error('--expect-r8-errors requires --mask-format r8')
     if os.name != 'nt':
         raise RuntimeError('Native Windows required')
     if not args.compile_only and not args.sdk_directory:
@@ -68,6 +87,7 @@ def main():
                PORT/'tests/native/test_dlss_sdk_windows.cpp', Path(__file__), ROOT/'tools/windows_file_guard.py']
     hashes = lambda: {str(path.relative_to(ROOT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}
     receipt = {'status': 'failed', 'sources_before': hashes(), 'commands': [], 'working_directory': str(launch_state),
+               'mask_format':args.mask_format,'expected_r8_negative':args.expect_r8_errors,
                'scope': 'actual production DLSS, explicit approved local SDK and authored hidden SDL/Vulkan GPU frames; no game, profile, FPS or full renderer qualification'}
     env = os.environ.copy()
     for key in list(env):
@@ -89,7 +109,7 @@ def main():
         print(result.stdout, end='', flush=True)
         if result.returncode:
             raise RuntimeError(label+' failed: '+result.stderr[-12000:])
-        return result.stdout
+        return result
     try:
         flags = ['-std=gnu++20', '-O1', '-UNDEBUG', '-march=x86_64_v2', '-ffp-contract=off', '-fno-fast-math',
                  '-fno-strict-aliasing', '-Wall', '-Wextra', '-Werror', '-Wno-missing-field-initializers',
@@ -137,10 +157,11 @@ def main():
                 checked_exe = leases.enter_context(target.open_regular('build/authored-dlss.exe', max_bytes=512*1024*1024, owner=True))
                 if identity(checked_exe.read()) != receipt['executable']:
                     raise ValueError('Authored fixture image changed before execution')
-                stdout = run('native', [binary], 90)
-                if 'PASS actual production DLSS SDK: 3 authored DLAA frames' not in stdout:
+                result = run('native', [binary, '--mask-'+args.mask_format], 120)
+                if 'PASS actual production DLSS SDK:' not in result.stdout:
                     raise ValueError('Missing actual SDK evaluation/readback completion')
-                receipt['status'] = 'passed'
+                receipt['sdk_diagnostics'] = sdk_diagnostics(result.stderr,mask_format=args.mask_format,expect_r8_errors=args.expect_r8_errors)
+                receipt['status'] = 'expected-sdk-error-reproduced' if args.expect_r8_errors else 'passed'
         receipt['sources_after'] = hashes()
         if receipt['sources_before'] != receipt['sources_after']:
             receipt['status'] = 'failed'

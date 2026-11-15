@@ -19,7 +19,7 @@ class NativeTemporalScene(unittest.TestCase):
         cls.environment['PATH']=str(cls.prefix/'bin')+os.pathsep+cls.environment.get('PATH','')
         source=(PORT/'runtime/nvn/vulkan/exec.c').read_text()
         temporal=(PORT/'runtime/nvn/vulkan/temporal.c').read_text()
-        names=['vk_exec_forget_texture','tmp_exec_reset','tmp_cam_check','tmp_scene_begin_frame','tmp_scene_same_camera','tmp_scene_like','tmp_draw','tmp_spatial_fallback','post_process']
+        names=['vk_exec_forget_texture','tmp_exec_reset','tmp_cam_check','tmp_scene_begin_frame','tmp_scene_same_camera','tmp_scene_like','tmp_scene_pass_end','tmp_scene_record_draw','tmp_draw','tmp_spatial_fallback','post_process']
         body='\n'.join([extract(temporal,n) for n in ['halton','tmp_jitter']]+[extract(source,n) for n in names])
         (cls.directory/'temporal_scene_production.h').write_bytes(body.encode())
         cls.binary=cls.directory/'scene.exe'
@@ -48,7 +48,7 @@ class NativeTemporalScene(unittest.TestCase):
         self.assertIn('old unscaled jitter counterexample detected',result.stdout)
     def test_production_temporal_dispatch_history_failures_and_bounded_evidence(self):
         source=(PORT/'runtime/nvn/vulkan/temporal.c').read_text()
-        names=['env_int','mat_from_rows','mat_mul','mat_inv','history_invalidate','history_prepare','history_commit','res','tmp_upscale','tmp_provider_status','tmp_note_spatial_frame','tmp_diagnostics_frame']
+        names=['env_int','prep_pipeline','mat_from_rows','mat_mul','mat_inv','history_invalidate','history_prepare','history_commit','res','tmp_upscale','tmp_provider_status','tmp_note_spatial_frame','tmp_diagnostics_frame']
         (self.directory/'temporal_dispatch_production.h').write_bytes('\n'.join(extract(source,name) for name in names).encode())
         binary=self.directory/'dispatch.exe'
         command=compiler_command()+native_flags()+['-I'+str(PORT/'runtime'),'-I'+str(PORT/'third_party'),'-I'+str(self.prefix/'include'),'-I'+str(self.directory),str(PORT/'tests/native/test_temporal_dispatch_windows.c'),'-o',str(binary)]

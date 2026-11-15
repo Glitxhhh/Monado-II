@@ -24,7 +24,7 @@ SDK=r'''
 #include <sl_dlss.h>
 #include <sl_helpers_vk.h>
 #include <cstring>
-static char scenario[80];static unsigned stats[4];
+static char scenario[80];static unsigned stats[8];static bool viewport_active;
 static bool is(const char *name){GetEnvironmentVariableA("MONADO_AUTHORED_DLSS",scenario,sizeof scenario);return !strcmp(scenario,name);}
 static sl::Result bad(){return (sl::Result)1;}
 #define API extern "C"
@@ -34,7 +34,7 @@ API sl::Result slInit(const sl::Preferences &p,uint64_t){
  return is("init-fail")?bad():sl::Result::eOk;
 }
 API sl::Result slShutdown(){stats[0]++;return sl::Result::eOk;}
-API sl::Result slFreeResources(sl::Feature,const sl::ViewportHandle&){return sl::Result::eOk;}
+API sl::Result slFreeResources(sl::Feature,const sl::ViewportHandle&){if(is("resource-lifecycle")){if(!viewport_active)return sl::Result::eErrorInvalidParameter;viewport_active=false;stats[6]++;}return sl::Result::eOk;}
 API sl::Result slGetFeatureRequirements(sl::Feature,sl::FeatureRequirements &r){
  if(is("requirements-fail"))return bad();static const char *extensions[]={"VK_AUTHORED_required"};static const char *features[]={"shaderInt8"};
  static const char *instance[]={"VK_AUTHORED_instance"};r.vkNumInstanceExtensions=1;r.vkInstanceExtensions=instance;
@@ -49,10 +49,13 @@ static sl::Result options(const sl::ViewportHandle&,const sl::DLSSOptions&){retu
 #ifndef OMIT_FUNCTION
 API sl::Result slGetFeatureFunction(sl::Feature,const char*,void *&f){f=is("options-missing")?nullptr:(void*)&options;return sl::Result::eOk;}
 #endif
-API sl::Result slGetNewFrameToken(sl::FrameToken*&,const uint32_t*){return bad();}
-API sl::Result slSetConstants(const sl::Constants&,const sl::FrameToken&,const sl::ViewportHandle&){return sl::Result::eOk;}
+struct Token:sl::FrameToken{uint32_t value=0;operator uint32_t()const override{return value;}};
+API sl::Result slGetNewFrameToken(sl::FrameToken *&out,const uint32_t *value){if(!is("resource-lifecycle"))return bad();static Token token;token.value=*value;out=&token;return sl::Result::eOk;}
+API sl::Result slSetConstants(const sl::Constants &c,const sl::FrameToken&,const sl::ViewportHandle&){
+ if(is("resource-lifecycle")){if(c.motionVectorsInvalidValue!=sl::INVALID_FLOAT||c.motionVectorsInvalidValue==0||c.cameraMotionIncluded!=sl::Boolean::eTrue||c.mvecScale.x!=1||c.mvecScale.y!=1)return bad();stats[4]++;}return sl::Result::eOk;
+}
 API sl::Result slSetTagForFrame(const sl::FrameToken&,const sl::ViewportHandle&,const sl::ResourceTag*,uint32_t,sl::CommandBuffer*){return sl::Result::eOk;}
-API sl::Result slEvaluateFeature(sl::Feature,const sl::FrameToken&,const sl::BaseStructure**,uint32_t,sl::CommandBuffer*){return sl::Result::eOk;}
+API sl::Result slEvaluateFeature(sl::Feature,const sl::FrameToken&,const sl::BaseStructure**,uint32_t,sl::CommandBuffer*){if(is("resource-lifecycle")){viewport_active=true;stats[5]++;}return sl::Result::eOk;}
 static VKAPI_ATTR VkResult VKAPI_CALL create(VkInstance,const VkWin32SurfaceCreateInfoKHR*,const VkAllocationCallbacks*,VkSurfaceKHR *out){if(is("surface-fail"))return VK_ERROR_INITIALIZATION_FAILED;*out=(VkSurfaceKHR)1234;return VK_SUCCESS;}
 static VKAPI_ATTR void VKAPI_CALL destroy(VkInstance,VkSurfaceKHR,const VkAllocationCallbacks*){stats[3]++;}
 API VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance,const char *name){if(is("surface-hook-missing"))return nullptr;return !strcmp(name,"vkCreateWin32SurfaceKHR")?(PFN_vkVoidFunction)&create:!strcmp(name,"vkDestroySurfaceKHR")?(PFN_vkVoidFunction)&destroy:nullptr;}
@@ -99,6 +102,7 @@ static void *authored_pointer(SDL_PropertiesID,const char*,void*){return authore
 '''
 
 MAIN=r'''
+extern "C" VkImageView vk_image_view(TexBackend*,VkImageViewType,VkFormat,uint32_t,uint32_t,uint32_t,uint32_t,VkComponentMapping,VkImageAspectFlags){return (VkImageView)1;}
 Settings g_settings;
 int main(int argc,char **argv){assert(argc==2);authored_case=argv[1];SetEnvironmentVariableA("MONADO_AUTHORED_DLSS",authored_case);g_settings.upscaler=UPSCALE_DLSS;
  bool early=dlss_init_early();
@@ -117,6 +121,18 @@ int main(int argc,char **argv){assert(argc==2);authored_case=argv[1];SetEnvironm
  VkSurfaceKHR surface=(VkSurfaceKHR)44;bool accepted=dlss_create_surface((void*)1,(VkInstance)1,(VkPhysicalDevice)1,0,&surface);
  if(is("surface-fail")||is("surface-hook-missing")||is("present-fail")){assert(!accepted&&!dlss_available()&&surface==(VkSurfaceKHR)44&&!dlss_proxy((VkDevice)1,"vkQueuePresentKHR"));if(is("present-fail"))assert(stats(3)==1);}
  else assert(accepted&&surface==(VkSurfaceKHR)1234&&dlss_available()&&dlss_proxy((VkDevice)1,"vkQueuePresentKHR")&&strstr(dlss_status(),"ready on the selected GPU"));
+ if(is("resource-lifecycle")){
+  g_settings.upscale_quality=UQ_NATIVE;TexBackend color{};color.image=(VkImage)1;color.format=VK_FORMAT_R8G8B8A8_UNORM;color.width=320;color.height=192;
+  TexBackend mask=color;mask.format=VK_FORMAT_R16_SFLOAT;TmpCamera camera{};camera.ok=true;camera.view[0]=camera.view[5]=camera.view[10]=1;
+  camera.proj[0]=camera.proj[5]=1;camera.proj[10]=-1.0002f;camera.proj[11]=-.20002f;camera.proj[14]=-1;
+  double reproj[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};float jitter[2]={.25f,-.16666667f};
+  dlss_reset();assert(stats(6)==0); // Initialized device without an accepted frame owns no viewport.
+  for(unsigned cycle=0;cycle<2;cycle++){
+   for(unsigned frame=0;frame<2;frame++)assert(dlss_evaluate((VkCommandBuffer)1,&color,&color,&color,&color,&mask,jitter,frame==0,&camera,reproj,frame+1,frame));
+   dlss_reset();dlss_reset();assert(dlss_available()&&stats(6)==cycle+1);
+  }
+  assert(stats(4)==4&&stats(5)==4); // Actual production constants, accepted dispatch and fresh viewport restart.
+ }
  DestroyWindow(authored_window);dlss_shutdown();assert(!dlss_available()&&!GetModuleHandleW(L"sl.interposer.dll"));return 0;
 }
 '''
@@ -130,10 +146,10 @@ class Native(unittest.TestCase):
         base=[sys.executable,'-B','-m','ziglang','c++','-std=c++17','-O1','-UNDEBUG','-march=x86_64_v2','-ffp-contract=off','-fno-fast-math','-I'+str(prefix/'include'),'-I'+str(PORT/'third_party/streamline/include'),'-I'+str(PORT/'runtime')]
         sdk=out/'authored-sdk.cpp';sdk.write_text(SDK,encoding='utf-8')
         production=PORT/'runtime/nvn/vulkan/dlss.cpp';source=production.read_text(encoding='utf-8')
-        begin=source[:source.index('static sl::Resource tex(')];tail=source[source.index('// Call only once the device is idle'):]
+        begin=source
         load_boundary='\nstatic HMODULE authored_optional_load(const wchar_t *path,char *reason,size_t capacity){authored_loads++;return monado_optional_library_load(path,reason,capacity);}\n#define monado_optional_library_load authored_optional_load\n'
         begin=begin.replace('#include "../../platform/windows_optional_library.h"','#include "'+(PORT/'runtime/platform/windows_optional_library.h').as_posix()+'"'+load_boundary).replace('#include "temporal.h"','#include "nvn/vulkan/temporal.h"').replace('#include "dlss.h"','#include "nvn/vulkan/dlss.h"').replace('#include "temporal_camera.h"','#include "nvn/vulkan/temporal_camera.h"').replace('#include "../../settings.h"','#include "settings.h"')
-        harness=out/'production-loader.cpp';harness.write_text(PRELUDE+begin+tail+MAIN,encoding='utf-8')
+        harness=out/'production-loader.cpp';harness.write_text(PRELUDE+begin+MAIN,encoding='utf-8')
         def run(label,argv):
             result=subprocess.run(argv,env=env,capture_output=True,text=True,timeout=180);(out/(label+'.log')).write_text(result.stdout+result.stderr,encoding='utf-8');self.assertEqual(result.returncode,0,label+': '+result.stderr[-3000:]);return result
         executable=out/'authored-loader.exe';run('compile-production',[*base,str(harness),'-o',str(executable),'-ladvapi32','-luser32'])
@@ -144,7 +160,7 @@ class Native(unittest.TestCase):
             if name!='missing-function':exports.append('slGetFeatureFunction')
             definition=out/(name+'.def');definition.write_text('EXPORTS\n'+'\n'.join(exports)+'\n')
             dll=out/(name+'.dll');run('compile-'+name,[*base,*flags,'-shared',str(sdk),str(definition),'-o',str(dll)]);variants[name]=dll
-        cases=['success','extended-module-path','long-module-path','long-extended-module-path','zero-queues','init-fail','requirements-fail','missing-support','missing-function','instance-capacity','instance-extension-missing','non-nvidia','extension-missing','feature-missing','queue-missing','extension-capacity','device-fail','unsupported','options-missing','device-proxy-missing','surface-hook-missing','surface-fail','present-fail']
+        cases=['success','resource-lifecycle','extended-module-path','long-module-path','long-extended-module-path','zero-queues','init-fail','requirements-fail','missing-support','missing-function','instance-capacity','instance-extension-missing','non-nvidia','extension-missing','feature-missing','queue-missing','extension-capacity','device-fail','unsupported','options-missing','device-proxy-missing','surface-hook-missing','surface-fail','present-fail']
         for name in cases:
             with self.subTest(case=name):
                 directory=out/name;directory.mkdir();shutil.copyfile(executable,directory/'authored-loader.exe');shutil.copyfile(variants.get(name,variants['normal']),directory/'sl.interposer.dll');run(name,[str(directory/'authored-loader.exe'),name])

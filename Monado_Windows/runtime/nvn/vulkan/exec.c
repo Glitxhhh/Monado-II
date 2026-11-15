@@ -104,6 +104,9 @@ static pthread_mutex_t seq_lock = PTHREAD_MUTEX_INITIALIZER;
 static bool in_pass;
 static uint64_t tmp_scene_frame = ~0ull;  // [XCDE] T213: the last frame with a scene draw (jittered)
 static TexBackend *pass_dbg_rt;  // [XCDE] colour 0 of the open pass (the debug dump must save the pass's own target, not st.rt's)
+static uint64_t tmp_open_pass,tmp_open_vs,tmp_open_fs;
+static uint32_t tmp_open_draws;
+static void tmp_scene_pass_end(TexBackend *target,bool had_snapshot,bool captured);
 
 uint64_t vk_completed_seq(void) {
     uint64_t v = 0;
@@ -1321,11 +1324,13 @@ static void vk_end_pass_at(int line) {
     in_pass = false;
     feedback_layout(false);
     pass_nfeedback=0;
+    bool had_snapshot=tmp_hud_started();
     // [XCDE] T213: the first pass this frame that drew into the presented image (the scene composite: the HUD follows)
     // (only once this frame's scene was drawn: the game writes the window image earlier in the frame too - a snapshot
     // there turned the jitter off for the whole scene and DLSS / FSR got no sub-pixel detail: jagged edges)
     if (!pass_feedback_clear_only && pass_dbg_rt && pass_dbg_rt->presented && tmp_enabled() && tmp_scene_frame == renderer_present_count())
         tmp_hud_snapshot(vk_cmd(), pass_dbg_rt);
+    tmp_scene_pass_end(pass_dbg_rt,had_snapshot,!had_snapshot&&tmp_hud_started());
     if (renderer_present_count() != pass_frame_seen) { pass_frame_seen = renderer_present_count(); pass_no_in_frame = 0; }
     pass_no_in_frame++;
     if (nan_check_now())  // [XCDE] T152
@@ -1630,6 +1635,7 @@ static void begin_pass(void) {
     pass_mark_attachments();  // [XCDE] T162
     feedback_layout(true);
     vkCmdBeginRendering(cb, &ri);
+    tmp_open_pass=pass_seq_no;tmp_open_vs=tmp_open_fs=0;tmp_open_draws=0;
     ss_forget();  // (whatever ran between the passes may have set its own state)
     in_pass = true;
     pass_dbg_rt = st.rt.ncolor && st.rt.color[0] ? (TexBackend *)st.rt.color[0]->backend : NULL;
@@ -5024,6 +5030,7 @@ static void tmp_exec_reset(void) {
     tmp_frame = tmp_scene_frame = tmp_cam_frame = ~0ull;
     memset(&tmp_jitter_grid,0,sizeof tmp_jitter_grid);
     memset(&tmp_scene_evidence,0,sizeof tmp_scene_evidence);
+    tmp_open_pass=tmp_open_vs=tmp_open_fs=0;tmp_open_draws=0;
     tmp_jit[0] = tmp_jit[1] = 0;
     tmp_dm1 = true;
 }
@@ -5071,17 +5078,38 @@ static bool tmp_scene_like(const NvnTexture *depth) {
     uint32_t width,height;output_scale_base(&width,&height);
     return tmp_scene_depth_eligible(depth->width,depth->height,width,height);
 }
+static void tmp_scene_pass_end(TexBackend *target,bool had_snapshot,bool captured) {
+    if(tmp_scene_frame!=renderer_present_count())return;
+    if(target&&target->presented)tmp_scene_evidence.presented_passes++;
+    if(had_snapshot)tmp_scene_evidence.passes_after_snapshot++;
+    if(captured&&target) {
+        tmp_scene_evidence.snapshot_pass=tmp_open_pass;
+        tmp_scene_evidence.snapshot_source=target->image_identity;
+        tmp_scene_evidence.snapshot_vs=tmp_open_vs;tmp_scene_evidence.snapshot_fs=tmp_open_fs;
+        tmp_scene_evidence.snapshot_width=target->width;tmp_scene_evidence.snapshot_height=target->height;
+        tmp_scene_evidence.snapshot_format=target->format;tmp_scene_evidence.snapshot_draws=tmp_open_draws;
+    }
+}
+static void tmp_scene_record_draw(const Prog *program) {
+    if(tmp_scene_frame!=renderer_present_count())return;
+    tmp_open_vs=program->stages[0].code_hash;tmp_open_fs=program->stages[1].code_hash;tmp_open_draws++;
+    if(tmp_hud_started())tmp_scene_evidence.draws_after_snapshot++;
+}
 static void tmp_draw(const Prog *pr,float *jx,float *jy) {
     uint64_t frame=renderer_present_count();tmp_scene_begin_frame(frame);
     if(!st.rt.depth)return;
     bool eligible=tmp_scene_like(st.rt.depth);
-    if(!tmp_cam.ok)for(unsigned k=0;k<14;k++) {
+    // NVN UBO slot k supplies hardware CB(k+3). A stale bound buffer that
+    // this vertex shader does not read is not evidence of its camera.
+    if(!tmp_cam.ok&&pr->vi)for(unsigned k=0;k+3<sizeof pr->vi->cbuf_size/sizeof *pr->vi->cbuf_size;k++) {
+        if(!(pr->vi->cbuf_mask&(1u<<(k+3))))continue;
         const Range *range=&st.ubuf[0][k];
         if(range->addr<HEAP_BASE||range->size<176)continue;
         TmpCamera camera={0};
         if(!tmp_cam_check((const float *)(uintptr_t)range->addr,&camera))continue;
         if(!eligible){tmp_scene_evidence.rejected_cameras++;break;}
         tmp_cam=camera;tmp_depth_tex=st.rt.depth;tmp_dm1=pr->vkey.depth_minus_one;tmp_cam_frame=frame;
+        tmp_scene_evidence.camera_cbuf=k+3;tmp_scene_evidence.camera_read_mask=pr->vi->cbuf_mask;
         break;
     }
     TexBackend *depth=st.rt.depth->backend,*selected=tmp_depth_tex?tmp_depth_tex->backend:NULL;
@@ -5091,7 +5119,8 @@ static void tmp_draw(const Prog *pr,float *jx,float *jy) {
         (same_image?depth->image==selected->image:
             (st.rt.depth->width==tmp_depth_tex->width&&st.rt.depth->height==tmp_depth_tex->height));
     bool world=st.ds[0]!=0;
-    if(scene&&!world&&tmp_cam.ok)for(unsigned k=0;k<14&&!world;k++) {
+    if(scene&&!world&&tmp_cam.ok&&pr->vi)for(unsigned k=0;k+3<sizeof pr->vi->cbuf_size/sizeof *pr->vi->cbuf_size&&!world;k++) {
+        if(!(pr->vi->cbuf_mask&(1u<<(k+3))))continue;
         const Range *range=&st.ubuf[0][k];
         if(range->addr>=HEAP_BASE&&range->size>=176)
             world=tmp_scene_same_camera((const float *)(uintptr_t)range->addr);
@@ -5900,6 +5929,7 @@ static void draw_(CmdRec *r, bool indexed) {
             VkDescriptorSet rset = stage_set(pr, pr->set_layout[1], 1, 1, pr->fi, rs0, rtint, 0, 0, 0, fii);
             vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, pr->layout, 1, 1, &rset, 0, NULL);
         }
+        tmp_scene_record_draw(pr);
         if (!use_index) vkCmdDraw(cb, count, run_n[ri], first, base_inst + run_at[ri]);
         else vkCmdDrawIndexed(cb, icount, run_n[ri], 0, base_vertex, base_inst + run_at[ri]);
     }
@@ -6557,6 +6587,7 @@ static VkImageView tmp_spatial_fallback(VkCommandBuffer cb,TexBackend *color,VkI
 static VkImageView post_process(VkCommandBuffer cb, TexBackend *b, double ow_d, double oh_d) {
     VkImageView v = raw_view(b);
     tmp_scene_begin_frame(renderer_present_count());
+    tmp_scene_evidence.present_source=b->image_identity;
     float declared_jitter[2];tmp_jitter_grid_offset(&tmp_jitter_grid,b->width,b->height,declared_jitter);
     tmp_jitter_grid_verify(&tmp_jitter_grid,b->width,b->height);
     fg_scene = VK_NULL_HANDLE;

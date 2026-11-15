@@ -2,6 +2,7 @@
 // authored matrices/resources. A separate Vulkan fixture verifies pixel motion.
 #include "nvn/vulkan/temporal.h"
 #include "nvn/vulkan/temporal_scene_policy.h"
+#include "nvn/maxwell/shader.h"
 #include "settings.h"
 #include <assert.h>
 #include <math.h>
@@ -9,11 +10,12 @@
 #include <stdlib.h>
 #include <string.h>
 typedef struct {uint64_t addr,size;} Range;
-typedef struct {struct {bool depth_minus_one;} vkey;} Prog;
+typedef struct {struct {bool depth_minus_one;} vkey;ShaderInfo *vi;NvnShaderStage stages[6];} Prog;
 static float camera_storage[4][44];
 #undef HEAP_BASE
 #define HEAP_BASE ((uintptr_t)camera_storage)
-static struct {struct {NvnTexture *depth;}rt;Range ubuf[2][14];uint8_t ds[4];}st;
+static struct {struct {NvnTexture *depth;}rt;Range ubuf[2][18];uint8_t ds[4];}st;
+static uint64_t tmp_open_pass,tmp_open_vs,tmp_open_fs;static uint32_t tmp_open_draws;
 static TmpCamera tmp_cam;
 static uint64_t tmp_frame=~0ull,tmp_scene_frame=~0ull,tmp_cam_frame=~0ull,present_frame;
 static NvnTexture *tmp_depth_tex;
@@ -67,7 +69,7 @@ int main(int argc,char **argv){
     TexBackend shadow={.image=(VkImage)(uintptr_t)2,.width=1024,.height=1024,.aspect=VK_IMAGE_ASPECT_DEPTH_BIT};
     NvnTexture target={.width=1280,.height=720,.backend=&scene};
     NvnTexture shadow_target={.width=1024,.height=1024,.backend=&shadow};
-    Prog program={.vkey={true}};st.ubuf[0][0]=(Range){(uintptr_t)camera_storage[0],176};st.ds[0]=1;
+    ShaderInfo vertex={.cbuf_mask=1u<<3};Prog program={.vkey={true},.vi=&vertex};st.ubuf[0][0]=(Range){(uintptr_t)camera_storage[0],176};st.ds[0]=1;
     float x=0,y=0;st.rt.depth=&shadow_target;tmp_draw(&program,&x,&y);
     assert(!tmp_cam.ok&&!x&&!y&&tmp_scene_evidence.rejected_cameras==1);
     st.rt.depth=&target;tmp_draw(&program,&x,&y);assert(tmp_cam.ok&&tmp_depth_tex==&target&&!x&&!y);
@@ -94,7 +96,7 @@ int main(int argc,char **argv){
     near(tmp_jitter_grid.uv[0]*1920,declared[0]);near(tmp_jitter_grid.uv[1]*1080,declared[1]);
     // Actual production fallback is independent of a successful SDK/camera:
     // it uses the exact recorded shift, with the untouched HUD as separate input.
-    TexBackend final_color={.width=2560,.height=1440};VkImageView final=(VkImageView)(uintptr_t)88;
+    TexBackend final_color={.width=2560,.height=1440,.image_identity=222};VkImageView final=(VkImageView)(uintptr_t)88;
     tmp_cam.ok=false;unsigned jittered=tmp_scene_evidence.jittered_draws;
     tmp_scene_evidence.jittered_draws=0;assert(tmp_spatial_fallback(NULL,&final_color,final)==final&&!fallback_calls);
     tmp_scene_evidence.jittered_draws=jittered;
@@ -106,7 +108,7 @@ int main(int argc,char **argv){
     // Execute the actual presentation entry as well: rejection must reach the
     // correction before resuming the window pass, with current real dimensions.
     g_settings.upscaler=UPSCALE_DLSS;assert(post_process(NULL,&final_color,2560,1440)==expected);
-    assert(evaluated==1&&suspended==1&&resumed==1&&diagnosed==1);
+    assert(evaluated==1&&suspended==1&&resumed==1&&diagnosed==1&&tmp_scene_evidence.present_source==222);
     vk_exec_forget_texture(&target);assert(!tmp_depth_tex&&!tmp_cam.ok&&tmp_cam_frame==~0ull);
     tmp_exec_reset();assert(!tmp_jitter_grid.verified_w&&!tmp_jitter_grid.verified_h);
     assert(!tmp_scene_depth_eligible(640,360,1280,720));assert(!tmp_scene_depth_eligible(192,544,1280,720));
@@ -115,5 +117,34 @@ int main(int argc,char **argv){
     present_frame++;g_settings.upscaler=UPSCALE_BILINEAR;g_settings.fps=120;
     assert(post_process(NULL,&final_color,2560,1440)==final&&spatial_marked==1);
     assert(evaluated==1&&suspended==1&&resumed==1&&diagnosed==2&&!tmp_scene_evidence.jittered_draws);
+    // Regression: stale bound CB3 must not win over the camera actually read
+    // through CB4, nor make a camera-free fullscreen pass receive a second jitter.
+    temporal_on=true;hud=false;tmp_exec_reset();memset(&st,0,sizeof st);
+    camera(camera_storage[0],100);camera(camera_storage[1],0);vertex.cbuf_mask=1u<<4;
+    st.rt.depth=&target;st.ubuf[0][0]=(Range){(uintptr_t)camera_storage[0],176};st.ubuf[0][1]=(Range){(uintptr_t)camera_storage[1],176};st.ds[0]=1;
+    tmp_jitter_grid_verify(&tmp_jitter_grid,2560,1440);present_frame++;x=y=0;tmp_draw(&program,&x,&y);
+    assert(tmp_cam.ok&&!tmp_cam.view[3]&&tmp_scene_evidence.camera_cbuf==4&&tmp_scene_evidence.camera_read_mask==(1u<<4));
+    vertex.cbuf_mask=0;st.ds[0]=0;x=y=0;tmp_draw(&program,&x,&y);assert(!x&&!y&&!tmp_scene_evidence.nodepth_draws);
+    vertex.cbuf_mask=1u<<3;x=y=0;tmp_draw(&program,&x,&y);assert(!x&&!y&&!tmp_scene_evidence.nodepth_draws);
+    vertex.cbuf_mask=1u<<4;x=y=0;tmp_draw(&program,&x,&y);assert(tmp_scene_evidence.nodepth_draws==1);
+    if(!env_int("XCDE_TMP_NOJITTER"))assert(x||y);
+    present_frame++;vertex.cbuf_mask=0;x=y=0;tmp_draw(&program,&x,&y);assert(!tmp_cam.ok&&!x&&!y&&!tmp_scene_evidence.camera_cbuf);
+    vertex.cbuf_mask=1u<<4;tmp_draw(&program,&x,&y);assert(tmp_cam.ok&&tmp_scene_evidence.camera_cbuf==4);
+    // CB17 is the last declared hardware constant buffer (NVN UBO slot14).
+    present_frame++;memset(st.ubuf,0,sizeof st.ubuf);st.ubuf[0][14]=(Range){(uintptr_t)camera_storage[1],176};vertex.cbuf_mask=1u<<17;
+    tmp_draw(&program,&x,&y);assert(tmp_cam.ok&&tmp_scene_evidence.camera_cbuf==17);
+    // Metadata observes snapshot provenance without changing selection. A later
+    // same-sized final target can be distinguished from the captured source.
+    TexBackend capture={.image_identity=111,.width=2560,.height=1440,.format=VK_FORMAT_R8G8B8A8_UNORM,.presented=true};
+    TexBackend later={.image_identity=222,.width=2560,.height=1440,.presented=true};
+    tmp_open_pass=77;tmp_open_draws=0;program.stages[0].code_hash=0xabc;program.stages[1].code_hash=0xdef;
+    tmp_scene_record_draw(&program);tmp_scene_pass_end(&capture,false,true);
+    assert(tmp_scene_evidence.presented_passes==1&&tmp_scene_evidence.snapshot_pass==77&&tmp_scene_evidence.snapshot_source==111);
+    assert(tmp_scene_evidence.snapshot_width==2560&&tmp_scene_evidence.snapshot_height==1440&&tmp_scene_evidence.snapshot_draws==1);
+    assert(tmp_scene_evidence.snapshot_vs==0xabc&&tmp_scene_evidence.snapshot_fs==0xdef);
+    hud=true;tmp_open_pass=78;tmp_open_draws=0;tmp_scene_record_draw(&program);tmp_scene_record_draw(&program);tmp_scene_pass_end(&later,true,false);
+    assert(tmp_scene_evidence.presented_passes==2&&tmp_scene_evidence.snapshot_source==111&&tmp_scene_evidence.snapshot_pass==77);
+    assert(tmp_scene_evidence.passes_after_snapshot==1&&tmp_scene_evidence.draws_after_snapshot==2);
+    tmp_exec_reset();assert(!tmp_scene_evidence.camera_cbuf&&!tmp_scene_evidence.snapshot_pass&&!tmp_scene_evidence.snapshot_source&&!tmp_open_pass);
     puts("PASS production camera/scene/shadow/nodepth/HUD/DRS-grid/no-jitter/lifetime contracts");return 0;
 }

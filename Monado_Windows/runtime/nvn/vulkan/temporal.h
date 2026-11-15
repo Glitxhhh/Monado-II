@@ -34,6 +34,9 @@ typedef struct TmpSceneEvidence {
     uint64_t frame;
     uint32_t guest_depth_w,guest_depth_h,depth_w,depth_h;
     uint32_t rejected_cameras,world_draws,jittered_draws,nodepth_draws,hud_draws;
+    uint32_t camera_cbuf,camera_read_mask,presented_passes,passes_after_snapshot,draws_after_snapshot;
+    uint32_t snapshot_width,snapshot_height,snapshot_format,snapshot_draws;
+    uint64_t snapshot_pass,snapshot_source,snapshot_vs,snapshot_fs,present_source;
     bool camera_valid,fallback_unjittered;
     float normalized_jitter[2];
 } TmpSceneEvidence;

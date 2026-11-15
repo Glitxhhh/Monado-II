@@ -67,31 +67,54 @@ static void transition(VkCommandBuffer command,VkImage image,VkImageLayout befor
     VkDependencyInfo dependency{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};dependency.imageMemoryBarrierCount=1;dependency.pImageMemoryBarriers=&memory;vkCmdPipelineBarrier2(command,&dependency);
 }
 static bool contains(const std::vector<const char*>&names,const char *name){for(auto n:names)if(!strcmp(n,name))return true;return false;}
+static float halton(unsigned value,unsigned base){float result=0,scale=1;while(value){scale/=base;result+=scale*(value%base);value/=base;}return result;}
+static bool hud_pixel(unsigned x,unsigned y){return x>=width*3/4&&y<height/4;}
+static void signal(float x,float y,bool hud,bool restarted,float *rgb){
+    if(hud){rgb[0]=.8f;rgb[1]=.2f;rgb[2]=.1f;return;}
+    rgb[0]=.15f+.45f*x/width;rgb[1]=.15f+.45f*y/height;rgb[2]=.35f+.12f*sinf(x*.06f)*cosf(y*.07f);
+    if(restarted)std::swap(rgb[0],rgb[2]);
+}
 static void pixels(VkCommandBuffer command,VkQueue queue,VkSwapchainKHR swapchain,const std::vector<VkImage>&swap_images,
-    VkExtent2D extent,PFN_vkAcquireNextImageKHR acquire,PFN_vkQueuePresentKHR present,PFN_vkDeviceWaitIdle wait_idle) {
+    VkExtent2D extent,PFN_vkAcquireNextImageKHR acquire,PFN_vkQueuePresentKHR present,PFN_vkDeviceWaitIdle wait_idle,bool legacy_r8) {
     (void)extent;
-    Image color(VK_FORMAT_R8G8B8A8_UNORM),motion(VK_FORMAT_R16G16_SFLOAT),depth(VK_FORMAT_R32_SFLOAT),output(VK_FORMAT_R8G8B8A8_UNORM);
+    Image color(VK_FORMAT_R8G8B8A8_UNORM),motion(VK_FORMAT_R16G16_SFLOAT),depth(VK_FORMAT_R32_SFLOAT),output(VK_FORMAT_R8G8B8A8_UNORM),mask(legacy_r8?VK_FORMAT_R8_UNORM:VK_FORMAT_R16_SFLOAT);
     VkBuffer buffer;VkDeviceMemory memory;VkBufferCreateInfo info{VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};info.size=width*height*4;info.usage=VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     VK_OK(vkCreateBuffer(g_vk.dev,&info,nullptr,&buffer));VkMemoryRequirements requirements;vkGetBufferMemoryRequirements(g_vk.dev,buffer,&requirements);
     VkMemoryAllocateInfo allocation{VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO};allocation.allocationSize=requirements.size;allocation.memoryTypeIndex=memory_type(requirements.memoryTypeBits,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
     VK_OK(vkAllocateMemory(g_vk.dev,&allocation,nullptr,&memory));VK_OK(vkBindBufferMemory(g_vk.dev,buffer,memory,0));uint8_t *mapping;VK_OK(vkMapMemory(g_vk.dev,memory,0,VK_WHOLE_SIZE,0,(void**)&mapping));
+    const size_t color_bytes=width*height*4,mask_stride=legacy_r8?1:2;
+    VkBuffer upload;VkDeviceMemory upload_memory;info.size=color_bytes+width*height*mask_stride;info.usage=VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    VK_OK(vkCreateBuffer(g_vk.dev,&info,nullptr,&upload));vkGetBufferMemoryRequirements(g_vk.dev,upload,&requirements);
+    allocation.allocationSize=requirements.size;allocation.memoryTypeIndex=memory_type(requirements.memoryTypeBits,VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT|VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    VK_OK(vkAllocateMemory(g_vk.dev,&allocation,nullptr,&upload_memory));VK_OK(vkBindBufferMemory(g_vk.dev,upload,upload_memory,0));uint8_t *uploaded;VK_OK(vkMapMemory(g_vk.dev,upload_memory,0,VK_WHOLE_SIZE,0,(void**)&uploaded));
     VkSemaphoreCreateInfo sem{VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};VkSemaphore available,ready;VK_OK(vkCreateSemaphore(g_vk.dev,&sem,nullptr,&available));VK_OK(vkCreateSemaphore(g_vk.dev,&sem,nullptr,&ready));
     TmpCamera camera{};camera.ok=true;camera.view[0]=camera.view[5]=camera.view[10]=1;
     const float near_plane=.1f,far_plane=1000.f;camera.proj[0]=1.7320508f/(float(width)/height);camera.proj[5]=1.7320508f;
     camera.proj[10]=-(far_plane+near_plane)/(far_plane-near_plane);camera.proj[11]=-2*far_plane*near_plane/(far_plane-near_plane);camera.proj[14]=-1;
     memcpy(camera.viewproj,camera.proj,sizeof camera.proj);
-    const double reprojection[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};const float jitter[2]={0,0};
-    unsigned samples=0;std::vector<bool> initialized(swap_images.size());
-    for(unsigned frame=0;frame<3;frame++) {
+    const double reprojection[16]={1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1};
+    const unsigned frame_count=legacy_r8?3:20;unsigned samples=0;std::vector<bool> initialized(swap_images.size());std::vector<uint8_t> previous_pixels(color_bytes);
+    for(unsigned frame=0;frame<frame_count;frame++) {
+        if(frame==16){VK_OK(wait_idle(g_vk.dev));dlss_reset();dlss_reset();CHECK(dlss_available());}
+        const bool restarted=frame>=16;const unsigned movement=frame>=12&&frame<16?frame-11:0;
+        const float jitter[2]={halton(frame+1,2)-.5f,halton(frame+1,3)-.5f};
+        for(unsigned y=0;y<height;y++)for(unsigned x=0;x<width;x++){
+            float rgb[3];bool hud=hud_pixel(x,y);signal((float)x+.5f+movement-jitter[0],(float)y+.5f-jitter[1],hud,restarted,rgb);
+            size_t pixel=y*width+x;for(unsigned c=0;c<3;c++)uploaded[pixel*4+c]=(uint8_t)std::clamp((int)std::lround(rgb[c]*255.f),0,255);uploaded[pixel*4+3]=255;
+            if(legacy_r8)uploaded[color_bytes+pixel]=hud?255:0;
+            else{uint16_t half=hud?0x3c00:0;memcpy(uploaded+color_bytes+pixel*2,&half,2);}
+        }
         uint32_t acquired;VkResult result=acquire(g_vk.dev,swapchain,UINT64_MAX,available,VK_NULL_HANDLE,&acquired);CHECK(result==VK_SUCCESS||result==VK_SUBOPTIMAL_KHR);CHECK(acquired<swap_images.size());
         VK_OK(vkResetCommandBuffer(command,0));VkCommandBufferBeginInfo begin{VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};begin.flags=VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;VK_OK(vkBeginCommandBuffer(command,&begin));
-        const float values[3]={frame==2?.6f:.2f,frame==2?.3f:.4f,frame==2?.2f:.6f};
-        VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};Image *images[]={&color,&motion,&depth,&output};
+        VkImageSubresourceRange range{VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1};Image *images[]={&color,&motion,&depth,&output,&mask};
         for(auto image:images)if(!frame)transition(command,image->image.image,VK_IMAGE_LAYOUT_UNDEFINED,VK_IMAGE_LAYOUT_GENERAL);
-        VkClearColorValue c{};c.float32[0]=values[0];c.float32[1]=values[1];c.float32[2]=values[2];c.float32[3]=1;
-        vkCmdClearColorImage(command,color.image.image,VK_IMAGE_LAYOUT_GENERAL,&c,1,&range);c={};vkCmdClearColorImage(command,motion.image.image,VK_IMAGE_LAYOUT_GENERAL,&c,1,&range);
+        VkMemoryBarrier2 host_write{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};host_write.srcStageMask=VK_PIPELINE_STAGE_2_HOST_BIT;host_write.srcAccessMask=VK_ACCESS_2_HOST_WRITE_BIT;host_write.dstStageMask=VK_PIPELINE_STAGE_2_TRANSFER_BIT;host_write.dstAccessMask=VK_ACCESS_2_TRANSFER_READ_BIT;
+        VkDependencyInfo uploaded_data{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};uploaded_data.memoryBarrierCount=1;uploaded_data.pMemoryBarriers=&host_write;vkCmdPipelineBarrier2(command,&uploaded_data);
+        VkBufferImageCopy input_copy{};input_copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};input_copy.imageExtent={width,height,1};
+        vkCmdCopyBufferToImage(command,upload,color.image.image,VK_IMAGE_LAYOUT_GENERAL,1,&input_copy);input_copy.bufferOffset=color_bytes;vkCmdCopyBufferToImage(command,upload,mask.image.image,VK_IMAGE_LAYOUT_GENERAL,1,&input_copy);
+        VkClearColorValue c{};c.float32[0]=movement?1.f/width:0.f;vkCmdClearColorImage(command,motion.image.image,VK_IMAGE_LAYOUT_GENERAL,&c,1,&range);
         c.float32[0]=.5f;vkCmdClearColorImage(command,depth.image.image,VK_IMAGE_LAYOUT_GENERAL,&c,1,&range);c.float32[0]=c.float32[1]=c.float32[2]=.843137f;vkCmdClearColorImage(command,output.image.image,VK_IMAGE_LAYOUT_GENERAL,&c,1,&range);barrier(command);
-        CHECK(dlss_evaluate(command,&color.image,&motion.image,&depth.image,&output.image,nullptr,jitter,frame!=1,&camera,reprojection,frame+1,frame));barrier(command);
+        CHECK(dlss_evaluate(command,&color.image,&motion.image,&depth.image,&output.image,&mask.image,jitter,frame==0||frame==16,&camera,reprojection,frame+1,frame));barrier(command);
         VkBufferImageCopy copy{};copy.imageSubresource={VK_IMAGE_ASPECT_COLOR_BIT,0,0,1};copy.imageExtent={width,height,1};vkCmdCopyImageToBuffer(command,output.image.image,VK_IMAGE_LAYOUT_GENERAL,buffer,1,&copy);
         VkMemoryBarrier2 host_read{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};host_read.srcStageMask=VK_PIPELINE_STAGE_2_TRANSFER_BIT;host_read.srcAccessMask=VK_ACCESS_2_TRANSFER_WRITE_BIT;host_read.dstStageMask=VK_PIPELINE_STAGE_2_HOST_BIT;host_read.dstAccessMask=VK_ACCESS_2_HOST_READ_BIT;
         VkDependencyInfo readback{VK_STRUCTURE_TYPE_DEPENDENCY_INFO};readback.memoryBarrierCount=1;readback.pMemoryBarriers=&host_read;vkCmdPipelineBarrier2(command,&readback);
@@ -103,17 +126,28 @@ static void pixels(VkCommandBuffer command,VkQueue queue,VkSwapchainKHR swapchai
         VkPipelineStageFlags wait_stage=VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;VkSubmitInfo submit{VK_STRUCTURE_TYPE_SUBMIT_INFO};submit.waitSemaphoreCount=1;submit.pWaitSemaphores=&available;submit.pWaitDstStageMask=&wait_stage;submit.commandBufferCount=1;submit.pCommandBuffers=&command;submit.signalSemaphoreCount=1;submit.pSignalSemaphores=&ready;
         VK_OK(vkQueueSubmit(queue,1,&submit,VK_NULL_HANDLE));VkPresentInfoKHR presentation{VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};presentation.waitSemaphoreCount=1;presentation.pWaitSemaphores=&ready;presentation.swapchainCount=1;presentation.pSwapchains=&swapchain;presentation.pImageIndices=&acquired;
         result=present(queue,&presentation);CHECK(result==VK_SUCCESS||result==VK_SUBOPTIMAL_KHR);VK_OK(wait_idle(g_vk.dev));
-        unsigned frame_samples=0;for(unsigned y=24;y<height-24;y+=24)for(unsigned x=24;x<width-24;x+=24)for(unsigned channel=0;channel<3;channel++) {
-            int expected=(int)std::lround(values[channel]*255.f),actual=mapping[(y*width+x)*4+channel];
-            if(abs(actual-expected)>12){fprintf(stderr,"DLSS pixel mismatch frame%u (%u,%u) channel%u got%d expected%d tolerance12\n",frame,x,y,channel,actual,expected);CHECK(false);}frame_samples++;
+        unsigned frame_samples=0,max_error=0,max_static_delta=0;for(unsigned y=12;y<height-12;y++)for(unsigned x=12;x<width-12;x++){
+            // Exclude only the three-pixel sharp HUD boundary; smooth scene
+            // pixels and the tagged opaque HUD interior are both measured.
+            if((x>=width*3/4-3&&x<=width*3/4+3)||(y>=height/4-3&&y<=height/4+3))continue;
+            float rgb[3];signal((float)x+.5f+movement,(float)y+.5f,hud_pixel(x,y),restarted,rgb);
+            for(unsigned channel=0;channel<3;channel++){
+            size_t at=(y*width+x)*4+channel;int expected=(int)std::lround(rgb[channel]*255.f),actual=mapping[at];
+            max_error=std::max(max_error,(unsigned)abs(actual-expected));
+            if(frame>0&&frame<12)max_static_delta=std::max(max_static_delta,(unsigned)abs(actual-previous_pixels[at]));
+            if(abs(actual-expected)>16){fprintf(stderr,"DLSS pixel mismatch frame%u (%u,%u) channel%u got%d expected%d tolerance16\n",frame,x,y,channel,actual,expected);CHECK(false);}frame_samples++;
+            }
         }
-        samples+=frame_samples;printf("DLSS frame%u reset%u accepted, submit/present/idle complete, %u RGB channel samples within12/255\n",frame,frame!=1,frame_samples);fflush(stdout);
+        CHECK(max_static_delta<=16);memcpy(previous_pixels.data(),mapping,color_bytes);
+        samples+=frame_samples;printf("DLSS frame%u reset%u mask%s motion%s jitter%.5f,%.5f accepted, submit/present/idle complete, %u RGB samples error%u staticdelta%u within16/255\n",frame,frame==0||frame==16,legacy_r8?"R8_UNORM":"R16_SFLOAT",movement?"moving":"stationary-zero",jitter[0],jitter[1],frame_samples,max_error,max_static_delta);fflush(stdout);
     }
-    dlss_reset();for(auto view:views)vkDestroyImageView(g_vk.dev,view,nullptr);views.clear();
+    dlss_reset();dlss_reset();for(auto view:views)vkDestroyImageView(g_vk.dev,view,nullptr);views.clear();
     vkDestroySemaphore(g_vk.dev,available,nullptr);vkDestroySemaphore(g_vk.dev,ready,nullptr);vkUnmapMemory(g_vk.dev,memory);vkDestroyBuffer(g_vk.dev,buffer,nullptr);vkFreeMemory(g_vk.dev,memory,nullptr);
-    printf("PASS actual production DLSS SDK: 3 authored DLAA frames, history continuation/reset, %u bounded RGB samples; no game or performance claim\n",samples);
+    vkUnmapMemory(g_vk.dev,upload_memory);vkDestroyBuffer(g_vk.dev,upload,nullptr);vkFreeMemory(g_vk.dev,upload_memory,nullptr);
+    printf("PASS actual production DLSS SDK: %u structured authored DLAA frames, real fifth HUD mask, Halton/stationary-zero/moving input, double reset/fresh restart, %u bounded RGB samples; no game or performance claim\n",frame_count,samples);
 }
-int main() {
+int main(int argc,char **argv) {
+    bool legacy_r8=argc==2&&!strcmp(argv[1],"--mask-r8");CHECK(argc==1||legacy_r8||(argc==2&&!strcmp(argv[1],"--mask-r16")));
     g_settings.upscaler=UPSCALE_DLSS;g_settings.upscale_quality=UQ_NATIVE;
     CHECK(SDL_Init(SDL_INIT_VIDEO));SDL_Window *window=SDL_CreateWindow("Monado authored hidden DLSS oracle",width,height,SDL_WINDOW_VULKAN|SDL_WINDOW_HIDDEN);CHECK(window);
     CHECK(dlss_init_early());Uint32 count=0;const char *const *sdl=SDL_Vulkan_GetInstanceExtensions(&count);CHECK(sdl);
@@ -140,7 +174,7 @@ int main() {
     VkCompositeAlphaFlagBitsKHR alpha=VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;for(unsigned i=0;i<4;i++)if(capabilities.supportedCompositeAlpha&(1u<<i)){alpha=(VkCompositeAlphaFlagBitsKHR)(1u<<i);break;}
     VkSwapchainCreateInfoKHR swap{VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};swap.surface=g_vk.surface;swap.minImageCount=std::max(2u,capabilities.minImageCount);if(capabilities.maxImageCount)swap.minImageCount=std::min(swap.minImageCount,capabilities.maxImageCount);swap.imageFormat=format.format;swap.imageColorSpace=format.colorSpace;swap.imageExtent=extent;swap.imageArrayLayers=1;swap.imageUsage=VK_IMAGE_USAGE_TRANSFER_DST_BIT;swap.imageSharingMode=VK_SHARING_MODE_EXCLUSIVE;swap.preTransform=capabilities.currentTransform;swap.compositeAlpha=alpha;swap.presentMode=VK_PRESENT_MODE_FIFO_KHR;swap.clipped=VK_TRUE;VkSwapchainKHR swapchain;VK_OK(create(g_vk.dev,&swap,nullptr,&swapchain));uint32_t image_count=0;VK_OK(get_images(g_vk.dev,swapchain,&image_count,nullptr));std::vector<VkImage> images(image_count);VK_OK(get_images(g_vk.dev,swapchain,&image_count,images.data()));
     VkCommandPoolCreateInfo pool{VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO};pool.queueFamilyIndex=g_vk.qfam;pool.flags=VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;VK_OK(vkCreateCommandPool(g_vk.dev,&pool,nullptr,&g_vk.pool));VkCommandBufferAllocateInfo command{VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};command.commandPool=g_vk.pool;command.level=VK_COMMAND_BUFFER_LEVEL_PRIMARY;command.commandBufferCount=1;VkCommandBuffer cb;VK_OK(vkAllocateCommandBuffers(g_vk.dev,&command,&cb));
-    pixels(cb,g_vk.queue,swapchain,images,extent,acquire,present,wait_idle);CHECK(!validation_errors);VK_OK(wait_idle(g_vk.dev));destroy(g_vk.dev,swapchain,nullptr);vkDestroyCommandPool(g_vk.dev,g_vk.pool,nullptr);
+    pixels(cb,g_vk.queue,swapchain,images,extent,acquire,present,wait_idle,legacy_r8);CHECK(!validation_errors);VK_OK(wait_idle(g_vk.dev));destroy(g_vk.dev,swapchain,nullptr);vkDestroyCommandPool(g_vk.dev,g_vk.pool,nullptr);
     auto instance_proxy=(PFN_vkGetInstanceProcAddr)(void*)GetProcAddress(GetModuleHandleW(L"sl.interposer.dll"),"vkGetInstanceProcAddr");CHECK(instance_proxy);
     auto destroy_surface=(PFN_vkDestroySurfaceKHR)instance_proxy(g_vk.inst,"vkDestroySurfaceKHR");CHECK(destroy_surface);destroy_surface(g_vk.inst,g_vk.surface,nullptr);dlss_shutdown();vkDestroyDevice(g_vk.dev,nullptr);
     CHECK(!validation_errors);if(messenger){auto destroy_messenger=(PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(g_vk.inst,"vkDestroyDebugUtilsMessengerEXT");destroy_messenger(g_vk.inst,messenger,nullptr);}vkDestroyInstance(g_vk.inst,nullptr);SDL_DestroyWindow(window);SDL_Quit();return 0;

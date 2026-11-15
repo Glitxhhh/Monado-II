@@ -34,7 +34,7 @@ extern "C" {
 #define DLOG(...) fprintf(stderr, __VA_ARGS__)
 
 static HMODULE sl_mod;
-static bool sl_ok, sl_initialized;
+static bool sl_ok, sl_initialized, sl_resources_active;
 static std::atomic<bool> dlss_ok{false}, sl_surface_ready{false};
 static std::mutex status_mutex;
 static char status_text[512]="DLSS not initialized; checked when the game starts.";
@@ -71,7 +71,7 @@ extern "C" const char *dlss_status(void) {
 static bool dlss_early_failure(const char *reason, int code=0) {
     dlss_note("%s (SDK %d); DLSS unavailable.",reason,code);
     if(sl_initialized&&p_slShutdown)p_slShutdown();
-    sl_initialized=sl_ok=false;dlss_ok=false;sl_surface_ready=false;
+    sl_initialized=sl_ok=sl_resources_active=false;dlss_ok=false;sl_surface_ready=false;
     if(sl_mod){FreeLibrary(sl_mod);sl_mod=nullptr;}
     p_proxyDeviceProcAddr=nullptr;p_proxyInstanceProcAddr=nullptr;
     memset(device_proxies,0,sizeof device_proxies);
@@ -355,7 +355,7 @@ extern "C" bool dlss_evaluate(VkCommandBuffer cb, const TexBackend *color, const
     c.cameraFar = 100000.0f;
     c.cameraFOV = cam->proj[5] != 0 ? 2.0f * atanf(1.0f / fabsf(cam->proj[5])) : 0.785f;
     c.cameraAspectRatio = cam->proj[0] != 0 ? fabsf(cam->proj[5] / cam->proj[0]) : 1.778f;
-    c.motionVectorsInvalidValue = 0;
+    c.motionVectorsInvalidValue = sl::INVALID_FLOAT; // Zero is valid stationary UV motion.
     c.depthInverted = sl::Boolean::eFalse;
     c.cameraMotionIncluded = sl::Boolean::eTrue;
     c.motionVectors3D = sl::Boolean::eFalse;
@@ -390,12 +390,16 @@ extern "C" bool dlss_evaluate(VkCommandBuffer cb, const TexBackend *color, const
     const sl::BaseStructure *inputs[] = {&vp};
     sl::Result r = p_slEvaluateFeature(sl::kFeatureDLSS, *token, inputs, 1, (sl::CommandBuffer *)cb);
     if (r != sl::Result::eOk) { static int n; if (n++ < 5) dlss_note("DLSS frame dispatch failed (SDK %d); this frame uses fallback.",(int)r);return false; }
+    sl_resources_active=true;
     return true;
 }
 
 // Call only once the device is idle and no producer can submit provider work.
 extern "C" void dlss_reset(void) {
-    if(dlss_ok && p_slFreeResources) {
+    if(sl_initialized && sl_resources_active && p_slFreeResources) {
+        // The SDK erases its viewport on the first successful free. Repeating
+        // reset without another dispatch returns eErrorInvalidParameter (25).
+        sl_resources_active=false;
         sl::ViewportHandle viewport(0);
         sl::Result result=p_slFreeResources(sl::kFeatureDLSS,viewport);
         if(result!=sl::Result::eOk){DLOG("[dlss] resource reset failed: %d\n",(int)result);dlss_ok=false;}
@@ -408,7 +412,7 @@ extern "C" void dlss_shutdown(void) {
         sl::Result result=p_slShutdown();
         if(result!=sl::Result::eOk)DLOG("[dlss] shutdown failed: %d\n",(int)result);
     }
-    sl_initialized=sl_ok=false;dlss_ok=false;sl_surface_ready=false;
+    sl_initialized=sl_ok=sl_resources_active=false;dlss_ok=false;sl_surface_ready=false;
     p_proxyDeviceProcAddr=nullptr;p_proxyInstanceProcAddr=nullptr;p_slDLSSSetOptions=nullptr;
     memset(device_proxies,0,sizeof device_proxies);
     if(sl_mod){FreeLibrary(sl_mod);sl_mod=nullptr;}

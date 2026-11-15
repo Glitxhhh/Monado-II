@@ -16,7 +16,10 @@
 Settings g_settings;VkG g_vk;
 typedef struct{TexBackend b;VkImageView v;}Img;
 static Img img[6];
-enum{F_COLOR=VK_FORMAT_R8G8B8A8_UNORM,F_LINEAR=VK_FORMAT_R16G16B16A16_SFLOAT,F_MV=VK_FORMAT_R16G16_SFLOAT,F_DEPTH=VK_FORMAT_R32_SFLOAT,F_MASK=VK_FORMAT_R8_UNORM};
+enum{F_COLOR=VK_FORMAT_R8G8B8A8_UNORM,F_LINEAR=VK_FORMAT_R16G16B16A16_SFLOAT,F_MV=VK_FORMAT_R16G16_SFLOAT,F_DEPTH=VK_FORMAT_R32_SFLOAT,F_MASK=VK_FORMAT_R8_UNORM,F_DLSS_MASK=VK_FORMAT_R16_SFLOAT};
+static VkPipelineLayout prep_layout;static VkDescriptorSetLayout prep_set_layout;static VkPipeline prep_pipe[2][2];
+static unsigned pipelines_created;
+static void prep_pipeline(bool linear,bool dlss_mask);
 static TmpCamera previous;static uint32_t hist_rw,hist_rh,hist_ow,hist_oh;
 static int hist_upscaler,hist_quality,hist_provider;static uint64_t hist_frame,frames,t_last;
 static uint32_t jit_phases=8;static bool effective_linear;
@@ -39,9 +42,25 @@ const char *tmp_fsr4_status(void){return "authored optional provider boundary";}
 static bool ffx_load(void){return true;}
 static bool fsr_context(uint32_t w,uint32_t h){assert(w==100&&h==100);fsr_ctx=context_ready?(void*)1:NULL;return context_ready;}
 static void img_make(Img *image,VkFormat format,uint32_t w,uint32_t h,VkImageUsageFlags usage){(void)usage;image->b=(TexBackend){.image=(VkImage)(uintptr_t)(image-img+1),.width=w,.height=h,.depth=1,.levels=1,.format=format};image->v=(VkImageView)(uintptr_t)(image-img+1);}
+VkShaderModule vk_builtin_shader(const char *name){assert(!strcmp(name,"post.vert")||!strcmp(name,"tmp_prep.frag"));return (VkShaderModule)(uintptr_t)1;}
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateDescriptorSetLayout(VkDevice device,const VkDescriptorSetLayoutCreateInfo *info,const VkAllocationCallbacks *allocator,VkDescriptorSetLayout *result){
+    (void)device;(void)allocator;assert(info->bindingCount==4);*result=(VkDescriptorSetLayout)(uintptr_t)1;return VK_SUCCESS;
+}
+VKAPI_ATTR VkResult VKAPI_CALL vkCreatePipelineLayout(VkDevice device,const VkPipelineLayoutCreateInfo *info,const VkAllocationCallbacks *allocator,VkPipelineLayout *result){
+    (void)device;(void)allocator;assert(info->setLayoutCount==1&&info->pPushConstantRanges->size==112);*result=(VkPipelineLayout)(uintptr_t)2;return VK_SUCCESS;
+}
+VKAPI_ATTR VkResult VKAPI_CALL vkCreateGraphicsPipelines(VkDevice device,VkPipelineCache cache,uint32_t count,const VkGraphicsPipelineCreateInfo *info,const VkAllocationCallbacks *allocator,VkPipeline *result){
+    (void)device;(void)cache;(void)allocator;assert(count==1);const VkPipelineRenderingCreateInfo *render=info->pNext;
+    assert(render->colorAttachmentCount==4&&render->pColorAttachmentFormats[0]==(requested_provider==3?F_LINEAR:F_COLOR));
+    assert(render->pColorAttachmentFormats[1]==F_MV&&render->pColorAttachmentFormats[2]==F_DEPTH);
+    assert(render->pColorAttachmentFormats[3]==(requested_provider==2?F_DLSS_MASK:F_MASK));
+    *result=(VkPipeline)(uintptr_t)(++pipelines_created);return VK_SUCCESS;
+}
 static void prep(VkCommandBuffer cb,VkImageView a,VkImageView b,VkImageView v,TexBackend *depth,const double matrix[16],bool history,const float j[2],bool dm1,uint32_t rw,uint32_t rh){
     (void)cb;(void)a;(void)b;(void)v;(void)matrix;(void)history;(void)dm1;
-    assert(depth&&depth->width>=70&&rw>=70&&rh>=70&&isfinite(j[0])&&isfinite(j[1]));prepared++;
+    assert(depth&&depth->width>=70&&rw>=70&&rh>=70&&isfinite(j[0])&&isfinite(j[1]));
+    assert(img[5].b.format==(requested_provider==2?F_DLSS_MASK:F_MASK));
+    prep_pipeline(tmp_linear_output(),img[5].b.format==F_DLSS_MASK);prepared++;
 }
 static void vel_fit(VkCommandBuffer cb,uint32_t w,uint32_t h){(void)cb;(void)w;(void)h;}
 static void mv_shot(VkCommandBuffer cb,uint32_t w,uint32_t h,const double matrix[16],bool history){(void)cb;(void)w;(void)h;(void)matrix;(void)history;}
@@ -52,7 +71,7 @@ void vk_wait_seq(uint64_t seq){waited++;completed=seq;}
 void tmp_fg_idle(VkCommandBuffer cb){(void)cb;idled++;}
 static void fg_frame(VkCommandBuffer cb,bool okay,const TmpCamera *camera,const float jitter[2],uint32_t rw,uint32_t rh,float dt,bool reset){(void)cb;(void)okay;(void)camera;(void)jitter;(void)rw;(void)rh;(void)dt;(void)reset;}
 static bool fsr4_evaluate(VkCommandBuffer cb,Img *a,Img *b,Img *c,Img *d,const float jitter[2],bool reset){(void)cb;(void)a;(void)b;(void)c;(void)d;(void)jitter;(void)reset;return sdk_result==0;}
-bool dlss_evaluate(VkCommandBuffer cb,const TexBackend *a,const TexBackend *b,const TexBackend *c,const TexBackend *d,const TexBackend *mask,const float j[2],bool reset,const TmpCamera *camera,const double matrix[16],uint64_t current,uint64_t done){(void)cb;(void)a;(void)b;(void)c;(void)d;(void)mask;(void)j;(void)reset;(void)camera;(void)matrix;(void)current;(void)done;return sdk_result==0;}
+bool dlss_evaluate(VkCommandBuffer cb,const TexBackend *a,const TexBackend *b,const TexBackend *c,const TexBackend *d,const TexBackend *mask,const float j[2],bool reset,const TmpCamera *camera,const double matrix[16],uint64_t current,uint64_t done){(void)cb;(void)a;(void)b;(void)c;(void)d;(void)j;(void)reset;(void)camera;(void)matrix;(void)current;(void)done;assert(mask&&mask->format==F_DLSS_MASK);return sdk_result==0;}
 static ffxReturnCode_t ffx_dispatch(ffxContext *ctx,const ffxDispatchDescHeader *header){
     const struct ffxDispatchDescUpscale *d=(const void*)header;
     assert(ctx==&fsr_ctx&&*ctx&&header->type==FFX_API_DISPATCH_DESC_TYPE_UPSCALE);
@@ -60,7 +79,7 @@ static ffxReturnCode_t ffx_dispatch(ffxContext *ctx,const ffxDispatchDescHeader 
     assert(d->color.description.width==d->renderSize.width&&d->color.description.height==d->renderSize.height&&d->upscaleSize.width==100&&d->upscaleSize.height==100);
     assert(d->jitterOffset.x==expected_jitter[0]&&d->jitterOffset.y==expected_jitter[1]);
     assert(isfinite(d->frameTimeDelta)&&d->frameTimeDelta>=1&&d->frameTimeDelta<=100&&d->preExposure==1);
-    assert(d->reactive.resource==(void*)img[5].b.image&&(d->flags&FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_SRGB));
+    assert(d->reactive.resource==(void*)img[5].b.image&&img[5].b.format==F_MASK&&(d->flags&FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_SRGB));
     dispatched++;last_reset=d->reset;return sdk_result;
 }
 #include "temporal_dispatch_production.h"
@@ -82,10 +101,18 @@ int main(void){
     advance();requested_provider=0;assert(!tmp_upscale(NULL,&color,view,&depth,&camera,expected_jitter,true,100,100)&&strstr(tmp_provider_status(),"component unavailable"));
     advance();requested_provider=1;sdk_result=0;for(unsigned i=0;i<4;i++)fsr_ring[i]=pending;
     before=dispatched;assert(!tmp_upscale(NULL,&color,view,&depth,&camera,expected_jitter,true,100,100)&&dispatched==before&&strstr(tmp_provider_status(),"recording capacity"));
+    advance();requested_provider=2;assert(tmp_upscale(NULL,&color,view,&depth,&camera,expected_jitter,true,100,100)&&img[5].b.format==F_DLSS_MASK&&strstr(tmp_provider_status(),"DLSS/DLAA: dispatch accepted"));
+    advance();requested_provider=3;assert(tmp_upscale(NULL,&color,view,&depth,&camera,expected_jitter,true,100,100)&&img[5].b.format==F_MASK);
+    advance();requested_provider=1;memset(fsr_ring,0,sizeof fsr_ring);assert(tmp_upscale(NULL,&color,view,&depth,&camera,expected_jitter,true,100,100)&&img[5].b.format==F_MASK&&pipelines_created==3);
     g_settings.upscaler=UPSCALE_BILINEAR;tmp_note_spatial_frame();assert(!strcmp(tmp_provider_status(),"Spatial scaling selected."));
-    TmpSceneEvidence scene={.frame=present_frame,.guest_depth_w=896,.guest_depth_h=504,.camera_valid=true,.jittered_draws=1};
+    TmpSceneEvidence scene={.frame=present_frame,.guest_depth_w=896,.guest_depth_h=504,.camera_valid=true,.jittered_draws=1,
+        .camera_cbuf=4,.camera_read_mask=16,.presented_passes=2,.snapshot_pass=77,.snapshot_source=111,.present_source=222,
+        .snapshot_width=2560,.snapshot_height=1440,.snapshot_draws=1,.snapshot_vs=0xabc,.snapshot_fs=0xdef,
+        .passes_after_snapshot=1,.draws_after_snapshot=2};
     for(unsigned i=0;i<100;i++){atomic_store(&tmp_public_status,i%2?TMP_STATUS_SPATIAL:TMP_STATUS_FSR3);tmp_diagnostics_frame(&scene,100,100,100,100,expected_jitter);}
     assert(normal_rows==32&&strstr(last_log,"color 100x100")&&!strstr(last_log,"save/"));
+    assert(strstr(last_log,"camera-cb 4 read-mask 10 presented-passes 2 snapshot-pass 77 source 111 final 222 extent 2560x1440"));
+    assert(strstr(last_log,"vs 0000000000000abc fs 0000000000000def after-snapshot 1-passes 2-draws"));
     assert(!setenv("XCDE_TMP_LOG","1",1));for(unsigned i=0;i<300;i++){now+=3000000000ull;tmp_diagnostics_frame(&scene,100,100,100,100,expected_jitter);}
     assert(normal_rows==288&&prepared>=5&&idled>=2);
     puts("PASS production temporal descriptors/history/depth-grid/fallback/status/bounded diagnostics; SDK boundary authored");return 0;

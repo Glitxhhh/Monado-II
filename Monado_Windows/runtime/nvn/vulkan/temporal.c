@@ -200,7 +200,7 @@ static void img_make(Img *d, VkFormat f, uint32_t w, uint32_t h, VkImageUsageFla
 }
 // (render size) 0 colour, 1 motion, 2 depth, 4 the game image before the HUD, 5 HUD mask; (window size) 3 output
 static Img img[6];
-enum { F_COLOR = VK_FORMAT_R8G8B8A8_UNORM, F_LINEAR = VK_FORMAT_R16G16B16A16_SFLOAT, F_MV = VK_FORMAT_R16G16_SFLOAT, F_DEPTH = VK_FORMAT_R32_SFLOAT, F_MASK = VK_FORMAT_R8_UNORM };
+enum { F_COLOR = VK_FORMAT_R8G8B8A8_UNORM, F_LINEAR = VK_FORMAT_R16G16B16A16_SFLOAT, F_MV = VK_FORMAT_R16G16_SFLOAT, F_DEPTH = VK_FORMAT_R32_SFLOAT, F_MASK = VK_FORMAT_R8_UNORM, F_DLSS_MASK = VK_FORMAT_R16_SFLOAT };
 
 #include "temporal_fsr4_windows.inc"
 static int temporal_provider(uint32_t rw,uint32_t rh,uint32_t ow,uint32_t oh) {
@@ -368,9 +368,9 @@ void tmp_hud_snapshot(VkCommandBuffer cb, TexBackend *b) {
 // ---------------------------------------------------------------- the inputs pass
 static VkPipelineLayout prep_layout;
 static VkDescriptorSetLayout prep_set_layout;
-static VkPipeline prep_pipe[2];
-static void prep_pipeline(bool linear) {
-    if (prep_pipe[linear]) return;
+static VkPipeline prep_pipe[2][2];
+static void prep_pipeline(bool linear,bool dlss_mask) {
+    if (prep_pipe[linear][dlss_mask]) return;
     if (!prep_layout) {
     VkDescriptorSetLayoutBinding b[4];
     for (uint32_t i = 0; i < 4; i++)
@@ -401,7 +401,7 @@ static void prep_pipeline(bool linear) {
                                               .pAttachments = cba};
     VkDynamicState dyn[] = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
     VkPipelineDynamicStateCreateInfo dy = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, .dynamicStateCount = 2, .pDynamicStates = dyn};
-    VkFormat fmts[4] = {linear ? F_LINEAR : F_COLOR, F_MV, F_DEPTH, F_MASK};
+    VkFormat fmts[4] = {linear ? F_LINEAR : F_COLOR, F_MV, F_DEPTH, dlss_mask ? F_DLSS_MASK : F_MASK};
     VkPipelineRenderingCreateInfo ri = {.sType = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO, .colorAttachmentCount = 4,
                                         .pColorAttachmentFormats = fmts};
     VkPipelineDepthStencilStateCreateInfo ds = {.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
@@ -409,7 +409,7 @@ static void prep_pipeline(bool linear) {
                                        .pStages = stages, .pVertexInputState = &vi, .pInputAssemblyState = &ia, .pViewportState = &vs,
                                        .pRasterizationState = &rs, .pMultisampleState = &ms, .pDepthStencilState = &ds,
                                        .pColorBlendState = &cb, .pDynamicState = &dy, .layout = prep_layout};
-    VK_CHECK(vkCreateGraphicsPipelines(g_vk.dev, g_vk.pcache, 1, &pi, NULL, &prep_pipe[linear]));
+    VK_CHECK(vkCreateGraphicsPipelines(g_vk.dev, g_vk.pcache, 1, &pi, NULL, &prep_pipe[linear][dlss_mask]));
 }
 
 // 4x4 helpers on the game's row matrices (double precision)
@@ -489,7 +489,8 @@ static void history_commit(const TmpCamera *cam, uint32_t rw, uint32_t rh, uint3
 static void prep(VkCommandBuffer cb, VkImageView color_view, VkImageView scene_view, VkImageView vel_view, TexBackend *depth,
                  const double reproj[16], bool have_prev, const float jit[2], bool dm1, uint32_t rw, uint32_t rh) {
     bool linear = tmp_linear_output();
-    prep_pipeline(linear);
+    bool dlss_mask=img[5].b.format==F_DLSS_MASK;
+    prep_pipeline(linear,dlss_mask);
     vk_full_barrier(cb);
     VkRenderingAttachmentInfo ca[4];
     for (int i = 0; i < 4; i++)
@@ -511,7 +512,7 @@ static void prep(VkCommandBuffer cb, VkImageView color_view, VkImageView scene_v
         w[i] = (VkWriteDescriptorSet){.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET, .dstSet = ds, .dstBinding = (uint32_t)i,
                                       .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, .pImageInfo = &ii[i]};
     vkUpdateDescriptorSets(g_vk.dev, 4, w, 0, NULL);
-    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, prep_pipe[linear]);
+    vkCmdBindPipeline(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, prep_pipe[linear][dlss_mask]);
     vkCmdBindDescriptorSets(cb, VK_PIPELINE_BIND_POINT_GRAPHICS, prep_layout, 0, 1, &ds, 0, NULL);
     VkViewport vp = {0, 0, (float)rw, (float)rh, 0, 1};
     VkRect2D sc = {{0, 0}, {rw, rh}};
@@ -728,7 +729,10 @@ VkImageView tmp_upscale(VkCommandBuffer cb, TexBackend *color, VkImageView color
                                       VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
     img_make(&img[2], F_DEPTH, rw, rh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
                                          VK_IMAGE_USAGE_TRANSFER_SRC_BIT);
-    img_make(&img[5], F_MASK, rw, rh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+    // Streamline's Vulkan reverse-format table cannot describe R8_UNORM.
+    // Allocate a real supported scalar image, with matching pipeline format;
+    // preserve the R8 reactive-mask contract for native FSR providers.
+    img_make(&img[5], provider==2?F_DLSS_MASK:F_MASK, rw, rh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
     bool snap = snap_frame == renderer_present_count() && img[4].b.image && img[4].b.width == color->width &&
                 img[4].b.height == color->height && !env_int("XCDE_TMP_NO_HUD_MASK");
     img_make(&img[3], color_format, ow, oh, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT |
@@ -874,10 +878,14 @@ void tmp_diagnostics_frame(const TmpSceneEvidence *scene,uint32_t color_w,uint32
     bool debug=env_int("XCDE_TMP_LOG")&&debug_rows<256&&(!last_debug||now-last_debug>=2000000000ull);
     if(!(transition&&normal_rows<32)&&!debug)return;
     if(debug){debug_rows++;last_debug=now;}else normal_rows++;
-    LOG("[temporal] frame %llu requested %d provider %d result %s history %s color %ux%u depth %ux%u guest-depth %ux%u output %ux%u camera %u rejected %u world %u jittered %u nodepth %u hud %u dejitter %u uv %.9g %.9g declared %.5f %.5f sdk %u\n",
+    LOG("[temporal] frame %llu requested %d provider %d result %s history %s color %ux%u depth %ux%u guest-depth %ux%u output %ux%u camera %u rejected %u world %u jittered %u nodepth %u hud %u dejitter %u uv %.9g %.9g declared %.5f %.5f sdk %u camera-cb %u read-mask %x presented-passes %u snapshot-pass %llu source %llu final %llu extent %ux%u format %u draws %u vs %016llx fs %016llx after-snapshot %u-passes %u-draws\n",
         (unsigned long long)scene->frame,g_settings.upscaler,tmp_evidence.provider,tmp_evidence.result?tmp_evidence.result:"unknown",
         tmp_evidence.history?tmp_evidence.history:"unknown",color_w,color_h,tmp_evidence.depth_w,tmp_evidence.depth_h,
         scene->guest_depth_w,scene->guest_depth_h,output_w,output_h,(unsigned)scene->camera_valid,scene->rejected_cameras,
         scene->world_draws,scene->jittered_draws,scene->nodepth_draws,scene->hud_draws,(unsigned)scene->fallback_unjittered,
-        scene->normalized_jitter[0],scene->normalized_jitter[1],declared[0],declared[1],tmp_evidence.sdk_result);
+        scene->normalized_jitter[0],scene->normalized_jitter[1],declared[0],declared[1],tmp_evidence.sdk_result,
+        scene->camera_cbuf,scene->camera_read_mask,scene->presented_passes,(unsigned long long)scene->snapshot_pass,
+        (unsigned long long)scene->snapshot_source,(unsigned long long)scene->present_source,
+        scene->snapshot_width,scene->snapshot_height,scene->snapshot_format,scene->snapshot_draws,
+        (unsigned long long)scene->snapshot_vs,(unsigned long long)scene->snapshot_fs,scene->passes_after_snapshot,scene->draws_after_snapshot);
 }
