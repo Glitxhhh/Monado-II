@@ -131,15 +131,20 @@ inline void materialize(HANDLE file,Payload &p,const std::wstring &base,void(*pr
     Handle lock(CreateFileW(native(p.cache+L"\\.lock").c_str(),GENERIC_READ|GENERIC_WRITE,0,nullptr,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
     require(lock.value!=INVALID_HANDLE_VALUE,"Another setup process is preparing this cache; retry after it finishes");
     FILE_ATTRIBUTE_TAG_INFO info{};require(GetFileInformationByHandleEx(lock.value,FileAttributeTagInfo,&info,sizeof info)&&!(info.FileAttributes&FILE_ATTRIBUTE_REPARSE_POINT),"Unsafe setup cache lock");
-    std::wstring marker=p.cache+L"\\.complete";bool reuse=ordinary(marker);uint64_t cursor=p.offset+24,total=0;std::wstring previous;std::set<std::wstring> expected_members;
+    std::wstring marker=p.cache+L"\\.complete";bool reuse=ordinary(marker);uint64_t cursor=p.offset+24,total=0;std::string previous;std::set<std::wstring> expected_members;
     DECOMPRESSOR_HANDLE decompressor=nullptr;require(CreateDecompressor(COMPRESS_ALGORITHM_XPRESS_HUFF,nullptr,&decompressor),"Cannot initialize Windows payload decompression");
     try{
         for(uint32_t index=0;index<p.count;++index){
             require(cursor+56<=p.offset+p.size,"Truncated setup record");unsigned char h[56];seek(file,cursor);read(file,h,sizeof h);cursor+=sizeof h;
             uint32_t length=u32(h),flags=u32(h+4);uint64_t raw=u64(h+8),stored=u64(h+16);
             require(length>0&&length<=4096&&flags<=1&&raw<=512*1024*1024&&stored<=512*1024*1024&&cursor+length+stored<=p.offset+p.size&&(flags||raw==stored),"Invalid setup record bounds");
-            std::string name(length,0);read(file,name.data(),length);cursor+=length;std::wstring relative=relative_name(name),folded=relative;for(auto &c:folded)c=(wchar_t)towlower(c);
-            require(previous.empty()||previous<folded,"Duplicate or unordered setup member");previous=folded;expected_members.insert(folded);
+            std::string name(length,0);read(file,name.data(),length);cursor+=length;std::string ordered=name;
+            // Match the packer's canonical ASCII POSIX ordering. Converting '/'
+            // to native '\\' first changes its position relative to digits.
+            for(auto &c:ordered){require((unsigned char)c<128,"Non-ASCII setup member path");if(c>='A'&&c<='Z')c=char(c-'A'+'a');}
+            require(previous.empty()||previous<ordered,"Duplicate or unordered setup member");previous=ordered;
+            std::wstring relative=relative_name(name),folded=relative;for(auto &c:folded)c=(wchar_t)towlower(c);
+            require(expected_members.insert(folded).second,"Duplicate native setup member");
             require(relative.rfind(L"state\\",0)!=0&&relative[0]!=L'.',"Payload cannot overwrite mutable setup state");
             std::array<unsigned char,32> expected;std::copy(h+24,h+56,expected.begin());std::wstring path=p.cache+L"\\"+relative;
             if(name=="payload-manifest.json")p.manifest_sha=expected;

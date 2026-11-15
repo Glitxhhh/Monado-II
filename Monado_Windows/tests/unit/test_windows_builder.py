@@ -106,6 +106,18 @@ int wmain(int argc, wchar_t **argv) {
         self.assertEqual((self.cache / sha / "python/authored.txt").read_bytes(), b"payload fixture\n" * 500)
         self.assertEqual(self.check(target), 0)
 
+    def test_actual_native_member_order_uses_canonical_posix_names(self):
+        # '/' sorts before '0'; the native '\\' separator sorts after it.
+        pairs = [("A/x", b"nested authored member"), ("a0.h", b"sibling authored member")]
+        self.assertEqual([key for key, _ in pairs], sorted((key for key, _ in pairs), key=str.lower))
+        target, sha = self.fixture(pairs)
+        self.assertEqual(self.check(target), 0)
+        self.assertEqual((self.cache / sha / "A/x").read_bytes(), pairs[0][1])
+        self.assertEqual((self.cache / sha / "a0.h").read_bytes(), pairs[1][1])
+        self.assertEqual(self.check(target), 0)
+        target, _ = self.fixture(list(reversed(pairs)))
+        self.assertNotEqual(self.check(target), 0)
+
     def test_actual_native_outer_and_member_corruption_fail(self):
         target, _ = self.fixture()
         data = bytearray(target.read_bytes())
@@ -116,7 +128,7 @@ int wmain(int argc, wchar_t **argv) {
         self.assertNotEqual(self.check(target), 0)
 
     def test_actual_native_traversal_reserved_and_duplicate_names_fail(self):
-        for key in ("../outside.txt", "python/CON.txt", "python/name.", "C:/outside.txt", "python\\outside.txt"):
+        for key in ("../outside.txt", "python/CON.txt", "python/name.", "C:/outside.txt", "python\\outside.txt", "python/é.txt"):
             with self.subTest(key=key):
                 target, _ = self.fixture([(key, b"authored")])
                 self.assertNotEqual(self.check(target), 0)
