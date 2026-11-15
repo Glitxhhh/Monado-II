@@ -37,6 +37,7 @@ typedef struct {
     bool custom_border, divisor, host_import, robust2, logic_op, minmax;
     bool sampler_anisotropy; // actual enabled device feature
     bool feedback_loop; // actual enabled attachment feedback-loop feature
+    bool fsr4_lite; const char *fsr4_reason; // actual enabled optional Lite capability contract
     bool gpl;  // [XCDE] T188: VK_EXT_graphics_pipeline_library with fast linking (exec.c build_pipeline)
     // [XCDE] FSR 3 frame generation's queues (device.c create_device): present, image acquire, async compute; fam UINT32_MAX: none
     VkQueue fg_queue[3];

@@ -154,3 +154,39 @@ removed the slot wait at the same window size and monitor. Windows now presents
 once per real frame by default and leaves repetition to its compositor. Explicit
 `XCDE_REPEAT_PRESENT=1` retains the inherited diagnostic path. No game effects or
 guest time steps are skipped, and accepted API requests are not physical scanout.
+
+## Portable native setup and checked Windows updates
+
+The native Win32 frontend/payload reader, persistent backend and local source
+export adapt the accepted builder/input-recovery/update policies with Windows
+handles, named maintenance leases, owned job cancellation and Unicode argument
+arrays. No Linux executable, namespace, system package manager or temporary
+interpreter path is substituted. Hash-pinned original Python/tool archives and
+the successful native dependency receipt define the private setup payload.
+
+`tools/update_windows_release.py` uses the established official HTTPS metadata
+transport but requires a separate Windows channel/version/source archive and
+runs the installed publication guard before candidate code. Runtime and stable
+profile roots remain separate. `tools/update_windows_retention.py` adapts the
+accepted current-only policy using exact current-user handle identities,
+registry-bound snapshot hashes and no-follow junction-object deletion; unknown,
+modified, locked and live trees are deferred. No rollback selection is added.
+
+`tools/game_library_reuse_windows.py` verifies the actual previous local PE DLL,
+sidecars, immutable receipt, canonical generator/guest closure, compiler/input/
+ABI and host function/data contract without executing it. A verified intact
+compatibility mismatch permits a new source build; corruption is a failure.
+Native fixtures use authored PEs/data and disposable profiles. Actual SDK/GPU
+dispatch, interactive setup, gameplay and full DE/FC remain separate qualification.
+
+## Optional native Windows FSR4 Lite foundation
+
+`third_party/fsr4_native` retains the accepted GPL-2.0-or-later backend and full
+AMD SDK terms, with narrow Unicode-path and fixed reviewed-postpass adaptations.
+`fsr4-windows.lock.json` records source/model identity. Optional native DLL build,
+local prepared-asset import, immutable model/DLL leases, capabilities and temporal
+dispatch preserve Windows providers/fallback. Component fixtures do not qualify
+real models/GPU/gameplay. Native capture/translation preparation and its graphical
+worker/cancel/retry flow remain missing; see [Windows FSR4](WINDOWS_FSR4.md).
+Smooth Motion offers an official NVIDIA App help link only; no Linux enable
+request or generated-frame counter is presented as native Windows support.

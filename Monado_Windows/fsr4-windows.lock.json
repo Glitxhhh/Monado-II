@@ -1,0 +1,92 @@
+{
+  "schema": 1,
+  "abi": 2,
+  "format": "windows-amd64-pe",
+  "upstream": {
+    "backend_commit": "0fc2921c45f8ff3900f6bfa43a299e9a4f532af4",
+    "reviewed_commit": "3cc9eeb46dc879fe36929d13758754c429b8377b",
+    "accepted_linux_lock_sha256": "23800a3f6180a00b9db4fbc50323b3987f0b111e972a5449e6bd0505f4827522"
+  },
+  "license": "GPL-2.0-or-later",
+  "model_identity": "b09b7dd7cbdfb5977df58fbf02d02ca66f860ec26cfadd855abb8eee35c933b6",
+  "sdk": {
+    "commit": "7539ae8b6568ad29ed78a753404351daf3b5cca7",
+    "url": "https://raw.githubusercontent.com/GPUOpen-LibrariesAndSDKs/FidelityFX-SDK/7539ae8b6568ad29ed78a753404351daf3b5cca7/Kits/FidelityFX/signedbin/amd_fidelityfx_upscaler_dx12.dll",
+    "sha256": "aad4fccccb29084a655f9a4f9f613bd22c8c03fb4a0f8840148cc6543b4ccace",
+    "provider_version": "4.1.2.4555"
+  },
+  "sets": [
+    "t1080_m0",
+    "t1080_m1",
+    "t2160_m0",
+    "t2160_m1"
+  ],
+  "passes": [
+    "spd",
+    "prepass",
+    "pass0_post",
+    "pass1",
+    "pass1_post",
+    "pass1_postb",
+    "pass2",
+    "pass2_post",
+    "pass3",
+    "pass3_post",
+    "postpass",
+    "rcas"
+  ],
+  "files": {
+    "runtime/nvn/vulkan/fsr4_api.h": {
+      "bytes": 961,
+      "sha256": "48c2153aea4e9d005c6d05279408eed16de2ff3abe2b9d28d83f886bacda8b8e"
+    },
+    "runtime/nvn/vulkan/fsr4_policy.h": {
+      "bytes": 1707,
+      "sha256": "0b91d05ffcaf4ab16ed6c24c2e6bbafcbcd07be22c6bfb7612a3598ce3a73c43"
+    },
+    "third_party/fsr4_native/fsr411.cpp": {
+      "bytes": 48452,
+      "sha256": "19e241e7b52abbcb334cb797a938a7321141732359d1de0fba2206a11991d7cc"
+    },
+    "third_party/fsr4_native/fsr411.h": {
+      "bytes": 4324,
+      "sha256": "86bea732251837f595a33ee9980381279b74bea382ec26b445a457ed8f03066f"
+    },
+    "third_party/fsr4_native/LICENSE": {
+      "bytes": 17984,
+      "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
+    },
+    "third_party/fsr4_native/LICENSE-AMD-SDK.md": {
+      "bytes": 65770,
+      "sha256": "32357259b965d6a8001e9e508ba60eda6034027c5923a7d226ffbaff813c2bfb"
+    },
+    "third_party/fsr4_native/monado_adapter.cpp": {
+      "bytes": 3145,
+      "sha256": "1c20a6b9f72390fabf448e6b759bca68035dec3d315efe4cda247cc8a51012ad"
+    },
+    "third_party/fsr4_native/portable_dot.h": {
+      "bytes": 2260,
+      "sha256": "f7680a42d1291eb6790d1747207ffb3162fab485f286793c5f8e208cff69e0d8"
+    },
+    "third_party/fsr4_native/README.md": {
+      "bytes": 3180,
+      "sha256": "9d9ebbde1fbe4df00fa180183dcc86741fadfb44deaa7ed9f80c4aea196e3522"
+    },
+    "third_party/fsr4_native/WINDOWS.md": {
+      "bytes": 1121,
+      "sha256": "6eb5de7ebcd4c9a4d201c4378101eed060d1506a06cecf99e33be23726c4c01e"
+    },
+    "runtime/nvn/vulkan/fsr4_model_identity.h": {
+      "bytes": 182,
+      "sha256": "e14c27b9e62b97e9b8abc80a2d7f40606be9808be9680fba1ad6085e0100d2d8"
+    },
+    "tools/setup_windows_fsr4.py": {
+      "bytes": 10769,
+      "sha256": "12cb083dd3650799ff33cc037e7e1a9cef8b2ca2494ab43bbdee9ec17931eb73"
+    },
+    "tools/pe_symbols_windows.py": {
+      "bytes": 5373,
+      "sha256": "faa0f61b91f5abab08a0d1e172e23963d62d1d8484a23d4f0d11a77f18993515"
+    }
+  }
+}

@@ -48,9 +48,11 @@ GAMELIB_EXPORT const GameLibTables *lasgame_tables(void){return &tables;}
                      '-o', cls.out / 'boot.o'])
         cls.compile(['-shared', cls.out / 'code.c', PORT / 'runtime/host/gamelib_entry_windows.c', '-o', cls.out / 'valid.dll'])
         cls.compile(['-shared', cls.out / 'wrong.c', '-o', cls.out / 'wrong.dll'])
-        common = [cls.out / 'boot.o', PORT / 'tests/native/test_boot_game_library.c']
+        common = [cls.out / 'boot.o', PORT / 'tests/native/test_boot_game_library.c',
+                  PORT / 'runtime/host/run_diagnostics_windows.c']
         cls.compile([*common, PORT / 'runtime/gamelib.c', '-lbcrypt', '-ladvapi32', '-o', cls.out / 'dynamic.exe'])
-        cls.compile([*common, PORT / 'runtime/host/gamelib_static.c', cls.out / 'code.c', '-o', cls.out / 'static.exe'])
+        cls.compile([*common, PORT / 'runtime/host/gamelib_static.c', cls.out / 'code.c',
+                     '-lbcrypt', '-ladvapi32', '-o', cls.out / 'static.exe'])
 
     @classmethod
     def compile(cls, args):
@@ -59,7 +61,7 @@ GAMELIB_EXPORT const GameLibTables *lasgame_tables(void){return &tables;}
         if built.returncode:
             raise AssertionError(built.stdout + built.stderr)
 
-    def scenario(self, kind='valid', static=False, precompile=False, present=False):
+    def scenario(self, kind='valid', static=False, precompile=False, present=False, fsr4=False, fsr4_missing=False):
         with tempfile.TemporaryDirectory(dir=self.out, prefix='space é ') as directory:
             root = Path(directory)
             (root / 'exefs').mkdir()
@@ -88,8 +90,8 @@ GAMELIB_EXPORT const GameLibTables *lasgame_tables(void){return &tables;}
             env = dict(self.env, AUTHORED_LIBRARY_ROOT=str(root))
             env.pop('XCDE_WATCHDOG', None)
             return subprocess.run([self.out / ('static.exe' if static else 'dynamic.exe'),
-                                   'present' if present else 'precompile' if precompile else 'game', str(root)],
-                                  env=env, capture_output=True, text=True, timeout=15)
+                                   'fsr4-missing' if fsr4_missing else 'fsr4' if fsr4 else 'present' if present else 'precompile' if precompile else 'game', str(root)],
+                                  env=env, cwd=root, capture_output=True, text=True, timeout=15)
 
     def test_matching_companion_precedes_all_workers_and_dispatch(self):
         result = self.scenario()
@@ -121,3 +123,16 @@ GAMELIB_EXPORT const GameLibTables *lasgame_tables(void){return &tables;}
         result = self.scenario('missing', static=True)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn('stopped before guest execution', result.stderr)
+
+    def test_explicit_fsr4_unavailable_keeps_boot_fallback(self):
+        result=self.scenario(fsr4=True)
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertIn('AUTHORED FSR4 configuration boundary',result.stderr)
+        self.assertIn('authored local models unavailable',result.stderr)
+        self.assertLess(result.stderr.index('FSR4 configuration'),result.stderr.index('AUTHORED module-loader'))
+
+    def test_incomplete_fsr4_configuration_rejected_before_boot(self):
+        result=self.scenario('missing',fsr4_missing=True)
+        self.assertEqual(result.returncode,2,result.stderr)
+        self.assertIn('requires both',result.stderr)
+        self.assertNotIn('AUTHORED',result.stderr)

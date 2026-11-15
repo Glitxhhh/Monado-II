@@ -19,7 +19,9 @@ extern "C" {
 
 // [XCDE] LINUX-017: GPU idle, guest execution stopped; drops history/guest pointers, retains scratch images.
 void tmp_reset(void);
-bool tmp_fsr4_set_asset_dir(const char *path); // startup only, explicit Python-verified local model root
+bool tmp_fsr4_set_asset_dir(const char *path); // startup only, exact owned locked model files
+bool tmp_fsr4_configure(const char *assets,const char *component); // explicit native startup paths
+bool tmp_fsr4_configured(void); // requests optional device features only when local assets were verified
 bool tmp_fsr4_supported(void);
 const char *tmp_fsr4_status(void); // diagnostic availability/fallback reason
 bool tmp_fsr3_supported(void); // checked component/API present; not gameplay/hardware qualification

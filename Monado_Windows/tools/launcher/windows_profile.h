@@ -4,7 +4,7 @@
 #include "../../runtime/platform/windows_save_io.h"
 #include <aclapi.h>
 namespace monado_launcher_windows {
-struct Options {std::string profile,shot;int shot_tab=0;bool shot_precompile=false;};
+struct Options {std::string profile,shot,fsr4_assets,fsr4_component;int shot_tab=0;bool shot_precompile=false;};
 static bool parse_options(const std::vector<std::string>& args,Options& options,std::string& error) {
     bool profile=false,shot=false;
     for(size_t i=0;i<args.size();i++) {
@@ -12,6 +12,10 @@ static bool parse_options(const std::vector<std::string>& args,Options& options,
         if(arg=="--profile-root") {
             if(profile||i+1==args.size()||args[i+1].empty()){error="--profile-root requires one absolute existing profile";return false;}
             options.profile=args[++i];profile=true;
+        } else if(arg=="--fsr4-assets" || arg=="--fsr4-component") {
+            std::string& value=arg=="--fsr4-assets"?options.fsr4_assets:options.fsr4_component;
+            if(!value.empty()||i+1==args.size()||args[i+1].empty()){error="FSR4 options require one explicit path each";return false;}
+            value=args[++i];
         } else if(arg=="--shot") {
             if(shot||i+1==args.size()||args[i+1].empty()){error="--shot requires one output filename";return false;}
             options.shot=args[++i];shot=true;
@@ -19,6 +23,7 @@ static bool parse_options(const std::vector<std::string>& args,Options& options,
             if(i+1<args.size()&&args[i+1]=="precompile"){options.shot_precompile=true;i++;}
         } else {error="Unknown launcher argument: "+arg;return false;}
     }
+    if(options.fsr4_assets.empty()!=options.fsr4_component.empty()){error="FSR4 requires both --fsr4-assets and --fsr4-component";return false;}
     return true;
 }
 static bool owned_profile_handle(HANDLE file) {

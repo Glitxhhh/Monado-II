@@ -32,7 +32,7 @@ services/am services/acc services/time services/hid_set services/kbicons service
 hle/heaps hle/pl hle/vi hle/nvn_boot hle/fibers hle/input hle/party hle/bindings hle/movie hle/framepace
 hle/graphics hle/foliage_distance hle/title_exit hle/desktop_exit_caption hle/system_exit hle/expanded_saves hle/expanded_save_scan
 hle/quickstep_slot hle/quickstep_save hle/quickstep_native hle/quickstep_picker hle/quickstep_stats hle/quickstep_stats_ui hle/quickstep_ui_memory
-hle/cheats_rewards hle/cheats_combat host/stubs host/settings_ini host/stubs_gfx host/xcde_aspect host/gamelib_static host/main_boot
+hle/cheats_rewards hle/cheats_combat host/stubs host/settings_ini host/run_diagnostics_windows host/stubs_gfx host/xcde_aspect host/gamelib_static host/main_boot
 diag/diag diag/sampler diag/watchdog diag/crashdump paths""".split()
 NVN = """astc cmdbuf formats maxwell/translate objects output_scale smaa_data tegra texpatch
 vulkan/device vulkan/exec vulkan/precompile vulkan/shaders vulkan/textures vulkan/temporal""".split()
@@ -341,7 +341,7 @@ class Builder:
             self.receipt["sources"]["tools/windows_utf8.manifest"] = digest(ROOT / "tools/windows_utf8.manifest")
         response = self.output / (name + ".rsp")
         args = [str(p) for p in objects] + [str(resource), "-o", str(exe), "-march=x86_64_v2"]
-        args += [self.libs[0]] if launcher else self.libs + ["-lwinmm", "-ldbghelp", "-Wl,--stack,268435456"]
+        args += [self.libs[0]] if launcher else self.libs + ["-lwinmm", "-ldbghelp", "-lbcrypt", "-ladvapi32", "-Wl,--stack,268435456"]
         if launcher:
             args += ["-Wl,--subsystem,windows", "-ladvapi32"]
         args += extra or []
@@ -412,7 +412,7 @@ class Builder:
         final_loader = self.compile([ROOT / "runtime/gamelib.c"], tag="_" + self.gamelib_id[:12])[0]
         host_objects = [o for o in host_objects if o != original_loader] + [final_loader]
         implib = self.output / "xcde-host.dll.a"
-        host = self.link("xcde.exe", host_objects, extra=[str(definition), "-Wl,--out-implib," + str(implib), "-lbcrypt", "-ladvapi32"])
+        host = self.link("xcde.exe", host_objects, extra=[str(definition), "-Wl,--out-implib," + str(implib)])
         dll = host.parent / "lasgame.dll"
         if candidate:
             helper.copy(candidate, host.parent)

@@ -13,12 +13,16 @@
 #include "../../paths.h"
 #include "../../host/applet_lifecycle_ui.h"
 #include "../../host/xcde_aspect.h"
+#include "../../host/run_diagnostics_windows.h"
+extern float xcde_effective_present_fps(void);
 #include "../../settings.h"
 #include "../../gpu_selection.h"
 #include "../../gpu_requirements_vk.h"
 #include "../../ui/menu.h"
 #include "vk.h"
 #include "dlss.h"
+#include "fsr4_policy.h"
+#include "temporal.h"
 #include "../output_scale.h"
 #ifdef _WIN32
 #include "../repeat_present_policy_windows.h"
@@ -211,6 +215,36 @@ static void sc_proxies(void) {
 #undef PROXY
 }
 
+static void fsr4_device_prepare(const VkPhysicalDeviceFeatures2 *have,const VkPhysicalDeviceVulkan12Features *h12,
+    const VkPhysicalDeviceVulkan13Features *h13,bool push,const char **extensions,uint32_t *count,VkPhysicalDeviceVulkan13Features *enable) {
+    g_vk.fsr4_lite=false;
+    g_vk.fsr4_reason="native FSR4 component not compiled";
+#ifdef _WIN32
+    if(!tmp_fsr4_configured()){g_vk.fsr4_reason="FSR4 local component/models not configured";return;}
+    VkPhysicalDevicePushDescriptorPropertiesKHR push_properties={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PUSH_DESCRIPTOR_PROPERTIES_KHR};
+    VkPhysicalDeviceFloatControlsProperties controls={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT_CONTROLS_PROPERTIES,.pNext=&push_properties};
+    VkPhysicalDeviceSubgroupProperties subgroup={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SUBGROUP_PROPERTIES,.pNext=&controls};
+    VkPhysicalDeviceProperties2 properties={.sType=VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2,.pNext=&subgroup};
+    vkGetPhysicalDeviceProperties2(g_vk.phys,&properties);
+    MonadoFsr4Caps caps={.float16=h12->shaderFloat16,.int16=have->features.shaderInt16,
+        .integer_dot=h13->shaderIntegerDotProduct,.storage_write=have->features.shaderStorageImageWriteWithoutFormat,
+        .compute_subgroup=(subgroup.supportedStages&VK_SHADER_STAGE_COMPUTE_BIT)!=0,
+        .quad=(subgroup.supportedOperations&VK_SUBGROUP_FEATURE_QUAD_BIT)!=0,.denorm16=controls.shaderDenormPreserveFloat16,
+        .push_descriptor=push,.push_count=push_properties.maxPushDescriptors,
+        .workgroup_invocations=g_vk.props.limits.maxComputeWorkGroupInvocations,.workgroup_x=g_vk.props.limits.maxComputeWorkGroupSize[0],
+        .storage_range=g_vk.props.limits.maxStorageBufferRange};
+    g_vk.fsr4_reason=monado_fsr4_missing(&caps);
+    if(!g_vk.fsr4_reason) {
+        g_vk.fsr4_lite=true;
+        extensions[(*count)++]=VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME;
+        enable->shaderIntegerDotProduct=VK_TRUE;
+    }
+#else
+    (void)have;(void)h12;(void)h13;(void)push;(void)extensions;(void)count;(void)enable;
+#endif
+    LOG("[vk] native FSR4 Lite capabilities: %s\n",g_vk.fsr4_reason?g_vk.fsr4_reason:"enabled (portable mixed dot)");
+}
+
 static void create_device(void) {
     uint32_t ne = 0;
     vkEnumerateDeviceExtensionProperties(g_vk.phys, NULL, &ne, NULL);
@@ -219,6 +253,7 @@ static void create_device(void) {
     const char *ext[48];
     uint32_t n_ext = 0;
     ext[n_ext++] = VK_KHR_SWAPCHAIN_EXTENSION_NAME;
+    bool fsr4_push = has_ext(ep,ne,VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME);
     g_vk.custom_border = has_ext(ep, ne, VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME);
     if (g_vk.custom_border) ext[n_ext++] = VK_EXT_CUSTOM_BORDER_COLOR_EXTENSION_NAME;
     g_vk.divisor = has_ext(ep, ne, VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME);
@@ -282,6 +317,7 @@ static void create_device(void) {
                                             .uniformAndStorageBuffer8BitAccess = VK_TRUE, .storageBuffer8BitAccess = VK_TRUE,
                                             .scalarBlockLayout = VK_TRUE, .shaderFloat16 = h12.shaderFloat16, .pNext = &f13,
                                             .samplerFilterMinmax = h12.samplerFilterMinmax};  // [XCDE] NVN reduction filters
+    fsr4_device_prepare(&have,&h12,&h13,fsr4_push,ext,&n_ext,&f13);
     g_vk.minmax = h12.samplerFilterMinmax;
     VkPhysicalDeviceGraphicsPipelineLibraryFeaturesEXT gplf = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_GRAPHICS_PIPELINE_LIBRARY_FEATURES_EXT,
                                                                .graphicsPipelineLibrary = VK_TRUE, .pNext = &f12};
@@ -301,6 +337,7 @@ static void create_device(void) {
     g_vk.sampler_anisotropy = b->samplerAnisotropy;
     b->textureCompressionBC = h->textureCompressionBC;
     b->shaderInt64 = h->shaderInt64;
+    b->shaderInt16 = g_vk.fsr4_lite && h->shaderInt16;
     b->depthBiasClamp = h->depthBiasClamp;
     b->depthClamp = h->depthClamp;
     b->largePoints = h->largePoints;
@@ -1123,11 +1160,11 @@ void backend_present(NvnTexture *t) {
     const char *xshot = diag_shot_path(total_frames + 1);
     extern bool diag_flicker_wanted(void);
     bool want_window = !headless || shot || xshot || diag_hash_wanted() || diag_flicker_wanted();
-    // One real simulation frame, independent of optional provider output.
+    // Provider state is independent of acquisition; the Game event below
+    // counts only an actually acquired native frame, excluding repeats.
     uint64_t meter_now=SDL_GetTicksNS();
     bool integrated=g_settings.frame_gen||g_settings.cutscene_mode==2;
     fps_overlay_generation(integrated,false);
-    fps_overlay_frame(meter_now);
     if(integrated) {uint64_t count=0;bool available=tmp_fg_present_count(&count);fps_overlay_provider_output(meter_now,count,available);}
     bool have = want_window && vk_frame_begin(black);
     uint64_t nd = SDL_GetTicksNS() - t0;
@@ -1159,6 +1196,7 @@ void backend_present(NvnTexture *t) {
         memcpy(g_shot_crop, crop, sizeof crop);
     }
     if (have) {
+        fps_overlay_frame(SDL_GetTicksNS());
         VkCommandBuffer cb = vk_cmd();
         float pv[8] = {renderer_origin_lower_left() ? 1.0f : 0.0f, 0, 0, 0, crop[0], crop[1], crop[2], crop[3]};
         vk_present_draw(cb, b, (float)vx, (float)vy, (float)vw, (float)vh, pv);
@@ -1200,6 +1238,10 @@ void backend_present(NvnTexture *t) {
         float cap=g_settings.frame_gen_match_display&&g_settings.frame_gen&&tmp_frame_gen_wanted()&&ready?
             fg_policy_base_fps(g_settings.fps,vk_display_hz(),true):0.f;
         atomic_store_explicit(&g_framegen_cap_fps,cap,memory_order_release);
+        const char *diagnostic_mode=actual_present_mode==VK_PRESENT_MODE_FIFO_KHR?"fifo":
+            actual_present_mode==VK_PRESENT_MODE_MAILBOX_KHR?"mailbox":"immediate";
+        run_diag_renderer("present",g_vk.props.deviceName,diagnostic_mode,g_vk.sc_extent.width,g_vk.sc_extent.height,
+            vk_display_hz(),xcde_effective_present_fps(),vk_framegen_cap_fps(),ready);
         fps_overlay_diagnostics(SDL_GetTicksNS(),integrated?1:0,ready);
         extern void vk_gmem_check(uint64_t frame);
         vk_gmem_check(total_frames + 1);
@@ -1207,6 +1249,11 @@ void backend_present(NvnTexture *t) {
     } else {
         atomic_store_explicit(&g_framegen_cap_fps,0.f,memory_order_release);
         fps_overlay_reset();
+        const char *diagnostic_mode=actual_present_mode==VK_PRESENT_MODE_FIFO_KHR?"fifo":
+            actual_present_mode==VK_PRESENT_MODE_MAILBOX_KHR?"mailbox":"immediate";
+        run_diag_renderer("present-unavailable",g_vk.props.deviceName,diagnostic_mode,g_vk.sc_extent.width,g_vk.sc_extent.height,
+            vk_display_hz(),xcde_effective_present_fps(),0.f,false);
+        fps_overlay_diagnostics(SDL_GetTicksNS(),integrated?1:0,false);
         renderer_submit();
     }
     extern void vk_prof_frame(uint64_t frame, uint64_t present_ns);

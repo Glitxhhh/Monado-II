@@ -7,6 +7,13 @@
 #include <string.h>
 #include "../../runtime/kernel.h"
 #include "../../runtime/gamelib.h"
+#include "../../runtime/settings.h"
+
+// Authored host settings storage; actual parsing is separately qualified by the
+// native diagnostics/settings fixtures. Production diagnostic code is linked.
+Settings g_settings;
+int g_window_w=1280,g_window_h=720;
+bool g_party_switch;
 
 extern int authored_boot_main(int, char **);
 Module g_modules[4];
@@ -42,6 +49,12 @@ void kernel_run_main(KThread *t, uint64_t a, uint64_t b, uint64_t c, uint64_t d)
     (void)t; (void)a; (void)b; (void)c; (void)d; abort();
 }
 int ui_run(void) { abort(); }
+bool tmp_fsr4_configure(const char *assets,const char *component) {
+    assert(!phase && assets && component);
+    assert(!strcmp(assets,"C:/authored models/雪")&&!strcmp(component,"C:/authored component.dll"));
+    fputs("AUTHORED FSR4 configuration boundary\n",stderr);return false;
+}
+const char *tmp_fsr4_status(void) {return "authored local models unavailable";}
 int vk_precompile_main(const char *p) {
     (void)p; assert(!phase); fputs("AUTHORED precompile boundary\n", stderr); return 23;
 }
@@ -61,6 +74,10 @@ int main(int argc, char **argv) {
     char input[8192];
     wchar_t *wide_input = _wgetenv(L"AUTHORED_LIBRARY_ROOT");
     assert(wide_input && WideCharToMultiByte(CP_UTF8, WC_ERR_INVALID_CHARS, wide_input, -1, input, sizeof input, NULL, NULL));
+    if(!strcmp(argv[1],"fsr4")||!strcmp(argv[1],"fsr4-missing")) {
+        char *configured[]={argv[0],"--fsr4-assets","C:/authored models/雪","--fsr4-component","C:/authored component.dll",input,NULL};
+        return authored_boot_main(!strcmp(argv[1],"fsr4")?6:3,configured);
+    }
     char *args[] = {argv[0], !strcmp(argv[1], "precompile") ? "--precompile" : input, input, NULL};
     return authored_boot_main(!strcmp(argv[1], "precompile") ? 3 : 2, args);
 }

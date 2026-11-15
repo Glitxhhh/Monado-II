@@ -107,7 +107,8 @@ def main():
                 state = run / ('guest-dynamic-' + scenario); state.mkdir()
                 command([binary, scenario], cwd=state)
             binary = build('aspect-output', ['tests/native/test_aspect_output_windows.c', 'runtime/host/settings_ini.c',
-                           'runtime/host/stubs_gfx.c', 'runtime/host/xcde_aspect.c', 'runtime/nvn/output_scale.c'])
+                           'runtime/host/run_diagnostics_windows.c', 'runtime/host/stubs_gfx.c', 'runtime/host/xcde_aspect.c',
+                           'runtime/nvn/output_scale.c'], ['-lbcrypt','-ladvapi32'])
             for scenario in ('defaults', 'roundtrip', 'original', 'native', 'explicit', 'explicit-quality', 'quality', 'bounds', 'canvas'):
                 state = run / ('aspect-output-' + scenario); state.mkdir()
                 command([binary, scenario], cwd=state)

@@ -42,13 +42,18 @@ inline std::wstring quote(const std::wstring &arg){
     r.append(n*2,L'\\');r+=L'\"';return r;
 }
 inline std::wstring executable(){std::vector<wchar_t> s(32768);DWORD n=GetModuleFileNameW(nullptr,s.data(),(DWORD)s.size());require(n && n<s.size(),"Cannot locate this setup executable");return std::wstring(s.data(),n);}
+inline std::wstring native(const std::wstring &p){
+    if(p.rfind(L"\\\\?\\",0)==0)return p;
+    if(p.rfind(L"\\\\",0)==0)return L"\\\\?\\UNC\\"+p.substr(2);
+    require(p.size()>=3&&p[1]==L':'&&p[2]==L'\\',"Absolute cache path required");return L"\\\\?\\"+p;
+}
 inline bool ordinary(const std::wstring &p,bool directory=false){
-    DWORD a=GetFileAttributesW(p.c_str());if(a==INVALID_FILE_ATTRIBUTES||(a&FILE_ATTRIBUTE_REPARSE_POINT)||bool(a&FILE_ATTRIBUTE_DIRECTORY)!=directory)return false;
-    if(directory)return true;Handle f(CreateFileW(p.c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));BY_HANDLE_FILE_INFORMATION info{};
+    DWORD a=GetFileAttributesW(native(p).c_str());if(a==INVALID_FILE_ATTRIBUTES||(a&FILE_ATTRIBUTE_REPARSE_POINT)||bool(a&FILE_ATTRIBUTE_DIRECTORY)!=directory)return false;
+    if(directory)return true;Handle f(CreateFileW(native(p).c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));BY_HANDLE_FILE_INFORMATION info{};
     return f.value!=INVALID_HANDLE_VALUE&&GetFileInformationByHandle(f.value,&info)&&info.nNumberOfLinks==1&&!(info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT));
 }
 inline void directory(const std::wstring &p){
-    if(CreateDirectoryW(p.c_str(),nullptr))return;
+    if(CreateDirectoryW(native(p).c_str(),nullptr))return;
     require(GetLastError()==ERROR_ALREADY_EXISTS && ordinary(p,true),"Cache directory is missing, busy or contains a link");
 }
 inline void seek(HANDLE f,uint64_t offset){LARGE_INTEGER x{};x.QuadPart=(LONGLONG)offset;require(SetFilePointerEx(f,x,nullptr,FILE_BEGIN),"Cannot seek setup payload");}
@@ -69,6 +74,15 @@ inline std::array<unsigned char,32> hash_range(HANDLE f,uint64_t offset,uint64_t
     seek(f,offset);Sha256 h;std::vector<unsigned char>b(1<<20);while(bytes){size_t n=(size_t)std::min<uint64_t>(b.size(),bytes);read(f,b.data(),n);h.add(b.data(),n);bytes-=n;}return h.finish();
 }
 inline std::string hex(const std::array<unsigned char,32>&v){const char *d="0123456789abcdef";std::string r;for(auto b:v){r+=d[b>>4];r+=d[b&15];}return r;}
+inline void publish_new(const std::wstring &root,const std::wstring &target,const void *data,size_t bytes){
+    std::array<unsigned char,32> nonce{};require(BCryptGenRandom(nullptr,nonce.data(),(ULONG)nonce.size(),BCRYPT_USE_SYSTEM_PREFERRED_RNG)==0,"Cannot name an exclusive setup cache temporary");
+    std::wstring temporary=root+L"\\state\\extract-"+wide(hex(nonce))+L".part";
+    {Handle output(CreateFileW(native(temporary).c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));require(output.value!=INVALID_HANDLE_VALUE,"Cannot create setup cache temporary");write(output.value,data,bytes);require(FlushFileBuffers(output.value),"Cannot flush setup cache temporary");}
+    // No replacement is permitted. An interrupted write stays in mutable state,
+    // so retry can fill absent final members without mistaking partial bytes for
+    // a changed immutable member or deleting an unknown user's file.
+    require(MoveFileExW(native(temporary).c_str(),native(target).c_str(),MOVEFILE_WRITE_THROUGH),"Setup cache destination appeared or could not be published; existing files are preserved");
+}
 inline uint32_t u32(const unsigned char *p){return uint32_t(p[0])|uint32_t(p[1])<<8|uint32_t(p[2])<<16|uint32_t(p[3])<<24;}
 inline uint64_t u64(const unsigned char *p){return uint64_t(u32(p))|uint64_t(u32(p+4))<<32;}
 inline std::wstring relative_name(const std::string &name){
@@ -88,7 +102,7 @@ inline void parents(const std::wstring &root,const std::wstring &relative){
     size_t pos=0;while((pos=relative.find(L'\\',pos))!=std::wstring::npos){directory(root+L"\\"+relative.substr(0,pos));++pos;}
 }
 inline void checked_members(const std::wstring &root,const std::wstring &relative,const std::set<std::wstring> &expected){
-    WIN32_FIND_DATAW data{};HANDLE find=FindFirstFileW((root+L"\\"+relative+L"*").c_str(),&data);require(find!=INVALID_HANDLE_VALUE,"Cannot inspect immutable setup cache");
+    WIN32_FIND_DATAW data{};HANDLE find=FindFirstFileW(native(root+L"\\"+relative+L"*").c_str(),&data);require(find!=INVALID_HANDLE_VALUE,"Cannot inspect immutable setup cache");
     try{do{
         std::wstring leaf=data.cFileName;if(leaf==L"."||leaf==L"..")continue;std::wstring child=relative+leaf,folded=child;for(auto &c:folded)c=(wchar_t)towlower(c);
         require(!(data.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT),"Portable cache contains an unexpected filesystem link");
@@ -113,8 +127,8 @@ inline Payload inspect(HANDLE file){
 // Both first extraction and every reopen validate the whole immutable payload.
 // Mutable build progress/registry lives in state/, outside all payload members.
 inline void materialize(HANDLE file,Payload &p,const std::wstring &base,void(*progress)(uint32_t,uint32_t)=nullptr){
-    directory(base);p.cache=base+L"\\"+wide(hex(p.sha));directory(p.cache);
-    Handle lock(CreateFileW((p.cache+L"\\.lock").c_str(),GENERIC_READ|GENERIC_WRITE,0,nullptr,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+    directory(base);p.cache=base+L"\\"+wide(hex(p.sha));directory(p.cache);directory(p.cache+L"\\state");
+    Handle lock(CreateFileW(native(p.cache+L"\\.lock").c_str(),GENERIC_READ|GENERIC_WRITE,0,nullptr,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
     require(lock.value!=INVALID_HANDLE_VALUE,"Another setup process is preparing this cache; retry after it finishes");
     FILE_ATTRIBUTE_TAG_INFO info{};require(GetFileInformationByHandleEx(lock.value,FileAttributeTagInfo,&info,sizeof info)&&!(info.FileAttributes&FILE_ATTRIBUTE_REPARSE_POINT),"Unsafe setup cache lock");
     std::wstring marker=p.cache+L"\\.complete";bool reuse=ordinary(marker);uint64_t cursor=p.offset+24,total=0;std::wstring previous;std::set<std::wstring> expected_members;
@@ -130,21 +144,21 @@ inline void materialize(HANDLE file,Payload &p,const std::wstring &base,void(*pr
             std::array<unsigned char,32> expected;std::copy(h+24,h+56,expected.begin());std::wstring path=p.cache+L"\\"+relative;
             if(name=="payload-manifest.json")p.manifest_sha=expected;
             parents(p.cache,relative);
-            if(reuse||GetFileAttributesW(path.c_str())!=INVALID_FILE_ATTRIBUTES){
+            if(reuse||GetFileAttributesW(native(path).c_str())!=INVALID_FILE_ATTRIBUTES){
                 require(ordinary(path),"The portable cache changed; move its content-addressed folder aside and retry");
-                Handle old(CreateFileW(path.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));LARGE_INTEGER size{};
+                Handle old(CreateFileW(native(path).c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));LARGE_INTEGER size{};
                 require(old.value!=INVALID_HANDLE_VALUE&&GetFileSizeEx(old.value,&size)&&(uint64_t)size.QuadPart==raw&&hash_range(old.value,0,raw)==expected,"The portable cache checksum changed; move its content-addressed folder aside and retry");
             }else{
                 std::vector<unsigned char> packed((size_t)stored),data((size_t)raw);seek(file,cursor);read(file,packed.data(),packed.size());
                 if(flags){SIZE_T result=0;require(Decompress(decompressor,packed.data(),packed.size(),data.data(),data.size(),&result)&&result==raw,"Setup decompression failed");}
                 else data.swap(packed);
                 Sha256 sha;sha.add(data.data(),data.size());require(sha.finish()==expected,"Setup member checksum failed");
-                Handle output(CreateFileW(path.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));require(output.value!=INVALID_HANDLE_VALUE,"Setup cache already contains an unknown or incomplete file; preserve it and choose a fresh cache");write(output.value,data.data(),data.size());require(FlushFileBuffers(output.value),"Cannot flush setup cache");
+                publish_new(p.cache,path,data.data(),data.size());
             }
             cursor+=stored;total+=raw;require(total<=uint64_t(4)*1024*1024*1024,"Setup content exceeds limits");if(progress&&(index%32==0||index+1==p.count))progress(index+1,p.count);
         }
         require(cursor==p.offset+p.size&&total==p.raw_size,"Unexpected trailing setup data or content size");checked_members(p.cache,L"",expected_members);CloseDecompressor(decompressor);decompressor=nullptr;
-        if(!reuse){Handle done(CreateFileW(marker.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr));require(done.value!=INVALID_HANDLE_VALUE,"Cannot finish setup cache");auto sum=hex(p.sha);write(done.value,sum.data(),sum.size());require(FlushFileBuffers(done.value),"Cannot flush setup receipt");}
+        if(!reuse){auto sum=hex(p.sha);publish_new(p.cache,marker,sum.data(),sum.size());}
         directory(p.cache+L"\\state");
     }catch(...){if(decompressor)CloseDecompressor(decompressor);throw;}
 }

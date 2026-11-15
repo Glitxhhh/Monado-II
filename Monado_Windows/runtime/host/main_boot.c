@@ -103,19 +103,34 @@ static DWORD WINAPI watchdog_main(LPVOID p) {
 }
 
 
+#include "run_diagnostics_windows.h"
 int main(int argc, char **argv) {
     if (argc >= 6 && !strcmp(argv[1], "--minidump")) return diag_minidump_helper(argc, argv);  // [XCDE] T028: crash helper process
+    int argument=1;
 #ifdef XCDE_GFX
-    if (argc >= 3 && !strcmp(argv[1], "--precompile")) {  // [XCDE] T187: fill the shader cache from the RomFS, then exit
+    const char *fsr4_assets=NULL,*fsr4_component=NULL;
+    while(argument<argc && (!strcmp(argv[argument],"--fsr4-assets") || !strcmp(argv[argument],"--fsr4-component"))) {
+        const char **slot=!strcmp(argv[argument],"--fsr4-assets")?&fsr4_assets:&fsr4_component;
+        if(*slot || argument+1>=argc || !*argv[argument+1]) {fprintf(stderr,"FSR4 options require one explicit path each\n");return 2;}
+        *slot=argv[argument+1];argument+=2;
+    }
+    if((fsr4_assets!=NULL)!=(fsr4_component!=NULL)){fprintf(stderr,"FSR4 requires both --fsr4-assets and --fsr4-component\n");return 2;}
+    if(fsr4_assets) {
+        extern bool tmp_fsr4_configure(const char*,const char*);
+        extern const char *tmp_fsr4_status(void);
+        if(!tmp_fsr4_configure(fsr4_assets,fsr4_component))LOG("[fsr4] %s; existing fallback retained\n",tmp_fsr4_status());
+    }
+    if (argc >= argument+2 && !strcmp(argv[argument], "--precompile")) {
         extern int vk_precompile_main(const char *root);
-        return vk_precompile_main(argv[2]);
+        run_diag_begin(true);
+        return vk_precompile_main(argv[argument+1]);
     }
 #endif
     plat_init();
     setvbuf(stderr, NULL, _IONBF, 0);
-    if (argc < 2) { fprintf(stderr, "usage: xcde_boot <dump dir with exefs/ and romfs/> [seconds]\n"); return 2; }
-    const char *root = argv[1];
-    int seconds = argc > 2 ? atoi(argv[2]) : 20;
+    if (argc <= argument || argv[argument][0]=='-') { fprintf(stderr, "usage: xcde_boot [--fsr4-assets ABS --fsr4-component ABS] <dump dir with exefs/ and romfs/> [seconds]\n"); return 2; }
+    const char *root = argv[argument];
+    int seconds = argc > argument+1 ? atoi(argv[argument+1]) : 20;
     char exefs[1024], romfs[1024], npdm_path[1024];
     snprintf(exefs, sizeof exefs, "%s/exefs", root);
     snprintf(romfs, sizeof romfs, "%s/romfs", root);
@@ -144,6 +159,9 @@ int main(int argc, char **argv) {
     }
     free((void *)g_romfs_dir);
     g_romfs_dir = strdup(romfs);
+    // A real validated game startup only: shader preparation and failed/dry
+    // entry checks return before creating any per-run diagnostic state.
+    run_diag_begin(false);
     diag_watchdog_start();
     if (getenv("XCDE_WATCHDOG")) CreateThread(NULL, 0, watchdog_main, (LPVOID)(uintptr_t)atoi(getenv("XCDE_WATCHDOG")), 0, NULL);
     loader_load(exefs);

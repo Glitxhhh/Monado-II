@@ -17,7 +17,7 @@ constexpr int INPUT_FIELD=101,DEST=102,INPUT_BROWSE=103,DEST_BROWSE=104,BUILD=10
     CANCEL=106,OPEN=107,ADOPT=108,LOCATE=109,WORKERS=110,PREPARE=111,UPDATES=112,APPLY_UPDATE=113;
 HWND window=nullptr,input=nullptr,destination=nullptr,workers=nullptr,prepare=nullptr,phase=nullptr,bar=nullptr,details=nullptr;
 HFONT font=nullptr;std::wstring cache,current_install,cancel_path;std::string payload_sha,manifest_sha;std::mutex state_mutex;
-std::atomic<bool> busy{false},closing{false};std::thread worker;
+std::atomic<bool> busy{false},closing{false},pending_cancel{false};std::thread worker;
 bool update_available=false;
 bool bootstrap_fixture=false;int fixture_exit=1;
 struct Event {std::wstring message,status,installation,launcher,log;std::vector<std::wstring> arguments;uint64_t done=0,total=0;bool complete=false,open_settings=false;DWORD exit=0;};
@@ -25,7 +25,7 @@ void event(Event *e,UINT kind=UPDATE){if(!PostMessageW(window,kind,0,(LPARAM)e))
 std::wstring text(HWND h){int n=GetWindowTextLengthW(h);std::wstring r((size_t)n+1,0);GetWindowTextW(h,r.data(),n+1);r.resize(n);return r;}
 void append(const std::wstring &s){if(s.empty())return;int n=GetWindowTextLengthW(details);if(n>200000)SetWindowTextW(details,L"");SendMessageW(details,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);std::wstring line=s+L"\r\n";SendMessageW(details,EM_REPLACESEL,FALSE,(LPARAM)line.c_str());}
 void controls(bool active){for(int id:{INPUT_FIELD,DEST,INPUT_BROWSE,DEST_BROWSE,BUILD,OPEN,ADOPT,LOCATE,WORKERS,PREPARE,UPDATES})EnableWindow(GetDlgItem(window,id),active);EnableWindow(GetDlgItem(window,APPLY_UPDATE),active&&update_available);EnableWindow(GetDlgItem(window,CANCEL),!active);}
-void payload_progress(uint32_t done,uint32_t total){auto e=new Event;e->message=L"Checking portable tools and source";e->done=done;e->total=total;event(e);}
+void payload_progress(uint32_t done,uint32_t total){if(pending_cancel.load())throw std::runtime_error("Setup cancelled; checked cache members are preserved for retry");auto e=new Event;e->message=L"Checking portable tools and source";e->done=done;e->total=total;event(e);}
 
 // The backend protocol is one flat, bounded JSON object per line. Parse every
 // string token (including escaped Unicode) before selecting a field, so a path
@@ -68,6 +68,7 @@ bool protocol_fixture(){
     if(e.status!=L"success"||e.done!=7||e.total!=9||e.arguments.size()!=2||e.arguments[0]!=L"--profile-root"||e.arguments[1]!=LR"(C:\profile ü $() ` \)")return false;
     if(quote(L"C:\\authored path\\")!=L"\"C:\\authored path\\\\\"")return false;
     bool duplicate=false;try{parse(R"({"status":"success","status":"error"})");}catch(...){duplicate=true;}if(!duplicate)return false;
+    bool cancelled=false;pending_cancel=true;try{payload_progress(1,2);}catch(...){cancelled=true;}pending_cancel=false;if(!cancelled)return false;
     SetEnvironmentVariableW(L"PYTHONPATH",L"authored hostile ambient module path");SetEnvironmentVariableW(L"PYTHONHOME",L"authored hostile ambient home");auto block=clean_environment();
     for(auto p=block.data();*p;p+=wcslen(p)+1){std::wstring value=p;for(auto &c:value)c=(wchar_t)towupper(c);if(value.rfind(L"PYTHONPATH=",0)==0||value.rfind(L"PYTHONHOME=",0)==0)return false;}return true;
 }
@@ -93,6 +94,7 @@ void backend(std::wstring action,std::wstring selected_input,std::wstring select
             Handle self(CreateFileW(executable().c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));require(self.value!=INVALID_HANDLE_VALUE,"Cannot read portable setup executable");
             auto payload=inspect(self.value);payload_sha=hex(payload.sha);materialize(self.value,payload,local_cache(),payload_progress);cache=payload.cache;manifest_sha=hex(payload.manifest_sha);require(payload.manifest_sha!=std::array<unsigned char,32>{},"Portable setup manifest is missing");
         }
+        if(pending_cancel.load())throw std::runtime_error("Setup cancelled before starting the backend; checked tools are preserved");
         std::wstring id=unique(),progress=cache+L"\\state\\progress-"+id+L".jsonl",log=cache+L"\\state\\backend-"+id+L".log",request_cancel=cache+L"\\state\\cancel-"+id;{std::lock_guard<std::mutex> lock(state_mutex);cancel_path=request_cancel;}
         std::wstring python=cache+L"\\python\\python.exe",script=cache+L"\\setup\\bootstrap_windows.py";require(ordinary(python)&&ordinary(script),"The portable Python or setup backend is missing");
         std::vector<std::wstring> args={python,L"-E",L"-s",L"-B",script,L"--action",action,L"--cache",cache,L"--payload-sha256",wide(payload_sha),L"--manifest-sha256",wide(manifest_sha),L"--progress",progress,L"--cancel-file",request_cancel,L"--jobs",std::to_wstring(jobs)};
@@ -105,8 +107,9 @@ void backend(std::wstring action,std::wstring selected_input,std::wstring select
         Handle job(CreateJobObjectW(nullptr,nullptr));JOBOBJECT_EXTENDED_LIMIT_INFORMATION limits{};limits.BasicLimitInformation.LimitFlags=JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;require(job.value&&SetInformationJobObject(job.value,JobObjectExtendedLimitInformation,&limits,sizeof limits),"Cannot create owned setup job");
         auto environment=clean_environment();BOOL created=attr&&CreateProcessW(python.c_str(),b.data(),nullptr,nullptr,TRUE,CREATE_SUSPENDED|CREATE_NO_WINDOW|CREATE_UNICODE_ENVIRONMENT|EXTENDED_STARTUPINFO_PRESENT,environment.data(),cache.c_str(),&si.StartupInfo,&pi);DeleteProcThreadAttributeList(attributes);require(created,"Cannot start the bundled setup backend");Handle process(pi.hProcess),thread(pi.hThread);
         if(!AssignProcessToJobObject(job.value,process.value)){TerminateProcess(process.value,1);throw std::runtime_error("Cannot supervise the owned setup backend");}require(ResumeThread(thread.value)!=DWORD(-1),"Cannot resume setup backend");
-        uint64_t position=0;std::string pending;DWORD exit=STILL_ACTIVE;bool final_seen=false,drained=false;uint64_t close_tick=0;
+        uint64_t position=0;std::string pending;DWORD exit=STILL_ACTIVE;bool final_seen=false,drained=false,cancel_sent=false;uint64_t close_tick=0;
         do{
+            if(pending_cancel.load()&&!cancel_sent){Handle cancel(CreateFileW(native(request_cancel).c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));require(cancel.value!=INVALID_HANDLE_VALUE||GetLastError()==ERROR_FILE_EXISTS,"Cannot request cancellation of the owned backend");cancel_sent=true;}
             if(closing.load()&&!close_tick){close_tick=GetTickCount64();Handle cancel(CreateFileW(request_cancel.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));}if(close_tick&&GetTickCount64()-close_tick>10000){TerminateJobObject(job.value,ERROR_CANCELLED);}
             Handle progress_file(CreateFileW(progress.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
             if(progress_file.value!=INVALID_HANDLE_VALUE){LARGE_INTEGER size{};require(GetFileSizeEx(progress_file.value,&size)&&size.QuadPart>=0&&(uint64_t)size.QuadPart<=64*1024*1024,"Setup progress exceeded its bounded log");require((uint64_t)size.QuadPart>=position,"Setup progress log changed unexpectedly");seek(progress_file.value,position);uint64_t available=(uint64_t)size.QuadPart-position;
@@ -118,11 +121,11 @@ void backend(std::wstring action,std::wstring selected_input,std::wstring select
         }while(true);
         final.complete=true;final.open_settings=action==L"resume"||action==L"adopt"||action==L"locate-input";final.exit=exit;if(final.log.empty())final.log=log;if(!final_seen){final.status=L"error";final.message=L"Setup stopped before reporting a checked result. See the retained log.";}if(exit&&final.status==L"success"){final.status=L"error";final.message=L"Setup reported success but its process failed. See the retained log.";}
         if(startup&&final.status==L"success"&&!final.launcher.empty())final.message=L"Opening checked settings launcher";
-    }catch(const std::exception &e){final.status=L"error";final.message=wide(e.what());final.complete=true;}
+    }catch(const std::exception &e){final.status=pending_cancel.load()?L"cancelled":L"error";final.message=wide(e.what());final.complete=true;}
     event(new Event(final),FINISHED);
 }
 void launch_action(const std::wstring &action,bool startup=false){
-    if(busy.exchange(true))return;if(worker.joinable())worker.join();controls(false);SetWindowTextW(phase,L"Checking selected installation and tools");SendMessageW(bar,PBM_SETMARQUEE,TRUE,30);
+    if(busy.exchange(true))return;if(worker.joinable())worker.join();pending_cancel=false;{std::lock_guard<std::mutex> lock(state_mutex);cancel_path.clear();}controls(false);SetWindowTextW(phase,L"Checking selected installation and tools");SendMessageW(bar,PBM_SETMARQUEE,TRUE,30);
     std::wstring selected_input=text(input),selected_dest=text(destination);if((action==L"locate-input"||action==L"resume"||action==L"check-update"||action==L"update")&&!current_install.empty())selected_dest=current_install;
     int jobs=(int)SendMessageW(workers,CB_GETCURSEL,0,0)+1;bool precompile=SendMessageW(prepare,BM_GETCHECK,0,0)==BST_CHECKED;
     worker=std::thread(backend,action,selected_input,selected_dest,std::clamp(jobs,1,6),precompile,startup);
@@ -146,7 +149,7 @@ LRESULT CALLBACK procedure(HWND h,UINT message,WPARAM w,LPARAM l){
             else if(id==BUILD)launch_action(L"build");else if(id==OPEN)launch_action(L"resume");else if(id==UPDATES)launch_action(L"check-update");else if(id==APPLY_UPDATE&&update_available)launch_action(L"update");
             else if(id==ADOPT&&choose(path,L"Choose an existing Monado II Windows installation")){SetWindowTextW(destination,path.c_str());launch_action(L"adopt");}
             else if(id==LOCATE&&choose(path,L"Locate the same extracted game files")){SetWindowTextW(input,path.c_str());launch_action(L"locate-input");}
-            else if(id==CANCEL){std::wstring target;{std::lock_guard<std::mutex> lock(state_mutex);target=cancel_path;}if(!target.empty()){Handle f(CreateFileW(target.c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));if(f.value!=INVALID_HANDLE_VALUE)append(L"Cancellation requested. Existing installation and logs are preserved.");}}return 0;
+            else if(id==CANCEL&&busy.load()){pending_cancel=true;std::wstring target;{std::lock_guard<std::mutex> lock(state_mutex);target=cancel_path;}if(!target.empty()){Handle f(CreateFileW(native(target).c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));}append(L"Cancellation requested. Existing installation and logs are preserved.");}return 0;
         }
         if(message==UPDATE||message==FINISHED){std::unique_ptr<Event> e((Event*)l);if(!e->message.empty()){SetWindowTextW(phase,e->message.c_str());append(e->message);}if(e->total){SendMessageW(bar,PBM_SETMARQUEE,FALSE,0);SendMessageW(bar,PBM_SETRANGE32,0,1000);SendMessageW(bar,PBM_SETPOS,(WPARAM)std::min<uint64_t>(1000,e->done*1000/e->total),0);}
             if(!e->installation.empty())current_install=e->installation;

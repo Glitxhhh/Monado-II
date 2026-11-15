@@ -10,6 +10,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <windows.h>
+#include "../../platform/windows_optional_library.h"
 #include <vulkan/vulkan.h>
 
 #include <sl.h>
@@ -59,8 +60,9 @@ extern "C" bool dlss_init_early(void) {
     dir[n] = 0;
     wchar_t path[4096 + 32];
     swprintf(path, 4096 + 32, L"%lssl.interposer.dll", dir);
-    sl_mod = LoadLibraryExW(path,nullptr,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
-    if (!sl_mod) { DLOG("[dlss] sl.interposer.dll not found: DLSS unavailable\n"); return false; }
+    char load_reason[512];
+    sl_mod = monado_optional_library_load(path,load_reason,sizeof load_reason);
+    if (!sl_mod) { DLOG("[dlss] sl.interposer.dll unavailable: %s\n",load_reason); return false; }
 #define GET(f) p_##f = (PFun_##f *)(void *)GetProcAddress(sl_mod, #f)
     GET(slFreeResources); GET(slShutdown);
     GET(slInit); GET(slGetFeatureRequirements); GET(slSetVulkanInfo); GET(slIsFeatureSupported); GET(slGetFeatureFunction);

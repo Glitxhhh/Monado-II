@@ -81,7 +81,7 @@ bool tmp_frame_gen_wanted(void) {
     // [XCDE] with DLSS too: AMD's frame generation takes the same depth and motion vectors (prep) whichever upscaler
     // ran, and fg_frame follows either (user: frame generation with DLSS on an RTX GPU)
     return (g_settings.frame_gen || g_settings.cutscene_mode == 2) &&
-           (g_settings.upscaler == UPSCALE_FSR3 || g_settings.upscaler == UPSCALE_DLSS) && !diag_deterministic() &&
+           (g_settings.upscaler == UPSCALE_FSR3 || g_settings.upscaler == UPSCALE_DLSS || g_settings.upscaler == UPSCALE_FSR4_LITE) && !diag_deterministic() &&
            !env_int("XCDE_TMP_OFF") && ffx_load();
 }
 

@@ -17,6 +17,7 @@
 #include "fps_meter.h" // [XCDE] LINUX-094: sample real game frames, not UI presents.
 #ifdef _WIN32
 #include "fps_provider_counter.h"
+#include "../host/run_diagnostics_windows.h"
 #endif
 #include "fps_overlay_draw.h"
 #ifdef __linux__
@@ -135,6 +136,10 @@ extern "C" void fps_overlay_provider_output(uint64_t now,uint64_t count,bool ava
 }
 // Measurement continues while the overlay is hidden; no generated-rate inference.
 extern "C" void fps_overlay_diagnostics(uint64_t now,unsigned method,bool inputs_ready) {
+    double diagnostic_game=0.;bool diagnostic_ready=fps_meter_value(&fps_meter,&diagnostic_game);
+    run_diag_sample(now,g_settings.frame_gen||g_settings.cutscene_mode==2||g_settings.frame_gen_smooth_motion,
+        diagnostic_ready,diagnostic_game,fps_provider_output_available,fps_provider_counter.ready,
+        fps_provider_counter.ready?fps_provider_counter.rate:0.,fps_provider_counter.last_count,inputs_ready);
     static uint64_t logged;
     if(method!=1 || !fps_has_frame || (logged && now>=logged && now-logged<UINT64_C(2000000000)))return;
     logged=now;double game=0;bool game_ready=fps_meter_value(&fps_meter,&game);
@@ -471,7 +476,8 @@ static void ui(void) {
 #else
             if (g_settings.upscaler == UPSCALE_DLSS && !dlss_available())
                 ImGui::TextColored(ImVec4(1, 0.8f, 0.3f, 1), "%s", T("DLSS se carga al iniciar el juego: hasta reiniciar se usa FSR 3.1."));
-            if (g_settings.upscaler == UPSCALE_FSR3 || g_settings.upscaler == UPSCALE_DLSS) {
+            if (g_settings.upscaler == UPSCALE_FSR3 || g_settings.upscaler == UPSCALE_DLSS || g_settings.upscaler==UPSCALE_FSR4_LITE) {
+                if(g_settings.upscaler==UPSCALE_FSR4_LITE)ImGui::TextWrapped("%s",tmp_fsr4_status());
                 static const char *uq[] = {"Nativo (solo antialiasing)", "Calidad (67 %)", "Equilibrado (59 %)", "Rendimiento (50 %)",
                                            "Ultra rendimiento (33 %)"};
                 ImGui::Combo(T("Calidad del escalado"), &g_settings.upscale_quality, TL(uq, 5).p, 5);

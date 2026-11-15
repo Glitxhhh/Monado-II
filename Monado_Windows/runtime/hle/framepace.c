@@ -17,8 +17,8 @@
 #include "../hle.h"
 #include "../platform.h"
 #include "../settings.h"
-#ifdef __linux__
-#include "../host/run_diagnostics_linux.h"
+#ifdef _WIN32
+#include "../host/run_diagnostics_windows.h"
 #endif
 
 // [XCDE] LINUX-013: passive hooks; compile-time disabled in ordinary builds.
@@ -244,7 +244,7 @@ static void fps_interval_force(void) {
     }
     frames++;
     g_cut30 = g_settings.cutscene_mode && !ENV("XCDE_FPS_INTERVAL") && xcde_in_cutscene();
-#ifdef __linux__
+#ifdef _WIN32
     run_diag_pacing(xcde_effective_present_fps(), g_cut30);
 #endif
     // A qualified fractional cap can cross the native 30-FPS early-return
@@ -265,7 +265,14 @@ static void fps_interval_force(void) {
         }
     }
 #endif
-    if ((want < 0 && !refresh_override && !refresh_applied) || plat_now_ns() < after || frames < after_frames) return;
+    if ((want < 0 && !refresh_override && !refresh_applied) || plat_now_ns() < after || frames < after_frames) {
+#ifdef _WIN32
+        // Observe the original pair without changing its period/interval.
+        const uint32_t *native=(const uint32_t *)(uintptr_t)*(volatile uint64_t *)(uintptr_t)0x7000b92ea0ull;
+        if(native){float base=*(volatile float *)(uintptr_t)0x70009d3dccull;run_diag_limiter((int)*native,base,base);}
+#endif
+        return;
+    }
     if (frame_want < 0) frame_want = 2; // Restore a native30 override we own.
     uint32_t *p = (uint32_t *)(uintptr_t)*(volatile uint64_t *)(uintptr_t)0x7000b92ea0ull;
     if (!p) return;
@@ -295,7 +302,7 @@ static void fps_interval_force(void) {
     if (g_cut30) {
         *p = 2;  // native 30 Hz: two unscaled display periods
         refresh_applied = false;
-#ifdef __linux__
+#ifdef _WIN32
         run_diag_limiter(2, original_period, *k);
 #endif
         return;
@@ -310,7 +317,7 @@ static void fps_interval_force(void) {
     }
     *p = (uint32_t)frame_want;
     refresh_applied = refresh_override;
-#ifdef __linux__
+#ifdef _WIN32
     run_diag_limiter(frame_want, original_period, *k);
 #endif
 }

@@ -28,6 +28,7 @@ static void linux_fg_reset(void);
 #endif
 #ifdef _WIN32
 #include <windows.h>
+#include "../../platform/windows_optional_library.h"
 static void fg_reset(void);
 #endif
 #if defined(__linux__) && (defined(XCDE_LINUX_FSR3) || defined(XCDE_LINUX_FSR4))
@@ -73,8 +74,9 @@ static bool ffx_load(void) {
     const wchar_t name[]=L"amd_fidelityfx_vk.dll";
     if(!length || length+sizeof name/sizeof *name>4096)return false;
     memcpy(library+length,name,sizeof name);
-    HMODULE m=LoadLibraryExW(library,NULL,LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR|LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
-    if (!m) { LOG("[tmp] amd_fidelityfx_vk.dll not found: FSR 3 unavailable\n"); return false; }
+    char load_reason[512];
+    HMODULE m=monado_optional_library_load(library,load_reason,sizeof load_reason);
+    if (!m) { LOG("[tmp] amd_fidelityfx_vk.dll unavailable: %s\n",load_reason); return false; }
     ffx_create = (PfnFfxCreateContext)(void *)GetProcAddress(m, "ffxCreateContext");
     ffx_destroy = (PfnFfxDestroyContext)(void *)GetProcAddress(m, "ffxDestroyContext");
     ffx_dispatch = (PfnFfxDispatch)(void *)GetProcAddress(m, "ffxDispatch");
@@ -121,6 +123,7 @@ static uint32_t hist_rw, hist_rh, hist_ow, hist_oh;
 static int hist_upscaler, hist_quality, hist_provider;
 static uint64_t hist_frame, frames, t_last;
 static int active_provider = -1, active_upscaler = -1, active_quality = -1;
+static bool effective_linear; // This frame's actual provider, including FSR4 size fallback.
 static uint32_t jit_index, jit_phases = 8;
 static uint64_t snap_frame = ~0ull;
 static void history_invalidate(void) { previous.ok = false; t_last = 0; }
@@ -155,7 +158,7 @@ bool tmp_linear_output(void) {
 #if defined(__linux__) && (defined(XCDE_LINUX_FSR3) || defined(XCDE_LINUX_FSR4))
     return active_provider == 1 || active_provider == 3;
 #else
-    return false;
+    return effective_linear;
 #endif
 }
 
@@ -195,17 +198,7 @@ static void img_make(Img *d, VkFormat f, uint32_t w, uint32_t h, VkImageUsageFla
 static Img img[6];
 enum { F_COLOR = VK_FORMAT_R8G8B8A8_UNORM, F_LINEAR = VK_FORMAT_R16G16B16A16_SFLOAT, F_MV = VK_FORMAT_R16G16_SFLOAT, F_DEPTH = VK_FORMAT_R32_SFLOAT, F_MASK = VK_FORMAT_R8_UNORM };
 
-// Native Windows optional FSR4 preparation/provider is not implemented yet.
-// Preserve the saved request and select the existing checked FSR3/spatial fallback.
-bool tmp_fsr4_set_asset_dir(const char *path){(void)path;return false;}
-bool tmp_fsr4_supported(void){return false;}
-const char *tmp_fsr4_status(void){return "Native Windows FSR4 component is not prepared";}
-static bool fsr4_frame_available(void){return false;}
-static bool fsr4_size_supported(uint32_t rw,uint32_t rh,uint32_t ow,uint32_t oh){(void)rw;(void)rh;(void)ow;(void)oh;return false;}
-static void fsr4_reset(void){}
-static bool fsr4_evaluate(VkCommandBuffer cb,const Img *color,const Img *motion,const Img *depth,const Img *output,const float jitter[2],bool reset) {
-    (void)cb;(void)color;(void)motion;(void)depth;(void)output;(void)jitter;(void)reset;return false;
-}
+#include "temporal_fsr4_windows.inc"
 static int temporal_provider(uint32_t rw,uint32_t rh,uint32_t ow,uint32_t oh) {
     if(g_settings.upscaler==UPSCALE_FSR4_LITE && fsr4_frame_available() && fsr4_size_supported(rw,rh,ow,oh))return 3;
     if(use_dlss())return 2;
@@ -235,6 +228,7 @@ void tmp_reset(void) {
     hist_upscaler = hist_quality = hist_provider = 0;
     hist_frame = frames = t_last = 0;
     active_provider = active_upscaler = active_quality = -1;
+    effective_linear=false;
     game_vel = NULL;
     game_vel_frame = snap_frame = ~0ull;
     jit_index = 0;
@@ -689,6 +683,7 @@ VkImageView tmp_upscale(VkCommandBuffer cb, TexBackend *color, VkImageView color
     bool have_prev;
     uint32_t rw = color ? color->width : 0, rh = color ? color->height : 0;
     int provider=temporal_provider(rw,rh,ow,oh);
+    effective_linear=provider==3; // Native Windows FFX3 stays gamma; Lite is linear.
     uint64_t frame = renderer_present_count();
     static int reported_provider=-1;
     if(reported_provider!=provider) {

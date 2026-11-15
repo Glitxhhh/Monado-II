@@ -21,7 +21,7 @@ generated-function signatures are conservatively held out; authored source guard
 fixtures cover the public publication boundary instead.
 
 Locally linked dependencies retain their own terms. In particular, the tested
-Linux FFmpeg development packages enable GPL components; the optional NVIDIA NGX
+Linux and pinned Windows FFmpeg development packages enable GPL components; the optional NVIDIA NGX
 SDK has proprietary terms. Source releases do not redistribute those runtime
 libraries, vendor models or development sysroots. They are not approved portable
 binary bundles. Selecting a future binary dependency bundle requires a separate
@@ -97,3 +97,12 @@ see [ADR0013](Monado_Linux/docs/adr/0013-native-fsr4-linux.md). Their terms are 
 replaced by the root MIT licence. Model/shader assets are prepared locally and
 are absent from the normal source distribution. Any combined binary distribution
 must satisfy its applicable terms and corresponding-source obligations.
+
+The native Windows development transfer retains these same component boundaries.
+Its optional source-built FSR4 Lite DLL keeps the complete GPL/AMD SDK notices in
+`Monado_Windows/third_party/fsr4_native`, with exact native provenance and local
+preparation limits in `Monado_Windows/docs/WINDOWS_FSR4.md`. No model, vendor SDK
+DLL or translated capture is included. The private portable setup payload also
+contains explicitly pinned CPython/build-tool/native dependency components with
+their notices; it is not an approved public redistribution. See the native
+dependency lock and per-port notice for the actual selected licenses.

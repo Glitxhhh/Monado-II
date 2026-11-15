@@ -8,11 +8,15 @@
 #include <math.h>
 #include "nvn/vulkan/temporal.h"
 #include "nvn/framegen_policy.h"
+#include "settings.h"
 #include "ffx_api/ffx_framegeneration.h"
 #define LOG(...) ((void)0)
 static jmp_buf fatal_environment;static unsigned fatal_calls;
 #define FATAL(...) do{fatal_calls++;longjmp(fatal_environment,1);}while(0)
 VkG g_vk;
+Settings g_settings;static bool deterministic,component_loaded=true;
+bool diag_deterministic(void){return deterministic;}
+static bool ffx_load(void){return component_loaded;}
 typedef struct {TexBackend b;VkImageView v;} Img;
 static Img img[6],fg_hl;
 static bool fg_active,fg_inputs_ready,fg_hl_ok;
@@ -34,6 +38,10 @@ static ffxReturnCode_t ffx_configure(ffxContext *ctx,const ffxConfigureDescHeade
 static ffxReturnCode_t ffx_dispatch(ffxContext *ctx,const ffxDispatchDescHeader *p){assert(ctx&&p);calls++;if(p->type==FFX_API_DISPATCH_DESC_TYPE_FRAMEGENERATION_PREPARE){const struct ffxDispatchDescFrameGenerationPrepare *d=(const void*)p;assert(d->depth.resource==&img[2]&&d->motionVectors.resource==&img[1]);assert(d->renderSize.width==640&&d->renderSize.height==360);assert(d->frameTimeDelta==16.f);prepares++;return prepare_result;}return dispatch_result;}
 #include "fg_qualification_source.h"
 int main(void){
+ g_settings.frame_gen=true;
+ for(int up=UPSCALE_BILINEAR;up<=UPSCALE_FSR4_LITE;up++){g_settings.upscaler=up;assert(tmp_frame_gen_wanted()==(up==UPSCALE_FSR3||up==UPSCALE_DLSS||up==UPSCALE_FSR4_LITE));}
+ deterministic=true;assert(!tmp_frame_gen_wanted());deterministic=false;component_loaded=false;assert(!tmp_frame_gen_wanted());component_loaded=true;
+ g_settings.frame_gen=false;assert(!tmp_frame_gen_wanted());
  ffxContext context=(void*)1;ffxDispatchDescFrameGeneration p={.frameID=5,.numGeneratedFrames=1};
  assert(!tmp_fg_inputs_ready());fg_active=fg_inputs_ready=true;fg_frame_id=6;
  assert(!tmp_fg_inputs_ready());assert(fg_dispatch_cb(&p,&context)==FFX_API_RETURN_OK&&calls==1);assert(tmp_fg_inputs_ready());

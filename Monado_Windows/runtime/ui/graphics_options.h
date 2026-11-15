@@ -9,7 +9,7 @@ static const char *const menu_upscale_names[] = {
 #if !defined(__linux__) || defined(XCDE_LINUX_DLSS)
     "NVIDIA DLSS (temporal, RTX)",
 #endif
-#if defined(__linux__) && defined(XCDE_LINUX_FSR4)
+#if defined(_WIN32) || (defined(__linux__) && defined(XCDE_LINUX_FSR4))
     "AMD FSR4 Lite (experimental)",
 #endif
 };
@@ -21,7 +21,7 @@ static const int menu_upscale_values[] = {
 #if !defined(__linux__) || defined(XCDE_LINUX_DLSS)
     UPSCALE_DLSS,
 #endif
-#if defined(__linux__) && defined(XCDE_LINUX_FSR4)
+#if defined(_WIN32) || (defined(__linux__) && defined(XCDE_LINUX_FSR4))
     UPSCALE_FSR4_LITE,
 #endif
 };

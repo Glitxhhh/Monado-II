@@ -13,8 +13,8 @@
 #ifdef _WIN32
 #include "settings_transaction_windows.h"
 #endif
-#ifdef __linux__
-#include "run_diagnostics_linux.h"
+#ifdef _WIN32
+#include "run_diagnostics_windows.h"
 #endif
 
 const char *const g_language_codes[N_LANGUAGES] = {"", "ja", "en-US", "fr", "de", "it", "es", "zh-CN", "ko", "nl", "pt", "ru"};
@@ -114,7 +114,11 @@ static void settings_load_values(void) {
 #undef RESET_CHEAT
     g_settings.cheat_no_fall_damage = false;
     // test runs (hidden window, deterministic, scripted input) ignore the player's settings unless XCDE_INI names a file
-    if (!getenv("XCDE_INI") && (getenv("LARECOMP_HIDDEN") || getenv("XCDE_DETERMINISTIC") || getenv("XCDE_INPUT_REPLAY"))) return;
+    bool ignored = !getenv("XCDE_INI") && (getenv("LARECOMP_HIDDEN") || getenv("XCDE_DETERMINISTIC") || getenv("XCDE_INPUT_REPLAY"));
+#ifdef _WIN32
+    run_diag_requested_file(ini_path(), ignored);
+#endif
+    if (ignored) return;
 #ifdef _WIN32
     int descriptor = ws_open(ini_path(), O_RDONLY);
     FILE *f = descriptor < 0 ? NULL : _fdopen(descriptor, "rb");
@@ -232,7 +236,7 @@ static void settings_load_values(void) {
 
 void settings_load(void) {
     settings_load_values();
-#ifdef __linux__
+#ifdef _WIN32
     // [XCDE] LINUX-099: report parsed/fallback defaults even when input is
     // missing or intentionally ignored. This never rewrites the settings file.
     run_diag_settings("settings-loaded");

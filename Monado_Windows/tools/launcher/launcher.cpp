@@ -494,6 +494,12 @@ static TList TL(const char *const *a, int n) { TList t{}; for (int i = 0; i < n 
 static std::string g_root;  // Profile state: settings, targets, saves, caches and logs.
 #ifdef _WIN32
 static std::string g_runtime_root; // Authored executable/dependencies remain adjacent to launcher.
+static std::string g_fsr4_assets,g_fsr4_component;
+static std::vector<std::wstring> windows_game_arguments(bool precompile) {
+    std::vector<std::wstring> args;
+    if(!g_fsr4_assets.empty())args={L"--fsr4-assets",monado_launcher_windows::wide(g_fsr4_assets),L"--fsr4-component",monado_launcher_windows::wide(g_fsr4_component)};
+    if(precompile)args.push_back(L"--precompile");args.push_back(L"targets");return args;
+}
 #endif
 #ifdef __linux__
 static bool g_fsr3_available, g_fsr4_available;
@@ -719,7 +725,7 @@ static bool pc_running();
 static void launch() {
     if(g_game_proc || pc_running()) {g_status="A game or shader preparation is already running.";return;}
     if(!save()){g_status=T("No se pudo escribir xcde.ini");return;}
-    g_game_proc=monado_launcher_windows::start(g_runtime_root,g_root,{L"targets"},"build/last_game.log");
+    g_game_proc=monado_launcher_windows::start(g_runtime_root,g_root,windows_game_arguments(false),"build/last_game.log");
     if(!g_game_proc){g_status="Could not start the game (Windows error "+std::to_string(GetLastError())+").";return;}
     g_status="Game running. Settings reload when it exits. Log: build/last_game.log";
     g_launched_ok=true;
@@ -776,7 +782,7 @@ static void pc_start(bool then_play) {
     if(g_pc_proc || g_game_proc)return;
     CreateDirectoryW(monado_launcher_windows::wide(path("cache")).c_str(),nullptr);
     DeleteFileW(monado_launcher_windows::wide(path("cache/precompile_progress.txt")).c_str());
-    g_pc_proc=monado_launcher_windows::start(g_runtime_root,g_root,{L"--precompile",L"targets"},"build/last_precompile.log",BELOW_NORMAL_PRIORITY_CLASS);
+    g_pc_proc=monado_launcher_windows::start(g_runtime_root,g_root,windows_game_arguments(true),"build/last_precompile.log",BELOW_NORMAL_PRIORITY_CLASS);
     if(!g_pc_proc){g_status="Could not start shader preparation (Windows error "+std::to_string(GetLastError())+").";return;}
     g_pc_then_play=g_pc_play_now=false;g_pc_frac=0;
     g_pc_text="Scanning shader files...";g_status="Preparing shaders. The game will not start automatically.";
@@ -974,7 +980,7 @@ static void tab_graphics() {
 #endif
     ImGui::TextDisabled("%s", T("El juego original renderiza a 720p. Más resolución = imagen más nítida y más carga para la GPU."));
     const char *ups[] = {"Bilineal (suave)", "AMD FSR 1.0 (nítido)", "AMD FSR 3.1 (temporal, cualquier GPU)",
-                         "NVIDIA DLSS (temporal, GPU RTX)"};
+                         "NVIDIA DLSS (temporal, GPU RTX)", "AMD FSR4 Lite (local models, experimental)"};
     ImGui::SetNextItemWidth(320 * g_scale);
 #ifdef __linux__
     const bool have_dlss = linux_dlss_packaged();
@@ -1055,7 +1061,7 @@ static void tab_graphics() {
     ImGui::PopTextWrapPos();
 #else
     int previous_upscaler=g.upscaler;
-    if (launcher_theme::combo(T("Escalado / antialiasing"), &g.upscaler, TL(ups, 4).p, 4) && g.upscaler==3 && previous_upscaler!=3) g.uquality=0;
+    if (launcher_theme::combo(T("Escalado / antialiasing"), &g.upscaler, TL(ups, 5).p, 5) && g.upscaler==3 && previous_upscaler!=3) g.uquality=0;
     ImGui::SetItemTooltip("%s", T("FSR 1.0: escalado espacial, solo cuando la resolución interna es menor que la ventana.\n"
                           "FSR 3.1 y DLSS: reconstrucción temporal - renderizan a menos resolución (según la calidad)\n"
                           "y reconstruyen la imagen de la ventana con varios frames: más FPS y bordes sin dientes.\n"
@@ -1085,6 +1091,13 @@ static void tab_graphics() {
     } else {
         ImGui::TextDisabled("%s", T("Se aplica cuando la resolución interna es menor que la ventana."));
     }
+    if(g.upscaler==4) {
+        ImGui::TextWrapped("%s",g_fsr4_assets.empty()?"FSR4 Lite is unavailable: no explicit verified local models/component were supplied. Existing FSR3/spatial fallback is retained; your preference is preserved.":"Local FSR4 paths were supplied. Runtime validates all four Lite sets, component identity, GPU features and each dispatch; failures retain the existing fallback.");
+    }
+    ImGui::BeginDisabled();ImGui::Button("Prepare FSR4 Lite (optional)");ImGui::EndDisabled();
+    ImGui::TextWrapped("Native capture/translation preparation is not implemented. Build the optional source component and explicitly import previously prepared local models using tools/setup_windows_fsr4.py. No models are downloaded or selected automatically.");
+    if(ImGui::Button("NVIDIA Smooth Motion setup help"))SDL_OpenURL("https://nvidia.custhelp.com/app/answers/detail/a_id/5621");
+    ImGui::TextWrapped("Smooth Motion is configured per program in NVIDIA App. This launcher does not change driver settings. Generated/output identities are unavailable from a supported native API; keep integrated generation off when using external generation.");
 #endif
     launcher_theme::section(T("Calidad"));
     launcher_theme::checkbox(T("Antialiasing SMAA"), &g.smaa);
@@ -1560,6 +1573,7 @@ int main(int argc, char **argv) {
     monado_launcher_windows::Options options;
     std::string profile_error;
     if(!monado_launcher_windows::parse_options(arguments,options,profile_error)) {fprintf(stderr,"%s\n",profile_error.c_str());return 2;}
+    g_fsr4_assets=options.fsr4_assets;g_fsr4_component=options.fsr4_component;
     monado_launcher_windows::ProfileLease profile_lease;
     if(!profile_lease.acquire(options.profile.empty()?g_runtime_root:options.profile,g_root,profile_error)) {
         fprintf(stderr,"%s\n",profile_error.c_str());return 2;

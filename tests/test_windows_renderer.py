@@ -6,6 +6,7 @@ import os
 import re
 import sys
 import unittest
+sys.path.insert(0,str(Path(__file__).resolve().parent))
 from native_renderer_support import ROOT, PORT, compiler_command, compiler_environment, binary_name, native_flags, graphics_prefix
 
 class RendererNativeContracts(unittest.TestCase):
@@ -13,7 +14,7 @@ class RendererNativeContracts(unittest.TestCase):
         if PORT.name!="Monado_Windows":
             self.skipTest("Native Windows FidelityFX adapter")
         source=(PORT/"runtime/nvn/vulkan/temporal_fg.inc").read_text(encoding="utf8")
-        body="\n".join(extract(source,name) for name in ["fg_reset","tmp_fg_inputs_ready","fg_dispatch_cb","fg_frame"])
+        body="\n".join(extract(source,name) for name in ["tmp_frame_gen_wanted","fg_reset","tmp_fg_inputs_ready","fg_dispatch_cb","fg_frame"])
         result=self.graphics_fixture("fg-qualification","test_fg_qualification_windows.c",{"fg_qualification_source.h":body})
         self.assertIn("PASS actual native FG",result)
 
@@ -135,6 +136,7 @@ static void fg_reset(void){} // SDK-owned FG boundary is qualified in its separa
 static TmpCamera previous;static uint32_t hist_rw,hist_rh,hist_ow,hist_oh;
 static int hist_upscaler,hist_quality,hist_provider;static uint64_t hist_frame,frames,t_last;
 static int active_provider=-1,active_upscaler=-1,active_quality=-1;
+static bool effective_linear;
 static uint32_t jit_index,jit_phases=8;static uint64_t snap_frame=~0ull,game_vel_frame=~0ull,fsr_ring[4];
 static unsigned fsr_slot;static TexBackend *game_vel;
 """

@@ -54,6 +54,13 @@ corresponding-source obligations.
 
 ## Optional vendor binaries (not redistributed; each user downloads them)
 
+The optional native Windows FSR4 Lite component retains GPL-2.0-or-later and the
+complete AMD SDK notice in `third_party/fsr4_native`. Its MIT API header does not
+relicense the backend. Combined distribution requires applicable GPL terms and
+corresponding combined source/build scripts; dynamic linking is no exemption.
+No model, vendor SDK DLL, capture or translated shader is included in source.
+See `docs/WINDOWS_FSR4.md` for exact provenance and current preparation limits.
+
 | Component | Use |
 |---|---|
 | AMD FidelityFX SDK 1.1.4 signed DLL (`amd_fidelityfx_vk.dll`) | FSR 3.1 upscaling and frame generation |

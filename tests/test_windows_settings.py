@@ -22,6 +22,7 @@ class WindowsSettings(unittest.TestCase):
             built = subprocess.run([python, '-m', 'ziglang', 'cc', '-std=gnu11', '-O1', '-UNDEBUG',
                 '-Wall', '-Wextra', '-Werror', '-Wno-unused-function', '-ffp-contract=off',
                 str(PORT / 'tests/native/test_settings_windows.c'), str(PORT / 'runtime/host/settings_ini.c'),
+                str(PORT / 'runtime/host/run_diagnostics_windows.c'), '-lbcrypt', '-ladvapi32',
                 '-o', str(out)], env=env, capture_output=True, text=True, timeout=120)
             self.assertEqual(built.returncode, 0, built.stdout + built.stderr)
             ran = subprocess.run([out, directory], env=env, capture_output=True, text=True, timeout=30)
