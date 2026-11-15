@@ -8,7 +8,7 @@ The frontend invokes the cached `python/python.exe` with `-I -S -B` and
 `setup/bootstrap_windows.py` with these arguments:
 
 ```
---action build|resume|adopt|locate-input|check-update|update|prepare-fsr4|select-fsr4|build-fsr4-tools|select-providers
+--action build|resume|adopt|locate-input|check-update|update|prepare-fsr4|select-fsr4|build-fsr4-tools|select-providers|download-dlss
 --cache ABSOLUTE_CACHE
 --payload-sha256 OUTER_PAYLOAD_SHA256
 --manifest-sha256 PAYLOAD_MANIFEST_SHA256
@@ -37,6 +37,13 @@ permission to execute a file from an installation that a user may have edited.
 
 Progress consists of UTF-8 JSONL records of at most 64 KiB. Each record has
 `phase`, integer `done` and `total`, `message`, `status`, `installation` and `log`.
+The explicit `download-dlss` action ends with `status=download-ready` and
+`downloaded_sdk` pointing to a private unselected review directory. It never
+starts a compiler, changes the registry or selects a provider. The native UI
+must review the supplied NVIDIA agreements and receive Use before passing that
+source to the ordinary fresh-build/provider action; Cancel preserves the prior
+selection and the downloaded review files. The fixed official URL, archive size
+and SHA256 are authored in `windows_dlss_download.py`, never caller supplied.
 Successful checked results may additionally return `launcher`, `profile` and
 `launcher_args`, the exact pair `['--profile-root', ABSOLUTE_PROFILE]`, optionally
 followed by `['--fsr4-assets', VERIFIED_ASSETS, '--fsr4-component', VERIFIED_DLL]`.

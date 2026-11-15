@@ -1,14 +1,19 @@
 # Optional local Windows providers
 
 The portable manager accepts an explicitly selected local FidelityFX or
-Streamline SDK folder. It does not download these SDKs, install a driver or
-accept an agreement. Defaults remain unchanged. Selecting a provider does not
+Streamline SDK folder. Its NVIDIA setup action also offers an explicit download
+of pinned official Streamline 2.14.16, followed by exact local license review.
+Download alone never authorizes staging or activation. It does not install a driver
+or accept an agreement silently. Defaults remain unchanged. Selecting a provider does not
 enable an upscaler or frame generation.
 
 FidelityFX uses `amd_fidelityfx_vk.dll` with the five Vulkan API entry points
 used by this runtime. The accepted native API is the SDK 1.1.4 Vulkan API;
 newer DirectX-only SDK DLLs are not substitutes. Streamline uses
 `sl.interposer.dll`, `sl.common.dll`, `sl.dlss.dll` and `nvngx_dlss.dll` together.
+The 2.14.16 common module delay-imports `NvLowLatencyVk.dll`; that exact dependency
+and `reflex.license.txt` are required for this SDK. A merely present unimported
+helper does not enter the staged closure.
 Choose the SDK root or one flat folder containing these DLLs and their licenses.
 Recognized SDK binary subfolders are `bin`, `bin/x64` and `bin/x64/production`.
 Ambiguous duplicate copies are refused.
@@ -18,6 +23,9 @@ Streamline additionally requires `nvngx_dlss.license.txt`. Read that NVIDIA
 license before choosing Build or Apply: use of the DLSS SDK can accept its
 agreement. Monado does not accept it on your behalf. Streamline's own license
 does not replace the separate DLSS license.
+When the low-latency helper is imported, its separate NVIDIA agreement is shown
+alongside the RTX license; explicit Use covers both listed agreements. Its
+Windows-1252 text is previewed without modifying the original licensed bytes.
 
 The manager checks ordinary current-user-owned files and every ancestor, AMD64
 PE DLL format, required exports, normal and delayed imports and exact content

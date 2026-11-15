@@ -40,6 +40,7 @@
 #include "windows_precompile.h"
 #include "windows_report.h"
 #include "windows_gpu_probe.h"
+#include "windows_provider_status.h"
 #include "../../runtime/host/settings_transaction_windows.h"
 #endif
 #include "../../runtime/ui/quality_controls_linux.h" // shared portable quality UI
@@ -1075,6 +1076,11 @@ static void tab_graphics() {
 #else
     int previous_upscaler=g.upscaler;
     if (launcher_theme::combo(T("Escalado / antialiasing"), &g.upscaler, TL(ups, 5).p, 5) && g.upscaler==3 && previous_upscaler!=3) g.uquality=0;
+    if(g.upscaler==3){
+        static std::string checked_root,files_status;static Uint64 checked_at=0;
+        Uint64 now=SDL_GetTicks();if(checked_root!=g_runtime_root||files_status.empty()||now-checked_at>=1000){checked_root=g_runtime_root;checked_at=now;files_status=monado_provider_status::dlss(g_runtime_root);}
+        ImGui::TextWrapped("Requested: NVIDIA DLSS. %s",files_status.c_str());
+    }
     ImGui::SetItemTooltip("%s", T("FSR 1.0: escalado espacial, solo cuando la resolución interna es menor que la ventana.\n"
                           "FSR 3.1 y DLSS: reconstrucción temporal - renderizan a menos resolución (según la calidad)\n"
                           "y reconstruyen la imagen de la ventana con varios frames: más FPS y bordes sin dientes.\n"

@@ -107,6 +107,9 @@ double output_scale_dynamic_factor(void) { return g_dyn; }
 // textures are 1280x720, so with 1080 as the base a 720p window rendered everything (scene and HUD) at 853x480 and
 // scaled it up. The NVN window's texture size sets it (nvnWindowInitialize); 1920x1080 until then.
 static double g_base_w = 1920.0, g_base_h = 1080.0;
+void output_scale_base(uint32_t *width,uint32_t *height) {
+    *width=(uint32_t)g_base_w;*height=(uint32_t)g_base_h;
+}
 void output_scale_set_base(int w, int h) {
     if (w <= 0 || h <= 0 || (g_base_w == w && g_base_h == h)) return;
     g_base_w = w, g_base_h = h;

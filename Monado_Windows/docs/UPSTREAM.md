@@ -115,6 +115,13 @@ found Windows UCRT `fma` returning NaN for finite operands at the supported
 x86-64-v2 baseline. Runtime and locally built game DLL each link this helper
 so compiler-lowered fused operations keep correct rounding without requiring
 new CPU features. The zero-addend path preserves an underflowed product's sign.
+An authored runtime dispatch now checks CPU FMA/AVX/XSAVE/OSXSAVE and enabled
+XMM/YMM operating-system state before using scalar FMA3 for normal finite inputs
+and results. Exceptional, zero and subnormal cases retain the software path;
+the translation unit and executable remain at the strict x86-64-v2 baseline.
+Native differential checks cover rounding modes, exception flags, FTZ/DAZ,
+concurrent first dispatch and both execution paths. A helper benchmark does not
+establish a game performance improvement.
 
 ## Temporal, feedback and aspect correctness
 
@@ -124,8 +131,31 @@ The Windows Streamline and FidelityFX DLL/API paths remain native; Linux syscall
 NGX and model-preparation adapters were not substituted. World-space camera cuts,
 finite motion inputs, reactive HUD separation, successful evaluation continuity,
 zero sharpening and complete feedback snapshots retain the accepted policies.
-Native feedback-loop use remains disabled pending a qualified feature enable;
-the complete per-subresource snapshot fallback is active.
+Native feedback-loop use checks both the advertised extension and its actual
+feature bit, enables both together and retains the complete per-subresource
+snapshot fallback otherwise. An authored native Vulkan fixture compares changing
+inputs through both paths with exact pixel readbacks, including a clear before
+sampling. This establishes the component contract on the tested GPU, not a
+gameplay or performance pass.
+
+The Windows scene-camera eligibility and depth-disabled world-draw jitter
+contract additionally references the MIT Monado-Reborn implementation at commit
+`3428bb323043477d522c4bb00dfa9fbcc4f13e86`,
+`runtime/nvn/vulkan/exec.c`, retaining Peiikai/Monado contributors' attribution.
+Local authored policy compares current finite camera contents rather than only
+buffer addresses, and expresses jitter as one normalized offset converted to
+each actual draw and final input grid. The no-jitter diagnostic suppresses both
+drawn and declared offsets. These are Windows correctness adaptations; the
+accepted Linux reference is preserved.
+
+The native Streamline adapter validation, required exports, queue requirements
+and manually hooked Win32 surface follow the same narrowly selected MIT
+Monado-Reborn commit's `runtime/nvn/vulkan/dlss.cpp`. Windows keeps its checked
+local DLL loader, provider lifecycle and supported FidelityFX/Streamline APIs.
+DLSS readiness requires the selected adapter, complete device proxy set and
+checked hooked surface; staging a DLL is not an activation result. Native
+authored SDK failure fixtures and actual vendor/GPU evaluation are separate
+evidence categories.
 
 `nvn/vulkan/host_import.[ch]` transfers the accepted portable LINUX-005 checked
 Vulkan import contract: external-buffer capability and pointer/buffer memory-type

@@ -43,7 +43,12 @@ void append_provider_arguments(std::vector<std::wstring> &args,const std::wstrin
     if(!providers.fidelityfx.empty())args.insert(args.end(),{L"--fidelityfx",providers.fidelityfx});
     if(!providers.streamline.empty())args.insert(args.end(),{L"--streamline",providers.streamline});
 }
-struct Event {std::wstring message,status,installation,launcher,log,fsr4_sdk,fsr4_tools,fsr4_component,fsr4_archives,fsr4_support,fsr4_cmake,fsr4_ninja,fsr4_compiler,fsr4_vulkan_prefix,provider_fidelityfx,provider_streamline;std::vector<std::wstring> arguments;uint64_t done=0,total=0;bool complete=false,open_settings=false;DWORD exit=0;};
+struct Event {std::wstring message,status,installation,launcher,log,fsr4_sdk,fsr4_tools,fsr4_component,fsr4_archives,fsr4_support,fsr4_cmake,fsr4_ninja,fsr4_compiler,fsr4_vulkan_prefix,provider_fidelityfx,provider_streamline,downloaded_sdk;std::vector<std::wstring> arguments;uint64_t done=0,total=0;bool complete=false,open_settings=false;DWORD exit=0;};
+template<class Review> bool authorize_download(const Event &result,ProviderSelection &selection,Review review){
+    if(result.status!=L"download-ready"||result.downloaded_sdk.empty())return false;
+    auto license=review(result.downloaded_sdk);if(!license)return false;
+    selection.dlss_license=std::move(license);selection.streamline=result.downloaded_sdk;return true;
+}
 bool action_opens_settings(const std::wstring &action,bool startup){return (action==L"resume"||action==L"adopt"||action==L"locate-input")&&!(startup&&manage_mode);}
 template<class Open,class Minimize> bool finish_checked_settings(Event &result,Open open,Minimize minimize){
     if(!result.open_settings||result.launcher.empty()||result.status!=L"success")return false;
@@ -84,7 +89,7 @@ struct Json {
 };
 uint64_t number(const std::map<std::string,std::string>&v,const char *key){auto i=v.find(key);if(i==v.end()||i->second.empty()||i->second=="null")return 0;uint64_t r=0;for(char c:i->second){if(c==' ')continue;require(c>='0'&&c<='9'&&r<=1000000000,"Invalid setup progress count");r=r*10+c-'0';}return r;}
 std::wstring field(const std::map<std::string,std::string>&v,const char *key){auto i=v.find(key);return i==v.end()||i->second=="null"?L"":wide(i->second);}
-Event parse(const std::string &line){Json parser{line};auto v=parser.object();Event e;e.arguments=std::move(parser.arguments);e.message=field(v,"message");if(e.message.empty())e.message=field(v,"phase");e.status=field(v,"status");e.installation=field(v,"installation");e.launcher=field(v,"launcher");e.log=field(v,"log");e.done=number(v,"done");e.total=number(v,"total");e.fsr4_sdk=field(v,"fsr4_sdk");e.fsr4_tools=field(v,"fsr4_tools");e.fsr4_component=field(v,"fsr4_component");e.fsr4_archives=field(v,"fsr4_archives");e.fsr4_support=field(v,"fsr4_support");e.fsr4_cmake=field(v,"fsr4_cmake");e.fsr4_ninja=field(v,"fsr4_ninja");e.fsr4_compiler=field(v,"fsr4_compiler");e.fsr4_vulkan_prefix=field(v,"fsr4_vulkan_prefix");e.provider_fidelityfx=field(v,"provider_fidelityfx");e.provider_streamline=field(v,"provider_streamline");return e;}
+Event parse(const std::string &line){Json parser{line};auto v=parser.object();Event e;e.arguments=std::move(parser.arguments);e.message=field(v,"message");if(e.message.empty())e.message=field(v,"phase");e.status=field(v,"status");e.installation=field(v,"installation");e.launcher=field(v,"launcher");e.log=field(v,"log");e.done=number(v,"done");e.total=number(v,"total");e.fsr4_sdk=field(v,"fsr4_sdk");e.fsr4_tools=field(v,"fsr4_tools");e.fsr4_component=field(v,"fsr4_component");e.fsr4_archives=field(v,"fsr4_archives");e.fsr4_support=field(v,"fsr4_support");e.fsr4_cmake=field(v,"fsr4_cmake");e.fsr4_ninja=field(v,"fsr4_ninja");e.fsr4_compiler=field(v,"fsr4_compiler");e.fsr4_vulkan_prefix=field(v,"fsr4_vulkan_prefix");e.provider_fidelityfx=field(v,"provider_fidelityfx");e.provider_streamline=field(v,"provider_streamline");e.downloaded_sdk=field(v,"downloaded_sdk");return e;}
 std::wstring unique(){GUID g{};require(SUCCEEDED(CoCreateGuid(&g)),"Cannot create setup request identity");wchar_t b[40];StringFromGUID2(g,b,40);return b;}
 std::vector<wchar_t> clean_environment(){
     wchar_t *block=GetEnvironmentStringsW();require(block!=nullptr,"Cannot read setup process environment");std::vector<std::wstring> values;
@@ -161,7 +166,7 @@ void backend(std::wstring action,std::wstring selected_input,std::wstring select
             Handle progress_file(CreateFileW(progress.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
             if(progress_file.value!=INVALID_HANDLE_VALUE){LARGE_INTEGER size{};require(GetFileSizeEx(progress_file.value,&size)&&size.QuadPart>=0&&(uint64_t)size.QuadPart<=64*1024*1024,"Setup progress exceeded its bounded log");require((uint64_t)size.QuadPart>=position,"Setup progress log changed unexpectedly");seek(progress_file.value,position);uint64_t available=(uint64_t)size.QuadPart-position;
                 while(available){size_t n=(size_t)std::min<uint64_t>(available,4096);std::string chunk(n,0);read(progress_file.value,chunk.data(),n);pending+=chunk;position+=n;available-=n;require(pending.size()<=65536,"Setup progress line exceeded its limit");size_t end;
-                    while((end=pending.find('\n'))!=std::string::npos){auto line=pending.substr(0,end);pending.erase(0,end+1);if(line.empty())continue;auto e=parse(line);if(e.status==L"success"||e.status==L"error"||e.status==L"cancelled"||e.status==L"needs-setup"||e.status==L"needs-input"||e.status==L"up-to-date"||e.status==L"update-available"){final=e;final_seen=true;}event(new Event(e));}
+                    while((end=pending.find('\n'))!=std::string::npos){auto line=pending.substr(0,end);pending.erase(0,end+1);if(line.empty())continue;auto e=parse(line);if(e.status==L"success"||e.status==L"error"||e.status==L"cancelled"||e.status==L"needs-setup"||e.status==L"needs-input"||e.status==L"up-to-date"||e.status==L"update-available"||e.status==L"download-ready"){final=e;final_seen=true;}event(new Event(e));}
                 }
             }
             require(GetExitCodeProcess(process.value,&exit),"Cannot inspect setup process");if(exit==STILL_ACTIVE)WaitForSingleObject(process.value,100);else{if(drained)break;drained=true;}
@@ -191,7 +196,7 @@ LRESULT CALLBACK procedure(HWND h,UINT message,WPARAM w,LPARAM l){
             make(L"BUTTON",L"Prepare FSR4 Lite (optional)\u2026",WS_TABSTOP,435,233,285,34,FSR4_PREPARE);
             make(L"BUTTON",L"Use an existing installation\u2026",WS_TABSTOP,20,279,225,30,ADOPT);make(L"BUTTON",L"Locate game files\u2026",WS_TABSTOP,255,279,180,30,LOCATE);make(L"BUTTON",L"Check for updates",WS_TABSTOP,445,279,170,30,UPDATES);make(L"BUTTON",L"Update",WS_TABSTOP,625,279,95,30,APPLY_UPDATE);
             make(L"BUTTON",L"Build optional FSR4 preparation tools\u2026",WS_TABSTOP,20,320,340,30,FSR4_TOOLS);
-            make(L"BUTTON",L"Use local NVIDIA DLSS SDK\u2026",WS_TABSTOP,20,361,340,30,DLSS_SDK);make(L"BUTTON",L"Use local AMD FSR3 SDK\u2026",WS_TABSTOP,370,361,350,30,FFX_SDK);
+            make(L"BUTTON",L"Set up NVIDIA DLSS\u2026",WS_TABSTOP,20,361,340,30,DLSS_SDK);make(L"BUTTON",L"Use local AMD FSR3 SDK\u2026",WS_TABSTOP,370,361,350,30,FFX_SDK);
             phase=make(L"STATIC",L"Starting portable setup",0,20,403,700,25);bar=make(PROGRESS_CLASSW,L"",PBS_MARQUEE,20,434,700,20);
             details=make(L"EDIT",L"",WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL,20,467,700,185);controls(true);return 0;
         }
@@ -202,6 +207,7 @@ LRESULT CALLBACK procedure(HWND h,UINT message,WPARAM w,LPARAM l){
             else if(id==FSR4_PREPARE&&!current_install.empty()&&!busy.load()&&monado_preparation::choose(window,fsr4_selection))launch_action(L"prepare-fsr4");
             else if(id==FSR4_TOOLS&&!current_install.empty()&&!busy.load()&&monado_preparation::choose_tools(window,fsr4_tool_selection,false))launch_action(L"build-fsr4-tools");
             else if((id==DLSS_SDK||id==FFX_SDK)&&!busy.load()){
+                if(id==DLSS_SDK){auto choice=monado_provider_ui::source_choice(window);if(choice==monado_provider_ui::SourceChoice::cancel)return 0;if(choice==monado_provider_ui::SourceChoice::download){launch_action(L"download-dlss");return 0;}}
                 auto &selected=id==DLSS_SDK?provider_selection.streamline:provider_selection.fidelityfx;
                 auto chosen=selected;if(monado_preparation::pick(window,chosen,id==DLSS_SDK?L"Choose your local NVIDIA Streamline SDK or complete DLL folder":L"Choose your local AMD FidelityFX SDK or complete DLL folder",true)){
                     if(id==DLSS_SDK){auto license=monado_provider_ui::choose(window,chosen);if(!license)return 0;provider_selection.dlss_license=std::move(license);}
@@ -217,7 +223,13 @@ LRESULT CALLBACK procedure(HWND h,UINT message,WPARAM w,LPARAM l){
             if(!e->fsr4_sdk.empty())fsr4_selection.sdk=e->fsr4_sdk;if(!e->fsr4_tools.empty())fsr4_selection.tools=e->fsr4_tools;if(!e->fsr4_component.empty())fsr4_selection.component=e->fsr4_component;if(!e->fsr4_archives.empty())fsr4_tool_selection.archives=e->fsr4_archives;if(!e->fsr4_support.empty())fsr4_tool_selection.support=e->fsr4_support;if(!e->fsr4_cmake.empty())fsr4_tool_selection.cmake=e->fsr4_cmake;if(!e->fsr4_ninja.empty())fsr4_tool_selection.ninja=e->fsr4_ninja;if(!e->fsr4_compiler.empty())fsr4_tool_selection.compiler=e->fsr4_compiler;if(!e->fsr4_vulkan_prefix.empty())fsr4_tool_selection.vulkan_prefix=e->fsr4_vulkan_prefix;
             if(message==FINISHED){busy=false;if(e->status==L"update-available")update_available=true;else if(e->status==L"up-to-date"||e->status==L"success")update_available=false;controls(true);SendMessageW(bar,PBM_SETMARQUEE,FALSE,0);if(!e->log.empty())append(L"Log: "+e->log);
                 if(bootstrap_fixture){fixture_exit=e->status==L"needs-setup"?0:1;if(fixture_exit)fwprintf(stderr,L"Portable bootstrap fixture: %ls\n",e->message.c_str());DestroyWindow(window);}
-                else{if(!closing.load()&&finish_checked_settings(*e,start_settings,[]{SetWindowTextW(phase,L"Settings opened. Restore this window to manage builds, providers and updates.");ShowWindow(window,SW_MINIMIZE);})){append(L"Management remains available in the taskbar. Open settings again only when requested.");}if(closing.load())DestroyWindow(window);}}
+                else{if(!closing.load()&&e->status==L"download-ready"&&!e->downloaded_sdk.empty()){
+                        if(authorize_download(*e,provider_selection,[](const std::wstring &source){return monado_provider_ui::choose(window,source);})){
+                            if(!current_install.empty())launch_action(L"select-providers");
+                            else SetWindowTextW(phase,L"DLSS source authorized; choose your game and installation folders, then Build.");
+                        }else{SetWindowTextW(phase,L"SDK downloaded but not selected. Your current runtime and settings are unchanged.");append(L"License review cancelled. Download preserved at "+e->downloaded_sdk);}
+                    }
+                    if(!closing.load()&&finish_checked_settings(*e,start_settings,[]{SetWindowTextW(phase,L"Settings opened. Restore this window to manage builds, providers and updates.");ShowWindow(window,SW_MINIMIZE);})){append(L"Management remains available in the taskbar. Open settings again only when requested.");}if(closing.load())DestroyWindow(window);}}
             return 0;
         }
         if(message==WM_CLOSE){if(busy.load()){closing=true;SendMessageW(window,WM_COMMAND,CANCEL,0);SetWindowTextW(phase,L"Cancelling owned setup work before closing\u2026");return 0;}DestroyWindow(h);return 0;}
@@ -236,9 +248,14 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show){
         int result=0;try{Handle f(CreateFileW(argv[2],GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));require(f.value!=INVALID_HANDLE_VALUE,"Missing authored payload fixture");auto p=inspect(f.value);materialize(f.value,p,argv[3]);}catch(...){result=1;}LocalFree(argv);CoUninitialize();return result;
     }
     if(argc==3&&!wcscmp(argv[1],L"--hidden-license-fixture")){
-        int result=1;try{int shown=0,opened=0;auto license=monado_provider_ui::confirm(argv[2],[&](const std::wstring &path,const std::wstring &text){require(path.find(L"nvngx_dlss.license.txt")!=std::wstring::npos&&text==L"Authored license fixture; no vendor terms or SDK use.\n","Authored license text changed");return ++shown==1?101:100;},[&](const std::wstring &){++opened;});
-            require(license&&shown==2&&opened==1,"Only explicit Use may select the SDK");Handle changed(CreateFileW(native(license->path).c_str(),GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr));require(changed.value==INVALID_HANDLE_VALUE&&GetLastError()==ERROR_SHARING_VIOLATION,"Reviewed license must remain leased through provider staging");
-            auto cancelled=monado_provider_ui::confirm(argv[2],[](const std::wstring&,const std::wstring&){return IDCANCEL;},[](const std::wstring&){throw std::runtime_error("Cancelled review opened a file");});require(!cancelled,"Cancel must not select a provider");result=0;
+        int result=1;try{int shown=0,opened=0;auto license=monado_provider_ui::confirm(argv[2],[&](const std::wstring &path,const std::wstring &text){require(path.find(L"nvngx_dlss.license.txt")!=std::wstring::npos&&text.rfind(L"Authored license fixture; no vendor terms or SDK use.\n",0)==0,"Authored license text changed");return ++shown==1?101:100;},[&](const std::wstring &){++opened;});
+            require(license&&shown==2&&opened==1+(int)license->additional_paths.size(),"Only explicit Use may select the SDK");Handle changed(CreateFileW(native(license->path).c_str(),GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr));require(changed.value==INVALID_HANDLE_VALUE&&GetLastError()==ERROR_SHARING_VIOLATION,"Reviewed license must remain leased through provider staging");
+            if(!license->additional_paths.empty())require(license->text.find(L"Authored dependent \u201clicense\u201d")!=std::wstring::npos,"Windows-1252 dependent license preview changed");
+            auto cancelled=monado_provider_ui::confirm(argv[2],[](const std::wstring&,const std::wstring&){return IDCANCEL;},[](const std::wstring&){throw std::runtime_error("Cancelled review opened a file");});require(!cancelled,"Cancel must not select a provider");
+            auto downloaded=parse("{\"status\":\"download-ready\",\"downloaded_sdk\":\"C:/authored downloaded SDK\"}");ProviderSelection selected;selected.streamline=L"previous authorized source";int reviews=0;
+            require(!authorize_download(downloaded,selected,[&](const std::wstring&){++reviews;return std::shared_ptr<monado_provider_ui::License>{};})&&selected.streamline==L"previous authorized source"&&reviews==1,"Download/Cancel must not replace an authorized SDK source");
+            require(authorize_download(downloaded,selected,[&](const std::wstring &source){require(source==downloaded.downloaded_sdk,"Wrong downloaded SDK review target");return license;})&&selected.streamline==downloaded.downloaded_sdk&&selected.dlss_license==license,"Only explicit Use may authorize the downloaded SDK");
+            std::vector<std::wstring> arguments;append_provider_arguments(arguments,L"download-dlss",selected);require(arguments.empty(),"Downloading may not pass provider staging arguments");result=0;
         }catch(const std::exception &error){fprintf(stderr,"Authored local license fixture: %s\n",error.what());result=1;}LocalFree(argv);CoUninitialize();return result;
     }
     bool fixture=argc==2&&!wcscmp(argv[1],L"--hidden-ui-fixture");bootstrap_fixture=argc==2&&!wcscmp(argv[1],L"--hidden-bootstrap-fixture");

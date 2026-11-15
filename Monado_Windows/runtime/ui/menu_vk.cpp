@@ -36,6 +36,7 @@ void vk_imgui_backend_shutdown(void);
 void input_reset(void);
 void vk_request_swapchain_recreate(void);
 bool dlss_available(void);
+const char *dlss_status(void);
 bool tmp_fg_supported(void);
 bool ui_window_set_fullscreen(bool fullscreen);
 #ifndef _WIN32
@@ -482,8 +483,10 @@ static void ui(void) {
 #endif
             }
 #else
-            if (g_settings.upscaler == UPSCALE_DLSS && !dlss_available())
-                ImGui::TextColored(ImVec4(1, 0.8f, 0.3f, 1), "%s", T("DLSS se carga al iniciar el juego: hasta reiniciar se usa FSR 3.1."));
+            if (g_settings.upscaler == UPSCALE_DLSS) {
+                ImGui::TextWrapped("Requested: NVIDIA DLSS. %s",dlss_status());
+                ImGui::TextWrapped("%s",tmp_provider_status());
+            }
             if (g_settings.upscaler == UPSCALE_FSR3 || g_settings.upscaler == UPSCALE_DLSS || g_settings.upscaler==UPSCALE_FSR4_LITE) {
                 if(g_settings.upscaler==UPSCALE_FSR4_LITE)ImGui::TextWrapped("%s",tmp_fsr4_status());
                 static const char *uq[] = {"Nativo (solo antialiasing)", "Calidad (67 %)", "Equilibrado (59 %)", "Rendimiento (50 %)",

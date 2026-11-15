@@ -5,6 +5,7 @@ import hashlib
 import itertools
 import json
 import os
+import platform
 from pathlib import Path
 import struct
 import subprocess
@@ -21,12 +22,17 @@ def main():
         raise RuntimeError('Native Windows required')
     output = PORT / 'runs' / ('fma-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-' + uuid.uuid4().hex[:8])
     output.mkdir(parents=True)
-    sources = [Path(__file__), PORT / 'tests/native/test_windows_fma.c', PORT / 'runtime/platform/windows_fma.c',
+    sources = [Path(__file__), PORT / 'tests/native/test_windows_fma.c', PORT / 'tests/native/test_windows_fma_dispatch.c',
+               PORT / 'runtime/platform/windows_fma.c', PORT / 'third_party/musl_math/PROVENANCE.json',
                PORT / 'runtime/platform/guest_fp_windows.h', PORT / 'runtime/cpu.h', PORT / 'runtime/simd.h',
                PORT / 'runtime/simd_fp.h', PORT / 'tools/lifter/test_simd.py']
     def hashes():
         return {str(path.relative_to(PORT)): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}
-    receipt = {'status': 'failed', 'sources_before': hashes(), 'commands': [], 'python': sys.version}
+    import winreg
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE,r'HARDWARE\DESCRIPTION\System\CentralProcessor\0') as key:
+        cpu_name=winreg.QueryValueEx(key,'ProcessorNameString')[0]
+    receipt = {'status': 'failed', 'sources_before': hashes(), 'commands': [], 'python': sys.version,
+               'host':platform.platform(),'cpu':cpu_name.strip(),'scope':'native FMA helpers, no game FPS or rendering qualification'}
     env = os.environ.copy()
     env.update(ZIG_GLOBAL_CACHE_DIR=str(PORT / '.deps/zig-global-cache'), ZIG_LOCAL_CACHE_DIR=str(output / 'zig-cache'))
     def run(name, argv):
@@ -64,10 +70,18 @@ def main():
         receipt.update(cases=count, case_sha256=hashlib.sha256(cases.read_bytes()).hexdigest(),
                        fpcr_modes=16, reference='Unicorn Cortex-A57, exact FMA register bits; no FPSR exception/QC claim')
         binary = output / 'fma.exe'
-        run('compile', [sys.executable,'-m','ziglang','cc','-std=gnu11','-O1','-UNDEBUG','-march=x86_64_v2',
+        flags=['-std=gnu11','-O1','-UNDEBUG','-march=x86_64_v2',
                        '-ffp-contract=off','-fno-fast-math','-fno-strict-aliasing','-Wall','-Wextra','-Werror',
+                       '-fno-builtin-fma','-fno-builtin-fmaf','-DMONADO_FMA_TEST']
+        receipt['flags']=flags
+        run('compile', [sys.executable,'-B','-m','ziglang','cc',*flags,
                        PORT/'tests/native/test_windows_fma.c',PORT/'runtime/platform/windows_fma.c','-o',binary])
-        run('native', [binary,cases])
+        run('native-auto', [binary,cases,'auto'])
+        run('native-software', [binary,cases,'software'])
+        dispatch=output/'dispatch.exe'
+        run('compile-dispatch',[sys.executable,'-B','-m','ziglang','cc',*flags,
+            PORT/'tests/native/test_windows_fma_dispatch.c',PORT/'runtime/platform/windows_fma.c','-o',dispatch])
+        receipt['dispatch_and_benchmark']=run('native-dispatch',[dispatch])
         receipt['sources_after'] = hashes()
         if receipt['sources_before'] != receipt['sources_after']:
             raise RuntimeError('Production source closure changed during qualification')

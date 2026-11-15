@@ -21,6 +21,8 @@
 #include "../aspect_canvas.h"
 #include "../aspect_composite.h"
 #include "temporal.h"
+#include "temporal_scene_policy.h"
+#include "../output_scale.h"
 void vk_watch(VkImage dst, const char *site);  // [XCDE] debugging: log writes to a watched image
 static VkImage g_watch_img;
 #include "../renderer.h"
@@ -5003,20 +5005,25 @@ static TmpCamera tmp_cam;            // this frame's (ok = found)
 static uint64_t tmp_frame = ~0ull;
 static NvnTexture *tmp_depth_tex;    // the scene depth (kept across frames: the prepass draws before the camera is seen)
 static float tmp_jit[2];
+static uint64_t tmp_cam_frame=~0ull;
+static TmpJitterGrid tmp_jitter_grid;
+static TmpSceneEvidence tmp_scene_evidence;
 static bool tmp_dm1 = true;          // the scene draws' NVN depth mode (clip z in [-1, 1])
 // [XCDE] LINUX-017: the NVN texture may die while a shared backend survives.
 void vk_exec_forget_texture(NvnTexture *t) {
     if (tmp_depth_tex == t) {
         tmp_depth_tex = NULL;
         tmp_cam.ok = false;
-        tmp_frame = tmp_scene_frame = ~0ull;
+        tmp_frame = tmp_scene_frame = tmp_cam_frame = ~0ull;
     }
 }
 // [XCDE] LINUX-017: no borrowed game texture/camera survives a guest reboot.
 static void tmp_exec_reset(void) {
     memset(&tmp_cam, 0, sizeof tmp_cam);
     tmp_depth_tex = NULL;
-    tmp_frame = tmp_scene_frame = ~0ull;
+    tmp_frame = tmp_scene_frame = tmp_cam_frame = ~0ull;
+    memset(&tmp_jitter_grid,0,sizeof tmp_jitter_grid);
+    memset(&tmp_scene_evidence,0,sizeof tmp_scene_evidence);
     tmp_jit[0] = tmp_jit[1] = 0;
     tmp_dm1 = true;
 }
@@ -5038,38 +5045,71 @@ static bool tmp_cam_check(const float *f, TmpCamera *c) {
     c->ok = true;
     return true;
 }
-static void tmp_draw(const Prog *pr, float *jx, float *jy) {
-    uint64_t fr = renderer_present_count();
-    if (fr != tmp_frame) {
-        tmp_frame = fr;
-        tmp_cam.ok = false;
-        tmp_jitter(tmp_jit);
+static void tmp_scene_begin_frame(uint64_t frame) {
+    if(frame==tmp_frame)return;
+    tmp_frame=frame;tmp_cam.ok=false;
+    memset(&tmp_scene_evidence,0,sizeof tmp_scene_evidence);tmp_scene_evidence.frame=frame;
+    tmp_jitter(tmp_jit);
+    tmp_jitter_grid_begin(&tmp_jitter_grid,tmp_jit);
+    tmp_scene_evidence.normalized_jitter[0]=tmp_jitter_grid.uv[0];
+    tmp_scene_evidence.normalized_jitter[1]=tmp_jitter_grid.uv[1];
+}
+static bool tmp_scene_same_camera(const float *source) {
+    // A no-depth sky/particle draw must actually bind this scene camera, not
+    // merely any perspective matrix (e.g. a reflection or shadow camera).
+    for(unsigned i=0;i<44;i++) {
+        float expected=i<12?tmp_cam.view[i]:i<28?tmp_cam.proj[i-12]:tmp_cam.viewproj[i-28];
+        float value=source[i];
+        if(!isfinite(value)||fabsf(value-expected)>1e-5f*fmaxf(1.f,fabsf(expected)))return false;
     }
-    if (!st.rt.depth) return;
-    if (!tmp_cam.ok)
-        for (int k = 0; k < 14; k++) {
-            const Range *u = &st.ubuf[0][k];
-            if (u->addr < HEAP_BASE || u->size < 176) continue;
-            if (tmp_cam_check((const float *)(uintptr_t)u->addr, &tmp_cam)) { tmp_depth_tex = st.rt.depth; tmp_dm1 = pr->vkey.depth_minus_one; break; }
+    return true;
+}
+static bool tmp_scene_like(const NvnTexture *depth) {
+    if(!depth||!depth->backend)return false;
+    const TexBackend *image=depth->backend;
+    if(!image->image||!(image->aspect&VK_IMAGE_ASPECT_DEPTH_BIT))return false;
+    uint32_t width,height;output_scale_base(&width,&height);
+    return tmp_scene_depth_eligible(depth->width,depth->height,width,height);
+}
+static void tmp_draw(const Prog *pr,float *jx,float *jy) {
+    uint64_t frame=renderer_present_count();tmp_scene_begin_frame(frame);
+    if(!st.rt.depth)return;
+    bool eligible=tmp_scene_like(st.rt.depth);
+    if(!tmp_cam.ok)for(unsigned k=0;k<14;k++) {
+        const Range *range=&st.ubuf[0][k];
+        if(range->addr<HEAP_BASE||range->size<176)continue;
+        TmpCamera camera={0};
+        if(!tmp_cam_check((const float *)(uintptr_t)range->addr,&camera))continue;
+        if(!eligible){tmp_scene_evidence.rejected_cameras++;break;}
+        tmp_cam=camera;tmp_depth_tex=st.rt.depth;tmp_dm1=pr->vkey.depth_minus_one;tmp_cam_frame=frame;
+        break;
+    }
+    TexBackend *depth=st.rt.depth->backend,*selected=tmp_depth_tex?tmp_depth_tex->backend:NULL;
+    const char *same_image=getenv("XCDE_TMP_JIT_SAME_IMAGE");
+    bool recent=tmp_cam_frame!=~0ull&&tmp_cam_frame<=frame&&frame-tmp_cam_frame<=1;
+    bool scene=eligible&&recent&&depth&&selected&&
+        (same_image?depth->image==selected->image:
+            (st.rt.depth->width==tmp_depth_tex->width&&st.rt.depth->height==tmp_depth_tex->height));
+    bool world=st.ds[0]!=0;
+    if(scene&&!world&&tmp_cam.ok)for(unsigned k=0;k<14&&!world;k++) {
+        const Range *range=&st.ubuf[0][k];
+        if(range->addr>=HEAP_BASE&&range->size>=176)
+            world=tmp_scene_same_camera((const float *)(uintptr_t)range->addr);
+    }
+    if(scene&&world) {
+        tmp_scene_evidence.world_draws++;
+        if(!st.ds[0])tmp_scene_evidence.nodepth_draws++;
+        if(tmp_hud_started())tmp_scene_evidence.hud_draws++;
+        else {
+            float offset[2];tmp_jitter_grid_offset(&tmp_jitter_grid,depth->width,depth->height,offset);
+            *jx=offset[0];*jy=offset[1];tmp_scene_frame=frame;
+            if(*jx||*jy)tmp_scene_evidence.jittered_draws++;
         }
-    // (the same image: the game draws its prepass and colour passes through different texture objects over one depth)
-    TexBackend *db = st.rt.depth->backend, *sb = tmp_depth_tex ? tmp_depth_tex->backend : NULL;
-    static int nojit = -1;
-    if (nojit < 0) nojit = getenv("XCDE_TMP_NOJITTER") != NULL;  // (tests)
-    static int bysize = -1;
-    if (bysize < 0) bysize = !getenv("XCDE_TMP_JIT_SAME_IMAGE");
-    bool scene = sb && db && (db->image == sb->image || (bysize && st.rt.depth->width == tmp_depth_tex->width &&
-                                                          st.rt.depth->height == tmp_depth_tex->height));
-    // [XCDE] T213: nothing after the frame's scene composite (the HUD draws with a depth buffer of the scene's size:
-    // it was jittered too - the HUD shook once the HUD mask showed it unblended)
-    if (scene && st.ds[0] && !nojit && !tmp_hud_started()) { *jx = tmp_jit[0]; *jy = tmp_jit[1]; tmp_scene_frame = fr; }
-    if (getenv("XCDE_TMP_LOG")) {  // (debugging) per frame: draws jittered / scene draws not jittered (after the HUD began) / others
-        static uint64_t fr; static int nj, nh, no, nl;
-        if (fr != renderer_present_count()) {
-            if (fr && nl < 12 && (fr % 60) == 0) { nl++; LOG("[tmp] frame %llu: %d draws jittered, %d scene draws after the HUD began (not jittered), %d others\n", (unsigned long long)fr, nj, nh, no); }
-            fr = renderer_present_count(); nj = nh = no = 0;
-        }
-        if (scene && st.ds[0]) { if (tmp_hud_started()) nh++; else nj++; } else no++;
+    }
+    if(tmp_cam.ok&&selected) {
+        tmp_scene_evidence.camera_valid=true;
+        tmp_scene_evidence.guest_depth_w=tmp_depth_tex->width;tmp_scene_evidence.guest_depth_h=tmp_depth_tex->height;
+        tmp_scene_evidence.depth_w=selected->width;tmp_scene_evidence.depth_h=selected->height;
     }
 }
 
@@ -6399,7 +6439,7 @@ static VkPipeline post_pipeline(const char *fs) {
 // Post image `i` at w x h (RGBA8, kept until the size changes). 0, 1: SMAA edges / weights, 2: SMAA output,
 // 3, 4: FSR EASU / RCAS.
 static TexBackend *post_image(int i, uint32_t w, uint32_t h) {
-    static TexBackend img[7];  // 5: HUD; 6: LINUX-103 native temporal linear->sRGB
+    static TexBackend img[8];  // 5: HUD; 6: temporal linear->sRGB; 7: failed-evaluation de-jitter
     TexBackend *d = &img[i];
     if (d->image && (d->width != w || d->height != h)) {
         vk_views_forget(d);
@@ -6501,8 +6541,24 @@ static VkImageView fsr1_sharpen(VkCommandBuffer cb,VkImageView input,uint32_t wi
     return post_view(output);
 }
 
+static VkImageView tmp_spatial_fallback(VkCommandBuffer cb,TexBackend *color,VkImageView final) {
+    // Dispatch can reject after geometry was recorded. Returning that jittered
+    // image directly makes a spatial fallback shake by the Halton sequence.
+    if(!tmp_scene_evidence.jittered_draws||!(tmp_jitter_grid.uv[0]||tmp_jitter_grid.uv[1]))return final;
+    VkImageView scene=tmp_hud_scene_view(color->width,color->height);
+    TexBackend *output=post_image(7,color->width,color->height);
+    VkImageView inputs[3]={scene?scene:final,final,scene?scene:final};
+    float constants[8]={1.f/color->width,1.f/color->height,tmp_jitter_grid.uv[0],tmp_jitter_grid.uv[1]};
+    post_pass(cb,"tmp_hud.frag",inputs,3,output,constants,false);
+    vk_full_barrier(cb);tmp_scene_evidence.fallback_unjittered=true;
+    return post_view(output);
+}
+
 static VkImageView post_process(VkCommandBuffer cb, TexBackend *b, double ow_d, double oh_d) {
     VkImageView v = raw_view(b);
+    tmp_scene_begin_frame(renderer_present_count());
+    float declared_jitter[2];tmp_jitter_grid_offset(&tmp_jitter_grid,b->width,b->height,declared_jitter);
+    tmp_jitter_grid_verify(&tmp_jitter_grid,b->width,b->height);
     fg_scene = VK_NULL_HANDLE;
     bool smaa = g_settings.antialias == AA_SMAA;
     uint32_t ow = (uint32_t)lround(ow_d), oh = (uint32_t)lround(oh_d);
@@ -6511,10 +6567,12 @@ static VkImageView post_process(VkCommandBuffer cb, TexBackend *b, double ow_d, 
     bool fsr = g_settings.upscaler == UPSCALE_FSR1 && (ow > b->width + 1 || oh > b->height + 1);  // (an upscale only)
     extern void vk_frame_suspend(void);
     extern void vk_frame_resume(void);
-    if (tmp_enabled()) {  // [XCDE] FSR 3 / DLSS (temporal.c); without this frame's camera: FSR 1 as the upscaler
+    bool temporal=tmp_enabled();
+    if(!temporal)tmp_note_spatial_frame();
+    if (temporal) {  // [XCDE] FSR 3 / DLSS (temporal.c); without this frame's camera: FSR 1 as the upscaler
         bool cam = tmp_cam.ok && tmp_frame == renderer_present_count() && tmp_depth_tex && tmp_depth_tex->backend;
         vk_frame_suspend();
-        VkImageView t = tmp_upscale(cb, b, v, cam ? (TexBackend *)tmp_depth_tex->backend : NULL, cam ? &tmp_cam : NULL, tmp_jit,
+        VkImageView t = tmp_upscale(cb, b, v, cam ? (TexBackend *)tmp_depth_tex->backend : NULL, cam ? &tmp_cam : NULL, declared_jitter,
                                     tmp_dm1, ow, oh);
         if (t && tmp_linear_output()) { // [XCDE] LINUX-103: preserve existing gamma-space composition
             TexBackend *encoded = post_image(6, ow, oh);
@@ -6533,11 +6591,14 @@ static VkImageView post_process(VkCommandBuffer cb, TexBackend *b, double ow_d, 
             vk_full_barrier(cb);
             t = post_view(hud);
         }
+        if(!t)v=tmp_spatial_fallback(cb,b,v);
+        tmp_diagnostics_frame(&tmp_scene_evidence,b->width,b->height,ow,oh,declared_jitter);
         vk_frame_resume();
         if (t) return t;
         smaa = false;
         fsr = ow > b->width + 1 || oh > b->height + 1;
     }
+    if(!temporal)tmp_diagnostics_frame(&tmp_scene_evidence,b->width,b->height,ow,oh,declared_jitter);
     if (!smaa && !fsr) return v;
     vk_frame_suspend();
     if (smaa) {  // SMAA 1x: luma edges -> blending weights -> neighbourhood blending

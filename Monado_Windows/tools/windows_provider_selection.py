@@ -24,10 +24,14 @@ REQUIRED = {
     'fidelityfx': ('amd_fidelityfx_vk.dll',),
     'streamline': ('sl.interposer.dll', 'sl.common.dll', 'sl.dlss.dll', 'nvngx_dlss.dll'),
 }
+# Streamline 2.14.16 sl.common imports the Vulkan low-latency helper even for
+# DLSS. Copy this reviewed sibling ONLY when a selected PE actually imports it.
+DYNAMIC_SIBLINGS={'streamline':('nvlowlatencyvk.dll',)}
 EXPORTS = {
     'amd_fidelityfx_vk.dll': {'ffxCreateContext', 'ffxDestroyContext', 'ffxDispatch', 'ffxQuery', 'ffxConfigure'},
     'sl.interposer.dll': {'slInit', 'slGetFeatureRequirements', 'slSetVulkanInfo', 'slEvaluateFeature',
-        'slGetNewFrameToken', 'slSetConstants', 'slSetTagForFrame', 'slFreeResources', 'slShutdown', 'vkGetDeviceProcAddr'},
+        'slGetNewFrameToken', 'slSetConstants', 'slSetTagForFrame', 'slFreeResources', 'slShutdown',
+        'slIsFeatureSupported','slGetFeatureFunction','vkGetDeviceProcAddr','vkGetInstanceProcAddr'},
 }
 # Known redistributable runtime dependencies only. Anything else needs an
 # explicit reviewed recipe, rather than recursively copying arbitrary DLLs.
@@ -200,6 +204,7 @@ def checked(roots, *, expected=None, cancel=lambda: None):
             path = Path(guard.canonical_path(root))
             directory = leases.enter_context(guard.locked_directory(path, owner=True))
             files, staged, installed, pending, seen = {}, {}, {}, list(REQUIRED[kind]), set()
+            dynamic_siblings=set(DYNAMIC_SIBLINGS.get(kind,()))
             while pending:
                 cancel()
                 name = pending.pop(0).lower()
@@ -237,7 +242,7 @@ def checked(roots, *, expected=None, cancel=lambda: None):
                 image = Image(path / relative)
                 for dependency in sorted(pe_contract(image, name)):
                     key = dependency.lower()
-                    if key in REQUIRED[kind] or key in REDISTRIBUTABLE:
+                    if key in REQUIRED[kind] or key in REDISTRIBUTABLE or key in dynamic_siblings:
                         pending.append(key)
                     elif not system_import(key):
                         raise ValueError('Unreviewed or missing provider dependency: ' + dependency)
@@ -251,6 +256,7 @@ def checked(roots, *, expected=None, cancel=lambda: None):
             licenses = [license_path]
             if kind == 'streamline':
                 licenses.append(locate(directory, 'nvngx_dlss.license.txt', license=True))
+                if set(staged)&dynamic_siblings:licenses.append(locate(directory,'reflex.license.txt',license=True))
             for relative in licenses:
                 stream = leases.enter_context(directory.open_regular(relative, max_bytes=MAX_LICENSE, owner=True))
                 data = stream.read(MAX_LICENSE + 1)

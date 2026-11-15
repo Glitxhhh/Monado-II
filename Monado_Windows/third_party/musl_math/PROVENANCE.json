@@ -10,7 +10,8 @@
     "Replace musl internal a_clz_64 with equivalent Clang __builtin_clzll on proven nonzero values.",
     "Parenthesize shift arithmetic without changing its precedence.",
     "For finite nonzero factors with zero addend, return x*y directly: separate +z after multiplication can erase the sign of an underflowed negative zero.",
-    "Refuse fast-math and disable floating-point contraction in this translation unit."
+    "Refuse fast-math and disable floating-point contraction in this translation unit.",
+    "Retain both musl bodies unchanged behind a runtime-dispatched FMA3 path. CPUID requires FMA/AVX/XSAVE/OSXSAVE and XCR0 XMM/YMM state. Only explicit gated scalar FMA instructions use the extended ISA; the translation unit stays x86-64-v2. Normal operands/results use hardware; zeros, subnormals, NaNs and infinities retain the software path. No multiply-add approximation or new minimum CPU requirement."
   ],
   "license": "fma: musl MIT; fmaf: David Schultz FreeBSD two-clause notice retained in source; complete musl COPYRIGHT included",
   "windows_source": "runtime/platform/windows_fma.c"

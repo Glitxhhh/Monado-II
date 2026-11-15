@@ -106,3 +106,11 @@ DLL or translated capture is included. The private portable setup payload also
 contains explicitly pinned CPython/build-tool/native dependency components with
 their notices; it is not an approved public redistribution. See the native
 dependency lock and per-port notice for the actual selected licenses.
+
+Native Windows scene-camera/jitter and Streamline initialization adaptations
+also reference the MIT Monado-Reborn sources at commit
+`3428bb323043477d522c4bb00dfa9fbcc4f13e86`, retaining Peiikai/Monado contributors'
+attribution. Exact selected files and local changes are recorded in
+[Windows UPSTREAM](Monado_Windows/docs/UPSTREAM.md). Optional NVIDIA SDK DLLs and
+their separate SDK license agreements are acquired and accepted locally; they
+are excluded from the source export and portable setup payload.

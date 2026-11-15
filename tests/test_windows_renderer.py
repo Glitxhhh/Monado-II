@@ -133,6 +133,7 @@ static Snap snaps[16];static int nsnaps;static void feedback_written(NvnTexture 
         source = (PORT / "runtime/nvn/vulkan/temporal.c").read_text(encoding="utf8")
         header = """#include "nvn/vulkan/temporal.h"
 #include "nvn/vulkan/temporal_camera.h"
+#include "nvn/vulkan/temporal_evidence.h"
 #include "settings.h"
 bool dlss_available(void);void dlss_reset(void);bool diag_deterministic(void);uint64_t renderer_present_count(void);
 static bool ffx_load(void){return false;}

@@ -5,6 +5,9 @@
 extern "C" {
 #endif
 bool dlss_init_early(void);
+const char *dlss_status(void);
+void dlss_validate_adapter(VkPhysicalDevice phys, uint32_t api, uint32_t qfam);
+bool dlss_create_surface(void *sdl_window, VkInstance instance, VkPhysicalDevice phys, uint32_t qfam, VkSurfaceKHR *surface);
 int dlss_instance_exts(const char **out, int max);
 void dlss_device_requirements(VkInstance inst, VkPhysicalDevice phys, const char **ext, uint32_t *n, uint32_t max,
     VkPhysicalDeviceVulkan12Features *f12, VkPhysicalDeviceVulkan13Features *f13, uint32_t *extra_gfx, uint32_t *extra_compute);

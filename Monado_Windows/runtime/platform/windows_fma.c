@@ -13,8 +13,12 @@
 #endif
 #pragma STDC FP_CONTRACT OFF
 #include <stdint.h>
+#include <stdbool.h>
 #include <float.h>
 #include <math.h>
+#include <cpuid.h>
+#include <immintrin.h>
+#include <stdatomic.h>
 
 
 #define ASUINT64(x) ((union {double f; uint64_t i;}){x}).i
@@ -53,7 +57,7 @@ static void mul(uint64_t *hi, uint64_t *lo, uint64_t x, uint64_t y)
 	*hi = t3 + (t2>>32) + (t1 > *lo);
 }
 
-double fma(double x, double y, double z)
+static double software_fma(double x, double y, double z)
 {
 	#pragma STDC FENV_ACCESS ON
 
@@ -237,7 +241,7 @@ double fma(double x, double y, double z)
  * direct double-precision arithmetic suffices, except where double
  * rounding occurs.
  */
-float fmaf(float x, float y, float z)
+static float software_fmaf(float x, float y, float z)
 {
 	#pragma STDC FENV_ACCESS ON
 	double xy, result;
@@ -291,3 +295,74 @@ float fmaf(float x, float y, float z)
 	z = u.f;
 	return z;
 }
+
+// Baseline instructions remain x86-64-v2. The two explicit FMA instructions
+// below are reached only after BOTH CPU and OS state checks; the compiler is
+// never given a global AVX/FMA target which could spill into an ungated path.
+// In particular OSXSAVE alone is insufficient: XCR0 must enable XMM and YMM.
+static bool fma_capable(unsigned ecx, uint64_t xcr0)
+{
+	const unsigned required = (1u << 12) | (1u << 26) | (1u << 27) | (1u << 28);
+	return (ecx & required) == required && (xcr0 & 6) == 6;
+}
+
+static int detect_fma(void)
+{
+	unsigned a, b, c, d;
+	if (!__get_cpuid(1, &a, &b, &c, &d) || !fma_capable(c, 6)) return 1;
+	unsigned lo, hi;
+	// Executed only when CPUID confirms XSAVE + OSXSAVE. Do not introduce an
+	// unconditional XGETBV instruction into startup on an older supported CPU.
+	__asm__ volatile("xgetbv" : "=a"(lo), "=d"(hi) : "c"(0));
+	return fma_capable(c, ((uint64_t)hi << 32) | lo) ? 2 : 1;
+}
+
+static atomic_int fma_dispatch;
+static bool hardware_enabled(void)
+{
+	int mode = atomic_load_explicit(&fma_dispatch, memory_order_relaxed);
+	if (!mode) {
+		mode = detect_fma();
+		atomic_store_explicit(&fma_dispatch, mode, memory_order_relaxed);
+	}
+	return mode == 2;
+}
+
+double fma(double x, double y, double z)
+{
+	// Retain the existing software NaN/signalling/infinity policy exactly. The
+	// hardware instruction handles normal operands with a single correctly
+	// rounded FMA, obeying MXCSR rounding without changing its control bits.
+	// Zero/subnormal inputs and zero/subnormal results retain the software path.
+	// Normal inputs/results are independent of FTZ/DAZ; this avoids an expensive
+	// per-call MXCSR read while retaining the caller's nonbaseline FTZ/DAZ policy.
+	unsigned ex=(ASUINT64(x)>>52)&0x7ff,ey=(ASUINT64(y)>>52)&0x7ff,ez=(ASUINT64(z)>>52)&0x7ff;
+	if (hardware_enabled() && ex && ex!=0x7ff && ey && ey!=0x7ff && ez && ez!=0x7ff) {
+		double result=x;
+		__asm__("vfmadd213sd %2, %1, %0" : "+x"(result) : "x"(y), "xm"(z));
+		if ((ASUINT64(result)&0x7ff0000000000000ull)!=0) return result;
+	}
+	return software_fma(x, y, z);
+}
+
+float fmaf(float x, float y, float z)
+{
+	union { float f; uint32_t u; } a = {x}, b = {y}, c = {z};
+	unsigned ex=a.u&0x7f800000,ey=b.u&0x7f800000,ez=c.u&0x7f800000;
+	if (hardware_enabled() && ex && ex!=0x7f800000 && ey && ey!=0x7f800000 && ez && ez!=0x7f800000) {
+		float result=x;
+		__asm__("vfmadd213ss %2, %1, %0" : "+x"(result) : "x"(y), "xm"(z));
+		union {float f;uint32_t u;} out={result};
+		if ((out.u&0x7f800000)!=0) return result;
+	}
+	return software_fmaf(x, y, z);
+}
+
+#ifdef MONADO_FMA_TEST
+// Authored fixture controls are absent from production. They can remove a CPU
+// capability, never manufacture support or execute FMA on an unsupported host.
+int monado_fma_test_supported(void) { return detect_fma() == 2; }
+int monado_fma_test_capable(unsigned ecx, uint64_t xcr0) { return fma_capable(ecx, xcr0); }
+void monado_fma_test_software(int enabled) { atomic_store(&fma_dispatch, enabled ? 1 : 0); }
+int monado_fma_test_hardware(void) { return hardware_enabled(); }
+#endif

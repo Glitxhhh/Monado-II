@@ -1,6 +1,7 @@
 // Output resolution (runtime/nvn/output_scale.c), shared by the Metal and Vulkan backends.
 #pragma once
 #include <stdbool.h>
+#include <stdint.h>
 
 typedef struct {
     double sx, sy;             // render-target scale (relative to the game's frame size, output_scale_set_base)
@@ -19,3 +20,5 @@ void output_scale_set_native_fps(float fps);
 void output_scale_reset_dynamic(void);
 // [XCDE] T146: the game's own frame size (its NVN window textures); the scale is relative to it (default 1920x1080)
 void output_scale_set_base(int w, int h);
+// Actual NVN presentation texture grid, before host scaling; not a presumed SR input extent.
+void output_scale_base(uint32_t *width, uint32_t *height);

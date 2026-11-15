@@ -128,6 +128,7 @@ class NativeContracts(unittest.TestCase):
             'setup/publication_guard.py':(ROOT/'tools/publication_guard.py').read_bytes(),
             'source/Monado_Windows/scripts/build_windows.py':(PORT/'scripts/build_windows.py').read_bytes(),
             'source/Monado_Windows/tools/windows_provider_selection.py':(PORT/'tools/windows_provider_selection.py').read_bytes(),
+            'source/Monado_Windows/tools/windows_dlss_download.py':(PORT/'tools/windows_dlss_download.py').read_bytes(),
             'source/Monado_Windows/tools/pe_symbols_windows.py':(PORT/'tools/pe_symbols_windows.py').read_bytes(),
             'source/tools/windows_file_guard.py':(ROOT/'tools/windows_file_guard.py').read_bytes(),
             'source/publication-manifest.json':B.encoded({'schema':1,'scope':'authored source publication boundary; no game code'}),
@@ -162,6 +163,18 @@ class NativeContracts(unittest.TestCase):
             progress=state/('progress-'+token+'.jsonl'),cancel_file=state/('cancel-'+token),action=action,
             input=self.input,destination=destination,jobs=2,precompile=False)
         self.backend=B.Backend(args);self.backend.verify();return self.backend
+
+    def test_official_download_reports_review_only_without_build_or_activation(self):
+        backend=self.backend_open('download-dlss');previous=copy.deepcopy(backend.registry);driver=backend.driver;calls=[]
+        backend.run_child=lambda *args,**kwargs:self.fail('Download invoked a build or child process')
+        def prepare(state,**kwargs):
+            calls.append(state.path);kwargs['checkpoint']();kwargs['progress']('download',1,1,'Authored download boundary')
+            return str(state.path/'authored review SDK')
+        with patch.object(B,'import_checked',return_value=types.SimpleNamespace(prepare=prepare)):
+            backend.download_dlss()
+        self.assertEqual(len(calls),1);self.assertEqual(backend.registry,previous);self.assertIs(backend.driver,driver)
+        final=json.loads(Path(backend.args.progress).read_text().splitlines()[-1]);self.assertEqual(final['status'],'download-ready')
+        self.assertIn('downloaded_sdk',final);self.assertNotIn('provider_streamline',final);self.assertNotIn('launcher',final)
 
     def make_install(self,path):
         import _winapi

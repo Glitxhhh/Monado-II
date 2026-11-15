@@ -6,6 +6,8 @@
 #include "../../runtime/platform/guest_fp_windows.h"
 
 typedef struct { uint64_t precision, fpcr, n, m, a, expected; } FmaCase;
+extern int monado_fma_test_supported(void), monado_fma_test_hardware(void);
+extern void monado_fma_test_software(int enabled);
 static void check(const FmaCase *test) {
     Cpu cpu; memset(&cpu, 0xa6, sizeof cpu);
     cpu.fpcr = test->fpcr;
@@ -23,7 +25,10 @@ static void check(const FmaCase *test) {
     assert(fegetround() == FE_TONEAREST && !(_mm_getcsr() & 0xe040));
 }
 int main(int argc, char **argv) {
-    assert(argc == 2 && monado_windows_guest_fp_init());
+    assert(argc == 3 && monado_windows_guest_fp_init());
+    assert(!strcmp(argv[2],"auto") || !strcmp(argv[2],"software"));
+    bool software=!strcmp(argv[2],"software");monado_fma_test_software(software);
+    assert(monado_fma_test_hardware()==(!software && monado_fma_test_supported()));
     // All five finite-operand failures from the first native differential run.
     static const FmaCase regression[] = {
         {64,0,0x0adb6fd3480b352a,0x0adb6fd3480b352a,0x3fdfffffffffffff,0x3fdfffffffffffff},
@@ -39,6 +44,6 @@ int main(int argc, char **argv) {
         assert(bytes == sizeof test); check(&test); ++count;
     }
     assert(!ferror(input) && !fclose(input) && count);
-    printf("PASS %zu authored native FMA edge cases plus five retained UCRT regressions, CPU preservation and FP restoration\n", count);
+    printf("PASS %zu authored native FMA edge cases plus five retained UCRT regressions, CPU preservation and FP restoration; path=%s hardware_supported=%d\n", count,argv[2],monado_fma_test_supported());
     return 0;
 }

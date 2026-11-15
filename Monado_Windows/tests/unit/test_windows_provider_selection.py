@@ -87,6 +87,29 @@ class Native(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'already exists'):P.stage(out,fidelityfx=root)
         self.assertEqual(existing.read_bytes(),self.data);self.assertFalse((out/'windows-providers.json').exists())
 
+    def test_unimported_low_latency_sibling_is_not_staged_or_licensed(self):
+        root=self.sdk('streamline');(root/'NvLowLatencyVk.dll').write_bytes(self.data)
+        result=P.stage(self.output(),streamline=root)
+        self.assertNotIn('nvlowlatencyvk.dll',result['selection']['streamline']['stage'])
+        self.assertFalse(any('reflex' in n.lower() for n in result['files']))
+
+    def test_imported_low_latency_helper_requires_its_exact_license(self):
+        root=self.sdk('streamline');source=self.folder/'low-latency.c';source.write_text('__declspec(dllexport) int authored_latency(void){return 7;}\n')
+        dll=self.folder/'NvLowLatencyVk.dll';library=self.folder/'NvLowLatencyVk.lib'
+        env=dict(os.environ,ZIG_GLOBAL_CACHE_DIR=str(self.evidence/'zig-global'),ZIG_LOCAL_CACHE_DIR=str(self.evidence/'zig-local'))
+        def compile(arguments):
+            result=subprocess.run([sys.executable,'-B','-m','ziglang','cc','-shared','-O1',*map(str,arguments)],env=env,capture_output=True,text=True,timeout=120)
+            self.assertEqual(result.returncode,0,result.stderr)
+        compile([source,'-o',dll,'-Wl,--out-implib,'+str(library)])
+        source=self.folder/'common.c';source.write_text('__declspec(dllimport) int authored_latency(void);\n__declspec(dllexport) int authored_common(void){return authored_latency();}\n')
+        compile([source,library,'-o',root/'sl.common.dll']);(root/'NvLowLatencyVk.dll').write_bytes(dll.read_bytes())
+        with self.assertRaises((OSError,ValueError)):P.stage(self.output(),streamline=root)
+        (root/'reflex.license.txt').write_bytes(b'Authored dependent license; no NVIDIA agreement.\n')
+        licensed=self.folder/'fresh licensed output';licensed.mkdir();(licensed/'build').mkdir()
+        result=P.stage(licensed,streamline=root)
+        self.assertIn('nvlowlatencyvk.dll',result['selection']['streamline']['stage'])
+        self.assertIn('providers/streamline/reflex.license.txt',result['files'])
+
     def test_original_changed_or_ambiguous_requires_explicit_reselection(self):
         root=self.sdk();original=P.inspect_selection({'fidelityfx':root})
         with (root/'LICENSE.txt').open('ab') as f:f.write(b'changed')

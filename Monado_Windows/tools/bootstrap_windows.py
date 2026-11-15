@@ -555,6 +555,19 @@ class Backend:
         return {'provider_'+kind:value['root'] for kind,value in record.get('providers',{}).items()
                 if kind in ('fidelityfx','streamline') and isinstance(value,dict) and isinstance(value.get('root'),str)}
 
+    def download_dlss(self):
+        # The payload/source manifests authenticate this helper before import.
+        # Download does not select a provider, rebuild or touch any profile.
+        name='source/Monado_Windows/tools/windows_dlss_download.py'
+        if name not in self.payload:raise BootstrapError('This checked source kit lacks the official DLSS download helper')
+        with self.guard.open_regular(name,max_bytes=MAX_SOURCE_FILE,owner=True) as stream:
+            if digest_stream(stream)!=self.payload[name]['sha256']:raise BootstrapError('The checked SDK download helper changed')
+            helper=import_checked(self.cache/name,'monado_checked_dlss_download')
+            source=helper.prepare(self.state_guard,checkpoint=self.checkpoint,
+                progress=lambda phase,done,total,message:self.progress.emit('dlss-'+phase,message,done=done,total=total))
+        self.progress.emit('complete','Official SDK downloaded. Review its exact DLSS license and choose Use before staging.',
+                           status='download-ready',downloaded_sdk=source)
+
     def provider_choice(self,previous=None):
         saved=(previous or {}).get('providers',{})
         if not isinstance(saved,dict) or set(saved)-{'fidelityfx','streamline'}:
@@ -1203,7 +1216,7 @@ def validate_input(exefs,romfs,profile,expected_nso,*,checkpoint=lambda:None,pro
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--action',required=True,choices=('build','resume','adopt','locate-input','check-update','update','prepare-fsr4','select-fsr4','build-fsr4-tools','select-providers'))
+    parser.add_argument('--action',required=True,choices=('build','resume','adopt','locate-input','check-update','update','prepare-fsr4','select-fsr4','build-fsr4-tools','select-providers','download-dlss'))
     parser.add_argument('--cache',required=True,type=Path)
     parser.add_argument('--payload-sha256',required=True)
     parser.add_argument('--manifest-sha256',required=True)
@@ -1229,7 +1242,7 @@ def main(argv=None):
         backend=Backend(args); backend.verify(); backend.checkpoint()
         {'build':backend.build,'resume':backend.resume,'adopt':backend.adopt,'locate-input':backend.locate,
          'check-update':backend.update,'update':lambda:backend.update(True),
-         'select-providers':backend.select_providers,
+         'select-providers':backend.select_providers,'download-dlss':backend.download_dlss,
          'prepare-fsr4':backend.prepare_fsr4,'select-fsr4':lambda:backend.prepare_fsr4(True),'build-fsr4-tools':backend.build_fsr4_tools}[args.action]()
         return 0
     except Cancelled as error:

@@ -28,6 +28,17 @@ bool tmp_fsr3_supported(void); // checked component/API present; not gameplay/ha
 bool tmp_linear_output(void); // successful native FSR uses linear half-float output, encode before HUD
 bool tmp_enabled(void);         // the option is on, a temporal upscaler is usable and this run isn't deterministic
 void tmp_jitter(float j[2]);
+const char *tmp_provider_status(void); // last dispatch/fallback result; never a GPU-pixel qualification
+void tmp_note_spatial_frame(void);
+typedef struct TmpSceneEvidence {
+    uint64_t frame;
+    uint32_t guest_depth_w,guest_depth_h,depth_w,depth_h;
+    uint32_t rejected_cameras,world_draws,jittered_draws,nodepth_draws,hud_draws;
+    bool camera_valid,fallback_unjittered;
+    float normalized_jitter[2];
+} TmpSceneEvidence;
+void tmp_diagnostics_frame(const TmpSceneEvidence *scene,uint32_t color_w,uint32_t color_h,
+    uint32_t output_w,uint32_t output_h,const float declared_jitter[2]);
 void tmp_hud_snapshot(VkCommandBuffer cb, TexBackend *b);
 bool tmp_hud_started(void);
 void tmp_note_target(TexBackend *b);

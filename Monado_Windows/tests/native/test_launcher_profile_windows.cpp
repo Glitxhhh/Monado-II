@@ -1,6 +1,7 @@
 // Authored arguments/profile validation, no UI, input, game process or user profile.
 #define _CRT_RAND_S
 #include "../../tools/launcher/windows_profile.h"
+#include "../../tools/launcher/windows_provider_status.h"
 #include <shellapi.h>
 #include <assert.h>
 #include <stdio.h>
@@ -29,5 +30,13 @@ int main(void) {
     auto runtime=canonical+"/authored-separate-runtime";assert(CreateDirectoryW(wide(runtime).c_str(),nullptr));assert(CreateDirectoryW(wide(runtime+"/build").c_str(),nullptr));
     assert(!runtime_available(runtime));FILE *image=open(runtime_executable(runtime),"wb");assert(image);fputs("authored ordinary image gate fixture; never executed",image);fclose(image);
     assert(runtime_available(runtime));assert(!runtime_available(canonical)); // The stable profile has logs but no game executable.
+    assert(monado_provider_status::dlss(runtime).find("DLSS unavailable")!=std::string::npos);
+    for(const char *name:{"sl.interposer.dll","sl.common.dll","sl.dlss.dll","nvngx_dlss.dll"}){
+        FILE *file=open(runtime+"/build/"+name,"wb");assert(file);fputs("authored file-presence fixture; never loaded",file);fclose(file);
+    }
+    assert(monado_provider_status::dlss(runtime).find("not an active-provider check")!=std::string::npos);
+    auto sdk_alias=wide(runtime+"/build/authored-sdk-alias.dll");auto sdk_source=wide(runtime+"/build/sl.common.dll");assert(CreateHardLinkW(sdk_alias.c_str(),sdk_source.c_str(),nullptr));
+    assert(monado_provider_status::dlss(runtime).find("DLSS unavailable")!=std::string::npos);assert(DeleteFileW(sdk_alias.c_str()));
+    assert(monado_provider_status::dlss(runtime).find("not an active-provider check")!=std::string::npos);
     puts("PASS native launcher explicit canonical owned profile, Unicode/literal argument paths, strict unknown/duplicate options, legacy shot syntax and separate runtime executable");return 0;
 }

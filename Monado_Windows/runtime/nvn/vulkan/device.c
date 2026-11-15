@@ -23,6 +23,7 @@ extern float xcde_effective_present_fps(void);
 #include "vk.h"
 #include "../../platform/windows_cache_transaction.h"
 #include "present_policy_windows.h"
+#include "feedback_device.h"
 #include "dlss.h"
 #include "fsr4_policy.h"
 #include "temporal.h"
@@ -74,16 +75,23 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debug_cb(VkDebugUtilsMessageSeverityFlagBi
 static void create_instance(void) {
     Uint32 n_sdl = 0;
     const char *const *sdl_ext = SDL_Vulkan_GetInstanceExtensions(&n_sdl);
-    const char *ext[16];
+    // SDL's required set plus the complete bounded optional provider set. Do
+    // not silently omit a Streamline requirement when joining the two lists.
+    if(n_sdl>30)FATAL("too many required SDL Vulkan instance extensions: %u\n",n_sdl);
+    const char *ext[160];
     uint32_t n_ext = 0;
-    for (Uint32 i = 0; i < n_sdl && n_ext < 14; i++) ext[n_ext++] = sdl_ext[i];
+    for (Uint32 i = 0; i < n_sdl; i++) ext[n_ext++] = sdl_ext[i];
     bool validate = getenv("LARECOMP_VK_VALIDATION") != NULL;
-    if (validate) ext[n_ext++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+    uint32_t debug_extension=UINT32_MAX;
+    bool have_debug_extension=false,provider_debug_extension=false;
+    for(uint32_t i=0;i<n_ext;i++)have_debug_extension|=!strcmp(ext[i],VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+    if (validate&&!have_debug_extension) {debug_extension=n_ext;ext[n_ext++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;}
     {   // [XCDE] DLSS (dlss.cpp): Streamline's instance extensions
         extern int dlss_instance_exts(const char **out, int max);
-        const char *dx[8];
-        int nd = dlss_instance_exts(dx, 8);
-        for (int i = 0; i < nd && n_ext < 16; i++) {
+        const char *dx[128];
+        int nd = dlss_instance_exts(dx, 128);
+        for (int i = 0; i < nd; i++) {
+            provider_debug_extension|=!strcmp(dx[i],VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
             bool dup = false;
             for (uint32_t j = 0; j < n_ext; j++) dup |= !strcmp(ext[j], dx[i]);
             if (!dup) ext[n_ext++] = dx[i];
@@ -99,7 +107,10 @@ static void create_instance(void) {
     if (r != VK_SUCCESS && validate) {
         LOG("[vk] validation layer unavailable (%d); continuing without\n", r);
         ci.enabledLayerCount = 0;
-        ci.enabledExtensionCount--;
+        if(debug_extension!=UINT32_MAX&&!provider_debug_extension) {
+            memmove(ext+debug_extension,ext+debug_extension+1,(n_ext-debug_extension-1)*sizeof *ext);
+            ci.enabledExtensionCount=--n_ext;
+        }
         validate = false;
         r = vkCreateInstance(&ci, NULL, &g_vk.inst);
     }
@@ -298,6 +309,15 @@ static void create_device(void) {
     }
     if (gpl) { ext[n_ext++] = VK_KHR_PIPELINE_LIBRARY_EXTENSION_NAME; ext[n_ext++] = VK_EXT_GRAPHICS_PIPELINE_LIBRARY_EXTENSION_NAME; }
     g_vk.gpl = gpl;
+    // [XCDE] WINPARITY-105: retain the accepted Linux optional native path.
+    // The executor already enforces usage/layout/pipeline flags and snapshots
+    // self-writes, depth, vertex/storage and otherwise ineligible feedback.
+    VkPhysicalDeviceAttachmentFeedbackLoopLayoutFeaturesEXT feedback;
+    g_vk.feedback_loop = monado_feedback_device_features(g_vk.phys,
+        has_ext(ep, ne, VK_EXT_ATTACHMENT_FEEDBACK_LOOP_LAYOUT_EXTENSION_NAME), &feedback);
+    if (g_vk.feedback_loop) ext[n_ext++] = VK_EXT_ATTACHMENT_FEEDBACK_LOOP_LAYOUT_EXTENSION_NAME;
+    LOG("[vk] legal color feedback: %s; load clears complete before sampling\n",
+        g_vk.feedback_loop ? "native where eligible" : "snapshot fallback");
     free(ep);
 
     // features the backend relies on (all present on current desktop drivers)
@@ -337,7 +357,8 @@ static void create_device(void) {
                                            .pNext = &f11};
     if (g_vk.robust2) { r2.pNext = fault ? (void *)&ff : (void *)&f11; }
     VkPhysicalDeviceFeatures2 f = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-                                   .pNext = g_vk.robust2 ? (void *)&r2 : fault ? (void *)&ff : (void *)&f11};
+                                    .pNext = g_vk.robust2 ? (void *)&r2 : fault ? (void *)&ff : (void *)&f11};
+    if (g_vk.feedback_loop) { feedback.pNext = f.pNext; f.pNext = &feedback; }
     LOG("[vk] robustBufferAccess2: %s\n", g_vk.robust2 ? "on" : "not available");
     VkPhysicalDeviceFeatures *b = &f.features, *h = &have.features;
     b->independentBlend = h->independentBlend;
@@ -429,7 +450,6 @@ static void create_device(void) {
     {   // [XCDE] DLSS: the device for Streamline; its swapchain proxies
         extern void dlss_device_created(VkInstance inst, VkPhysicalDevice phys, VkDevice dev, uint32_t qfam);
         dlss_device_created(g_vk.inst, g_vk.phys, g_vk.dev, g_vk.qfam);
-        sc_proxies();
     }
 
     VmaAllocatorCreateInfo ai = {.physicalDevice = g_vk.phys, .device = g_vk.dev, .instance = g_vk.inst,
@@ -1452,7 +1472,20 @@ void ui_window_init(void) {
     create_instance();
     if (!SDL_Vulkan_CreateSurface(window, g_vk.inst, NULL, &g_vk.surface)) FATAL("SDL_Vulkan_CreateSurface: %s\n", SDL_GetError());
     pick_device();
+    // [XCDE] WINPARITY-105: optional requirements belong to the actual selected
+    // adapter/family, before device features/extensions/queue counts are fixed.
+    dlss_validate_adapter(g_vk.phys, VK_API_VERSION_1_3, g_vk.qfam);
     create_device();
+    // Streamline's manual Win32 hook requires the created device before its
+    // surface. Keep the ordinary surface on failure and adopt only a checked
+    // caller-owned replacement; every later swapchain call uses that identity.
+    VkSurfaceKHR hooked = VK_NULL_HANDLE;
+    if (dlss_create_surface(window, g_vk.inst, g_vk.phys, g_vk.qfam, &hooked)) {
+        VkSurfaceKHR original = g_vk.surface;
+        g_vk.surface = hooked;
+        if (original != hooked) vkDestroySurfaceKHR(g_vk.inst, original, NULL);
+    }
+    sc_proxies();
     create_swapchain();
     if (g_vk.sc_extent.height)
         xcde_aspect_set_factor((float)xcde_aspect_target_factor(

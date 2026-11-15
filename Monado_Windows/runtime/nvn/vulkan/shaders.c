@@ -593,7 +593,9 @@ static const char *builtin_src(const char *name, int *stage) {
                "layout(location = 0) out vec4 o;\n"
                "void main() {\n"
                "  vec2 uv = gl_FragCoord.xy * pc.a.xy;\n"
-               "  vec3 up = texture(upTex, uv).rgb;\n"
+               // The temporal-failure path supplies the actual normalized
+               // viewport shift here to undo jitter without moving the HUD.
+               "  vec3 up = texture(upTex, uv + pc.a.zw).rgb;\n"
                "  vec3 fin = texture(finalTex, uv).rgb;\n"
                "  vec3 d = fin - texture(sceneTex, uv).rgb;\n"
                "  float m = max(abs(d.r), max(abs(d.g), abs(d.b)));\n"

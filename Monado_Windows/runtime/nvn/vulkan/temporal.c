@@ -23,6 +23,7 @@
 #include "temporal.h"
 #include "dlss.h"
 #include "temporal_camera.h"
+#include "temporal_evidence.h"
 #if defined(__linux__) && defined(XCDE_LINUX_FRAMEGEN)
 static void linux_fg_reset(void);
 #endif
@@ -169,6 +170,9 @@ static float halton(uint32_t i, uint32_t b) {
     return r;
 }
 void tmp_jitter(float j[2]) {
+    // One contract for drawn geometry and the provider's declared offset.
+    // The old diagnostic suppressed viewport movement but still declared Halton.
+    if(env_int("XCDE_TMP_NOJITTER")||!tmp_enabled()){j[0]=j[1]=0;return;}
     jit_index = jit_index % jit_phases + 1;
     j[0] = halton(jit_index, 2) - 0.5f;
     j[1] = halton(jit_index, 3) - 0.5f;
@@ -229,6 +233,9 @@ void tmp_reset(void) {
     hist_frame = frames = t_last = 0;
     active_provider = active_upscaler = active_quality = -1;
     effective_linear=false;
+    memset(&tmp_evidence,0,sizeof tmp_evidence);
+    tmp_evidence.history="reset";tmp_evidence.result="not-evaluated";
+    atomic_store_explicit(&tmp_public_status,TMP_STATUS_UNSEEN,memory_order_release);
     game_vel = NULL;
     game_vel_frame = snap_frame = ~0ull;
     jit_index = 0;
@@ -442,21 +449,30 @@ static bool history_prepare(const TmpCamera *cam, const float jitter[2], uint32_
                             int provider, uint64_t frame, double reproj[16], bool *have_prev) {
     *have_prev = false;
     memset(reproj, 0, 16 * sizeof *reproj);
-    if (!cam || !cam->ok || !jitter || !isfinite(jitter[0]) || !isfinite(jitter[1]) ||
-        !rw || !rh || !ow || !oh || ow > 16384 || oh > 16384 || rw > ow + 1 || rh > oh + 1) return false;
-    for (int i = 0; i < 12; i++) if (!isfinite(cam->view[i])) return false;
-    for (int i = 0; i < 16; i++) if (!isfinite(cam->proj[i]) || !isfinite(cam->viewproj[i])) return false;
+    tmp_evidence.history="invalid-camera";
+    if(!cam||!cam->ok)return false;
+    tmp_evidence.history="invalid-jitter";
+    if(!jitter||!isfinite(jitter[0])||!isfinite(jitter[1]))return false;
+    tmp_evidence.history="invalid-extents";
+    if(!rw||!rh||!ow||!oh||ow>16384||oh>16384||rw>ow+1||rh>oh+1)return false;
+    tmp_evidence.history="invalid-camera";
+    for(int i=0;i<12;i++)if(!isfinite(cam->view[i]))return false;
+    for(int i=0;i<16;i++)if(!isfinite(cam->proj[i])||!isfinite(cam->viewproj[i]))return false;
     double cur[16], inv[16];
     mat_from_rows(cam->viewproj, cur);
-    if (!mat_inv(cur, inv)) return false;
+    if (!mat_inv(cur, inv)){tmp_evidence.history="singular-camera";return false;}
     bool keep = previous.ok && hist_frame + 1 == frame && hist_rw == rw && hist_rh == rh && hist_ow == ow && hist_oh == oh &&
                 hist_upscaler == g_settings.upscaler && hist_quality == g_settings.upscale_quality && hist_provider == provider;
-    if (keep) keep = tmp_camera_continuous(cam->view, previous.view);
+    tmp_evidence.history=!previous.ok?"seed":hist_frame+1!=frame?"frame-gap":
+        hist_rw!=rw||hist_rh!=rh?"input-grid":hist_ow!=ow||hist_oh!=oh?"output-grid":
+        hist_upscaler!=g_settings.upscaler||hist_quality!=g_settings.upscale_quality?"settings":
+        hist_provider!=provider?"provider":"keep";
+    if (keep) {keep=tmp_camera_continuous(cam->view,previous.view);if(!keep)tmp_evidence.history="camera-cut";}
     if (keep) {
         double pv[16];
         mat_from_rows(previous.viewproj, pv);
         mat_mul(pv, inv, reproj);
-        for (int i = 0; i < 16; i++) if (!isfinite(reproj[i])) return false;
+        for(int i=0;i<16;i++)if(!isfinite(reproj[i])){tmp_evidence.history="invalid-reprojection";return false;}
         *have_prev = true;
     }
     return true;
@@ -683,6 +699,11 @@ VkImageView tmp_upscale(VkCommandBuffer cb, TexBackend *color, VkImageView color
     bool have_prev;
     uint32_t rw = color ? color->width : 0, rh = color ? color->height : 0;
     int provider=temporal_provider(rw,rh,ow,oh);
+    tmp_evidence.provider=provider;tmp_evidence.sdk_result=0;tmp_evidence.history="invalid-scene-input";
+    tmp_evidence.depth_w=depth?depth->width:0;tmp_evidence.depth_h=depth?depth->height:0;
+    bool depth_changed=previous.ok&&tmp_evidence.previous_depth_w&&
+        (tmp_evidence.previous_depth_w!=tmp_evidence.depth_w||tmp_evidence.previous_depth_h!=tmp_evidence.depth_h);
+    if(depth_changed)history_invalidate();
     effective_linear=provider==3; // Native Windows FFX3 stays gamma; Lite is linear.
     uint64_t frame = renderer_present_count();
     static int reported_provider=-1;
@@ -692,10 +713,12 @@ VkImageView tmp_upscale(VkCommandBuffer cb, TexBackend *color, VkImageView color
     }
     if (!provider || !color || !color->image || !color_view || !depth || !depth->image || !(depth->aspect & VK_IMAGE_ASPECT_DEPTH_BIT) ||
         !history_prepare(cam, jitter, rw, rh, ow, oh, provider, frame, reproj, &have_prev)) {
-        history_invalidate();
-        tmp_fg_idle(cb);
-        return VK_NULL_HANDLE;
+        tmp_evidence.result=!provider?"component-unavailable":"invalid-scene-input";
+        if(!provider)tmp_evidence.history="component-unavailable";
+        atomic_store_explicit(&tmp_public_status,!provider?TMP_STATUS_COMPONENT:TMP_STATUS_INPUT,memory_order_release);
+        history_invalidate();tmp_fg_idle(cb);return VK_NULL_HANDLE;
     }
+    if(depth_changed)tmp_evidence.history="scene-depth-grid";
     bool reset = !have_prev;
     jit_phases = (uint32_t)ceil(8.0 * ((double)ow / rw) * ((double)oh / rh));
     if (jit_phases < 8) jit_phases = 8;
@@ -754,7 +777,10 @@ VkImageView tmp_upscale(VkCommandBuffer cb, TexBackend *color, VkImageView color
         // The SDK rotates descriptors/constants through four slots. A slot must
         // be complete before reuse even when our producer records ahead.
         if (fsr_ring[fsr_slot] > vk_completed_seq()) {
-            if (fsr_ring[fsr_slot] >= vk_pending_seq()) { history_invalidate(); tmp_fg_idle(cb); return VK_NULL_HANDLE; }
+            if (fsr_ring[fsr_slot] >= vk_pending_seq()) {
+                tmp_evidence.result="recording-capacity";atomic_store_explicit(&tmp_public_status,TMP_STATUS_RECORDING,memory_order_release);
+                history_invalidate();tmp_fg_idle(cb);return VK_NULL_HANDLE;
+            }
             vk_wait_seq(fsr_ring[fsr_slot]);
         }
         fsr_ring[fsr_slot] = vk_pending_seq(); fsr_slot = (fsr_slot+1)%4;
@@ -790,7 +816,7 @@ VkImageView tmp_upscale(VkCommandBuffer cb, TexBackend *color, VkImageView color
         d.flags |= FFX_UPSCALE_FLAG_NON_LINEAR_COLOR_SRGB;
 #endif
         ffxReturnCode_t r = ffx_dispatch(&fsr_ctx, &d.header);
-        ok = r == FFX_API_RETURN_OK;
+        tmp_evidence.sdk_result=r;ok = r == FFX_API_RETURN_OK;
         if (!ok) { static int n; if (n++ < 5) LOG("[tmp] FSR dispatch failed: %u\n", r); }
     }
 #endif
@@ -807,6 +833,51 @@ VkImageView tmp_upscale(VkCommandBuffer cb, TexBackend *color, VkImageView color
         LOG("[tmp] %ux%u -> %ux%u jitter %.3f %.3f (%u phases) %s%s near %.3f fov %.1f proj11 %.3f\n", rw, rh, ow, oh, jitter[0],
             jitter[1], jit_phases, reset ? "reset " : "", ok ? "ok" : "FAILED", cam->proj[11] * 0.5, 2 * atan(1.0 / cam->proj[5]) * 57.2958,
             cam->proj[5]);
-    history_commit(cam, rw, rh, ow, oh, provider, frame, ok);
-    return ok ? img[3].v : VK_NULL_HANDLE;
+    history_commit(cam,rw,rh,ow,oh,provider,frame,ok);
+    if(ok){
+        tmp_evidence.previous_depth_w=tmp_evidence.depth_w;tmp_evidence.previous_depth_h=tmp_evidence.depth_h;
+        tmp_evidence.result=provider==3?"fsr4-dispatch-accepted":provider==2?"dlss-dispatch-accepted":"fsr3-dispatch-accepted";
+        atomic_store_explicit(&tmp_public_status,provider==3?TMP_STATUS_FSR4:provider==2?TMP_STATUS_DLSS:TMP_STATUS_FSR3,memory_order_release);
+    }else{
+        tmp_evidence.result=provider==1&&!fsr_ctx?"context-unavailable":"dispatch-rejected";
+        atomic_store_explicit(&tmp_public_status,provider==1&&!fsr_ctx?TMP_STATUS_CONTEXT:TMP_STATUS_DISPATCH,memory_order_release);
+    }
+    return ok?img[3].v:VK_NULL_HANDLE;
+}
+
+const char *tmp_provider_status(void) {
+    static const char *const text[]={
+        "Temporal provider has not evaluated a frame.","Spatial scaling selected.",
+        "Spatial fallback: temporal component unavailable.","Spatial fallback: no valid scene camera/depth/input this frame.",
+        "Spatial fallback: temporal context unavailable.","Spatial fallback: temporal recording capacity unavailable.",
+        "Spatial fallback: temporal dispatch rejected.","FSR 3.1: dispatch accepted.",
+        "DLSS/DLAA: dispatch accepted.","FSR4 Lite: dispatch accepted."};
+    unsigned status=(unsigned)atomic_load_explicit(&tmp_public_status,memory_order_acquire);
+    return text[status<sizeof text/sizeof *text?status:0];
+}
+void tmp_note_spatial_frame(void) {
+    bool selected=g_settings.upscaler==UPSCALE_FSR3||g_settings.upscaler==UPSCALE_DLSS||g_settings.upscaler==UPSCALE_FSR4_LITE;
+    tmp_evidence.provider=0;tmp_evidence.history="not-evaluated";
+    tmp_evidence.result=selected?"temporal-unavailable":"spatial-selected";
+    tmp_evidence.depth_w=tmp_evidence.depth_h=0;tmp_evidence.sdk_result=0;
+    atomic_store_explicit(&tmp_public_status,selected?TMP_STATUS_COMPONENT:TMP_STATUS_SPATIAL,memory_order_release);
+}
+void tmp_diagnostics_frame(const TmpSceneEvidence *scene,uint32_t color_w,uint32_t color_h,
+        uint32_t output_w,uint32_t output_h,const float declared[2]) {
+    static unsigned normal_rows,debug_rows;
+    static int previous_status=-1;static const char *previous_history;
+    static uint64_t last_debug;
+    int status=atomic_load_explicit(&tmp_public_status,memory_order_acquire);
+    bool transition=status!=previous_status||tmp_evidence.history!=previous_history;
+    previous_status=status;previous_history=tmp_evidence.history;
+    uint64_t now=SDL_GetTicksNS();
+    bool debug=env_int("XCDE_TMP_LOG")&&debug_rows<256&&(!last_debug||now-last_debug>=2000000000ull);
+    if(!(transition&&normal_rows<32)&&!debug)return;
+    if(debug){debug_rows++;last_debug=now;}else normal_rows++;
+    LOG("[temporal] frame %llu requested %d provider %d result %s history %s color %ux%u depth %ux%u guest-depth %ux%u output %ux%u camera %u rejected %u world %u jittered %u nodepth %u hud %u dejitter %u uv %.9g %.9g declared %.5f %.5f sdk %u\n",
+        (unsigned long long)scene->frame,g_settings.upscaler,tmp_evidence.provider,tmp_evidence.result?tmp_evidence.result:"unknown",
+        tmp_evidence.history?tmp_evidence.history:"unknown",color_w,color_h,tmp_evidence.depth_w,tmp_evidence.depth_h,
+        scene->guest_depth_w,scene->guest_depth_h,output_w,output_h,(unsigned)scene->camera_valid,scene->rejected_cameras,
+        scene->world_draws,scene->jittered_draws,scene->nodepth_draws,scene->hud_draws,(unsigned)scene->fallback_unjittered,
+        scene->normalized_jitter[0],scene->normalized_jitter[1],declared[0],declared[1],tmp_evidence.sdk_result);
 }
