@@ -45,6 +45,12 @@ static void cancel_after_member(uint32_t, uint32_t) {
 }
 int wmain(int argc, wchar_t **argv) {
     try {
+        if (argc == 4 && !wcscmp(argv[1], L"--materialize-created-appdata")) {
+            std::vector<wchar_t> env(32768);DWORD n=GetEnvironmentVariableW(L"LOCALAPPDATA",env.data(),(DWORD)env.size());require(n&&n<env.size(),"authored LocalAppData unavailable");
+            auto root=builder_cache_root(std::wstring(env.data(),n));std::wstring leaf=argv[3];require(leaf.rfind(L"authored-msix-cache-",0)==0&&leaf.find_first_of(L"\\/:")==std::wstring::npos,"authored cache leaf");root+=L"\\"+leaf;directory(root);
+            Handle input(CreateFileW(native(argv[2]).c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));require(input.value!=INVALID_HANDLE_VALUE,"authored payload input");
+            auto payload=inspect(input.value);PayloadLease lease;materialize(input.value,payload,root,nullptr,&lease);auto physical=utf8(payload.cache);write(GetStdHandle(STD_OUTPUT_HANDLE),physical.data(),physical.size());return 0;
+        }
         if (argc == 2 && !wcscmp(argv[1], L"--check-fast-preparation-completion")) {
             monado_preparation::Worker worker;monado_preparation::Selection selection;
             for(unsigned attempt=0;attempt<2;++attempt){
@@ -350,6 +356,34 @@ int wmain(int argc, wchar_t **argv) {
                 physical = Path(result.stdout.decode("utf-8"))
                 self.assertEqual(physical, path.resolve(strict=True))
                 self.assertEqual(physical.resolve(strict=True), physical)
+
+    def test_actual_native_created_appdata_payload_path_is_physical(self):
+        # Creation under an MSIX host can redirect the child while the existing
+        # LOCALAPPDATA base handle still reports its unredirected logical path.
+        # Use the same creation helper as the real setup and a tiny payload.
+        import shutil
+        import uuid
+        target, sha = self.fixture()
+        leaf = 'authored-msix-cache-' + uuid.uuid4().hex
+        logical = Path(os.environ['LOCALAPPDATA']) / 'MonadoII/BuilderCache' / leaf
+        result = subprocess.run([str(self.cancel_exe), '--materialize-created-appdata',
+                                 str(target), leaf], capture_output=True, timeout=30)
+        try:
+            self.assertEqual(result.returncode, 0, result.stderr)
+            physical = Path(result.stdout.decode('utf-8'))
+            self.assertEqual(physical, (logical / sha).resolve(strict=True))
+            self.assertEqual(physical, physical.resolve(strict=True))
+            self.assertEqual((physical / 'python/authored.txt').read_bytes(), b'payload fixture\n' * 500)
+            self.assertEqual((physical / '.complete').read_text(encoding='ascii'), sha)
+        finally:
+            # Only this uniquely named authored fixture is removed. All real
+            # content-addressed caches, including failed package runs, remain.
+            if logical.is_dir():
+                cleanup = logical.resolve(strict=True)
+                self.assertFalse(logical.is_junction() or logical.is_symlink())
+                self.assertEqual(cleanup.name, leaf)
+                self.assertEqual(cleanup.parent, logical.parent.resolve(strict=True))
+                shutil.rmtree(cleanup)
 
     def test_actual_native_final_directory_rejects_reparse_leaf(self):
         import _winapi

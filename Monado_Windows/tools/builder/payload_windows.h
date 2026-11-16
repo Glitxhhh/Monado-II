@@ -140,6 +140,13 @@ public:
     }
     size_t file_count()const{return files.size();}size_t directory_count()const{return directories.size();}
 };
+inline std::wstring builder_cache_root(const std::wstring &local_appdata){
+    // MSIX can redirect creation of a previously absent child even when the
+    // existing LocalAppData handle itself still has the logical final path.
+    auto base=final_directory(local_appdata),monado=base+L"\\MonadoII";directory(monado);
+    PayloadLease guard;guard.begin(monado);monado=final_directory(monado);guard.owned_directory(monado);
+    auto cache=monado+L"\\BuilderCache";directory(cache);guard.owned_directory(cache);cache=final_directory(cache);guard.owned_directory(cache);return cache;
+}
 inline void publish_new(const std::wstring &root,const std::wstring &target,const void *data,size_t bytes){
     std::array<unsigned char,32> nonce{};require(BCryptGenRandom(nullptr,nonce.data(),(ULONG)nonce.size(),BCRYPT_USE_SYSTEM_PREFERRED_RNG)==0,"Cannot name an exclusive setup cache temporary");
     std::wstring temporary=root+L"\\state\\extract-"+wide(hex(nonce))+L".part";
@@ -193,7 +200,9 @@ inline Payload inspect(HANDLE file){
 // Both first extraction and every reopen validate the whole immutable payload.
 // Mutable build progress/registry lives in state/, outside all payload members.
 inline void materialize(HANDLE file,Payload &p,const std::wstring &base,void(*progress)(uint32_t,uint32_t)=nullptr,PayloadLease *lease=nullptr){
-    directory(base);p.cache=base+L"\\"+wide(hex(p.sha));directory(p.cache);if(lease)lease->begin(p.cache);directory(p.cache+L"\\state");
+    directory(base);PayloadLease original;original.begin(base);auto actual_base=final_directory(base);original.owned_directory(actual_base);
+    p.cache=actual_base+L"\\"+wide(hex(p.sha));directory(p.cache);original.owned_directory(p.cache);p.cache=final_directory(p.cache);
+    if(lease){lease->begin(actual_base);lease->owned_directory(p.cache);}directory(p.cache+L"\\state");
     Handle lock(CreateFileW(native(p.cache+L"\\.lock").c_str(),GENERIC_READ|GENERIC_WRITE,0,nullptr,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
     require(lock.value!=INVALID_HANDLE_VALUE,"Another setup process is preparing this cache; retry after it finishes");
     FILE_ATTRIBUTE_TAG_INFO info{};require(GetFileInformationByHandleEx(lock.value,FileAttributeTagInfo,&info,sizeof info)&&!(info.FileAttributes&FILE_ATTRIBUTE_REPARSE_POINT),"Unsafe setup cache lock");

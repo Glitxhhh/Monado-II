@@ -81,7 +81,7 @@ bool protocol_fixture(){
     SetEnvironmentVariableW(L"PYTHONPATH",L"authored hostile ambient module path");SetEnvironmentVariableW(L"PYTHONHOME",L"authored hostile ambient home");auto block=clean_environment();
     for(auto p=block.data();*p;p+=wcslen(p)+1){std::wstring value=p;for(auto &c:value)c=(wchar_t)towupper(c);if(value.rfind(L"PYTHONPATH=",0)==0||value.rfind(L"PYTHONHOME=",0)==0)return false;}return true;
 }
-std::wstring local_cache(){std::vector<wchar_t>b(32768);DWORD n=GetEnvironmentVariableW(L"LOCALAPPDATA",b.data(),(DWORD)b.size());require(n&&n<b.size(),"LOCALAPPDATA is unavailable; an ordinary user cache is required");std::wstring base=final_directory(std::wstring(b.data(),n));directory(base+L"\\MonadoII");directory(base+L"\\MonadoII\\BuilderCache");return base+L"\\MonadoII\\BuilderCache";}
+std::wstring local_cache(){std::vector<wchar_t>b(32768);DWORD n=GetEnvironmentVariableW(L"LOCALAPPDATA",b.data(),(DWORD)b.size());require(n&&n<b.size(),"LOCALAPPDATA is unavailable; an ordinary user cache is required");return builder_cache_root(std::wstring(b.data(),n));}
 bool choose(std::wstring &out,const wchar_t *title){
     IFileOpenDialog *dialog=nullptr;HRESULT hr=CoCreateInstance(CLSID_FileOpenDialog,nullptr,CLSCTX_INPROC_SERVER,IID_PPV_ARGS(&dialog));if(FAILED(hr))return false;
     DWORD flags=0;dialog->GetOptions(&flags);dialog->SetOptions(flags|FOS_PICKFOLDERS|FOS_FORCEFILESYSTEM|FOS_PATHMUSTEXIST);dialog->SetTitle(title);bool ok=false;
