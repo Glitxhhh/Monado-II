@@ -26,6 +26,72 @@ import setup_linux_build_tools as build_tools
 ROOT = baseline.ROOT
 
 
+# [XCDE] LINUX-111: pkg-config may be a host shell wrapper which resolves
+# pkgconf through PATH. A target sysroot's executables must never shadow that
+# host helper: their loader/library set belongs to a different distribution.
+HOST_TOOL_PATH = '/usr/bin:/bin'
+
+
+def build_environment(sysroot):
+    """Use native build tools and only the pinned target pkg-config database."""
+    sysroot = Path(sysroot)
+    return {'PATH': HOST_TOOL_PATH, 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
+            'PKG_CONFIG_SYSROOT_DIR': str(sysroot),
+            'PKG_CONFIG_LIBDIR': str(sysroot / 'usr/lib/x86_64-linux-gnu/pkgconfig')
+                + ':' + str(sysroot / 'usr/share/pkgconfig')}
+
+
+def target_cmake_options():
+    """Keep target header/library discovery separate from native programs."""
+    return ['-DCMAKE_FIND_ROOT_PATH_MODE_PROGRAM=NEVER',
+            '-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY',
+            '-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY',
+            '-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY',
+            # The pinned baseline intentionally has no liburing development
+            # provider. SDL's ordinary threaded async-I/O fallback remains.
+            '-DSDL_LIBURING=OFF']
+
+
+def log_excerpt(path, limit=16384):
+    """Bounded beginning/end context, including configure's early loader errors."""
+    try:
+        with Path(path).open('rb') as stream:
+            beginning = stream.read(limit // 2)
+            stream.seek(0, os.SEEK_END)
+            size = stream.tell()
+            if size <= limit // 2:
+                return beginning.decode('utf-8', errors='replace').strip()
+            stream.seek(max(limit // 2, size - limit // 2))
+            ending = stream.read(limit // 2)
+    except OSError as error:
+        return 'Log excerpt unavailable: ' + str(error)
+    separator = '\n... intermediate log output omitted ...\n' if size > limit else '\n'
+    return (beginning.decode('utf-8', errors='replace').rstrip() + separator
+            + ending.decode('utf-8', errors='replace').lstrip()).strip()
+
+
+def phase_failure(name, path, code=None, *, display_path=None):
+    label = name + ' failed' + ((' (exit ' + str(code) + ')') if code is not None else '')
+    return RuntimeError(label + '; log: ' + str(display_path or path) + '\n' + log_excerpt(path))
+
+
+def wait_for_build(process, name, *, timeout=1200, interval=15):
+    """Keep outer setup logs alive without changing the original phase deadline."""
+    started = time.monotonic()
+    deadline = started + timeout
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(process.args, timeout)
+        try:
+            return process.wait(timeout=min(interval, remaining))
+        except subprocess.TimeoutExpired:
+            elapsed = time.monotonic() - started
+            if elapsed >= timeout:
+                raise subprocess.TimeoutExpired(process.args, timeout) from None
+            print(name + ': still working (' + str(int(elapsed)) + 's)', flush=True)
+
+
 def verify_existing():
     marker = baseline.ordinary(ROOT / '.deps/portable/active-build.json')
     selected = json.loads(marker.read_text())
@@ -159,14 +225,13 @@ def build(output, jobs=4):
         target.write_text('#!/bin/sh\nexec ' + shlex.quote(str(compiler)) + ' "$@"\n'); target.chmod(0o755)
     prefix = work / 'prefix'
     scratch_logs = work / 'logs'; scratch_logs.mkdir()
-    env = {'PATH': str(sysroot / 'usr/bin') + ':/usr/bin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
-           'PKG_CONFIG_SYSROOT_DIR': str(sysroot), 'PKG_CONFIG_LIBDIR': str(sysroot / 'usr/lib/x86_64-linux-gnu/pkgconfig') + ':' + str(sysroot / 'usr/share/pkgconfig')}
+    env = build_environment(sysroot)
     flags = '-target x86_64-linux-gnu.2.39 -march=x86_64_v2 -fPIC -ffp-contract=off -fno-strict-aliasing'
     receipt = {'schema': 1, 'status': 'running', 'target_glibc': '2.39', 'lock_sha256': prepared['lock_sha256'],
                'recipe_sha256': baseline.sha(__file__), 'source_root': prepared['sources'], 'source_manifest_sha256': prepared['source_manifest_sha256'],
                'scratch': str(work), 'scratch_policy': 'private space-free disposable source/build/sysroot/prefix; relocated outputs only',
                'compiler_wrappers': {str(x.relative_to(ROOT)): baseline.sha(x) for x in (ROOT / '.deps/bin/clang-cc', ROOT / '.deps/bin/clang-cxx')},
-               'commands': [], 'outputs': {}, 'features': {
+               'build_environment': env, 'commands': [], 'outputs': {}, 'features': {
                    'ffmpeg_builtin_codecs': 'all', 'ffmpeg_builtin_demuxers': 'all', 'ffmpeg_external_autodetect': False,
                    'sdl_video_audio_input': 'Noble platform development interfaces; actual CMake feature report retained'}}
     def save():
@@ -174,12 +239,13 @@ def build(output, jobs=4):
     def run(name, args, cwd=work):
         started = time.monotonic()
         process = None
+        print(name + ': starting; log: ' + str(logs / (name + '.log')), flush=True)
         try:
             with (scratch_logs / (name + '.log')).open('wb') as stream:
                 process = subprocess.Popen(list(map(str, args)), cwd=cwd, env=env, stdin=subprocess.DEVNULL,
                     stdout=stream, stderr=subprocess.STDOUT, start_new_session=True)
                 try:
-                    process.wait(timeout=1200)
+                    wait_for_build(process, name)
                 except BaseException:
                     terminate_owned_group(process)
                     raise
@@ -189,7 +255,8 @@ def build(output, jobs=4):
                 'exit': process.returncode if process is not None else None, 'seconds': time.monotonic() - started})
             save()
         if process.returncode:
-            raise RuntimeError(name + ' failed: ' + str(logs / (name + '.log')))
+            raise phase_failure(name, logs / (name + '.log'), process.returncode)
+        print(name + ': completed (' + format(time.monotonic() - started, '.1f') + 's)', flush=True)
     try:
         save()
         with portable_file_limit(receipt):
@@ -206,6 +273,7 @@ def build(output, jobs=4):
             run('sdl-configure', [cmake, '-S', sources / 'SDL3-3.4.8', '-B', work / 'sdl', '-G', 'Ninja',
                 '-DCMAKE_MAKE_PROGRAM=' + ninja, '-DCMAKE_C_COMPILER=' + str(c), '-DCMAKE_CXX_COMPILER=' + str(cxx),
                 '-DCMAKE_SYSROOT=' + str(sysroot), '-DCMAKE_C_FLAGS=' + flags, '-DCMAKE_CXX_FLAGS=' + flags,
+                *target_cmake_options(),
                 '-DCMAKE_LIBRARY_ARCHITECTURE=x86_64-linux-gnu', '-DCMAKE_LIBRARY_PATH=' + str(sysroot / 'usr/lib/x86_64-linux-gnu'),
                 '-DCMAKE_PREFIX_PATH=' + str(sysroot / 'usr'), '-DPKG_CONFIG_EXECUTABLE=/usr/bin/pkg-config',
                 '-DWAYLAND_SCANNER=' + str(scanner),
@@ -216,7 +284,9 @@ def build(output, jobs=4):
             report = (logs / 'sdl-configure.log').read_text()
             for driver in ('X11', 'Wayland', 'ALSA', 'PULSEAUDIO', 'PIPEWIRE'):
                 if not __import__('re').search(r'SDL_' + driver + r'\s+\([^\n]*\):\s+ON', report, __import__('re').IGNORECASE):
-                    raise ValueError('portable SDL lost required platform feature: ' + driver)
+                    raise ValueError('portable SDL lost required platform feature: ' + driver
+                        + '; configure log: ' + str(logs / 'sdl-configure.log')
+                        + '\n' + log_excerpt(logs / 'sdl-configure.log'))
             run('sdl-build', [cmake, '--build', work / 'sdl', '--parallel', jobs])
             run('sdl-install', [cmake, '--install', work / 'sdl'])
             ff = work / 'ffmpeg'; ff.mkdir()

@@ -3,6 +3,21 @@
 
 # Linux change ledger for inherited source
 
+## November 16, 2026: LINUX-111 build portability and startup
+
+- Keep host package-tool wrappers separate from the target sysroot, constrain
+  CMake target discovery and retain SDL's fallback for the unsupported optional
+  liburing provider. Preserve required desktop/audio backends and ABI checks.
+- Build private Python with the same tool separation, native certificate-store
+  discovery and license text from the pinned upstream source rather than a
+  distribution-specific host path. Preserve TLS verification and notices.
+- Retain exact source/path/hash checks while reusing pure content-policy results
+  within one protected operation. Deduplicate internal migration checks and add
+  truthful timestamped startup/progress diagnostics. Preserve installation
+  leases, post-maintenance artifact validation and safe retention refusals.
+- No gameplay, renderer, save-format, driver or system configuration changes.
+
+
 ## November 14, 2026: LINUX-101 refresh cap and measured output logs
 
 - Correct the two Linux frame-pacing feature guards using the actual shared

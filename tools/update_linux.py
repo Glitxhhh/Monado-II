@@ -10,6 +10,7 @@ compilation never run in the sandboxed GUI/game.
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import hashlib
 import importlib.util
 import json
@@ -40,6 +41,22 @@ HASH = re.compile(r'[0-9a-f]{64}\Z')
 ACTIVE_KEYS = {'schema', 'version', 'id', 'workspace', 'image_sha256',
                'receipt_sha256', 'source_manifest_sha256'}
 MAX_GAME_RECEIPT = 8 * 1024 * 1024  # native compile commands scale with managed path length
+
+# [XCDE] LINUX-111: reuse only a content-policy verdict, never a trusted file
+# identity. Every installed_sources call still reads and hashes every source,
+# including ordinary-path and before/open/after race checks. The exact bytes,
+# filename and policy determine this pure verdict. No on-disk cache is used.
+_SOURCE_POLICY_VERDICTS = contextvars.ContextVar('monado_source_policy_verdicts', default=None)
+
+
+@contextlib.contextmanager
+def source_verification_context():
+    """Bound pure policy-work reuse to one synchronous installation operation."""
+    token = _SOURCE_POLICY_VERDICTS.set({})
+    try:
+        yield
+    finally:
+        _SOURCE_POLICY_VERDICTS.reset(token)
 
 
 def ordinary(path, *, missing=False):
@@ -117,6 +134,15 @@ def layout_module(workspace):
 
 
 def installed_sources(workspace, *, _allow_stale_marker=False):
+    # An owner marker can recursively verify the active source more than once.
+    # Even a standalone read-only caller gets one bounded pure-verdict context.
+    if _SOURCE_POLICY_VERDICTS.get() is None:
+        with source_verification_context():
+            return _installed_sources(workspace, _allow_stale_marker=_allow_stale_marker)
+    return _installed_sources(workspace, _allow_stale_marker=_allow_stale_marker)
+
+
+def _installed_sources(workspace, *, _allow_stale_marker=False):
     """Verify release-owned source bytes while leaving all runtime directories alone.
 
     Unlike the clean archive guard this intentionally does not enumerate runtime
@@ -128,6 +154,9 @@ def installed_sources(workspace, *, _allow_stale_marker=False):
     workspace = ordinary(workspace)
     manifest = json_read(workspace / 'publication-manifest.json')
     policy = json_read(workspace / 'publication-policy.json')
+    verdicts = _SOURCE_POLICY_VERDICTS.get()
+    policy_identity = hashlib.sha256(json.dumps(policy, sort_keys=True,
+        separators=(',', ':'), ensure_ascii=True).encode()).digest()
     files = manifest.get('files')
     if (manifest.get('schema') != 1 or manifest.get('source_only') is not True or
             manifest.get('project') != 'Monado II' or not isinstance(files, dict) or
@@ -144,9 +173,20 @@ def installed_sources(workspace, *, _allow_stale_marker=False):
         if (path_problem(name) or name == 'publication-manifest.json' or not isinstance(identity, dict)):
             raise ValueError('unsafe installed source manifest')
         data = original if name == 'update-version.json' and original is not None else read_regular(ordinary(workspace / name))
-        if len(data) != identity.get('bytes') or hashlib.sha256(data).hexdigest() != identity.get('sha256'):
+        source_identity = hashlib.sha256(data).hexdigest()
+        if len(data) != identity.get('bytes') or source_identity != identity.get('sha256'):
             raise ValueError('Local source changes detected; keep this installation and merge them manually: ' + name)
-        problem = content_problem(name, data, policy.get('licensed_media', {}))
+        key = (name, source_identity, policy_identity)
+        if verdicts is not None and key in verdicts:
+            problem = verdicts[key]
+        else:
+            problem = content_problem(name, data, policy.get('licensed_media', {}))
+            if problem is None and verdicts is not None:
+                # Bound an unusually large cleanup operation without changing
+                # validation: an evicted verdict is simply calculated again.
+                if len(verdicts) >= 16384:
+                    verdicts.clear()
+                verdicts[key] = None
         if problem:
             raise ValueError('installed source policy rejected ' + name + ': ' + problem)
     return manifest
@@ -507,18 +547,21 @@ def sync_installation_version(workspace, state, profile_lock_fd):
     session.owner, session.lock_fd = owner, None
     try:
         session._lock()
-        if _current_selection(owner) != selected:
-            raise ValueError('active selection changed during version synchronization')
-        if selected is None:
+        # No result from before install.lock is trusted across admission. This
+        # context ends before the lock is released, even after a failed sync.
+        with source_verification_context():
+            if _current_selection(owner) != selected:
+                raise ValueError('active selection changed during version synchronization')
+            if selected is None:
+                cleanup_current(owner, workspace, state, profile_lock_fd=profile_lock_fd)
+                return False
+            original, current = _prepare_version_state(owner, workspace)
+            target = _selected_metadata(owner, original, selected)
+            changed = current != target
+            if changed:
+                _replace_metadata(owner / 'update-version.json', target)
             cleanup_current(owner, workspace, state, profile_lock_fd=profile_lock_fd)
-            return False
-        original, current = _prepare_version_state(owner, workspace)
-        target = _selected_metadata(owner, original, selected)
-        changed = current != target
-        if changed:
-            _replace_metadata(owner / 'update-version.json', target)
-        cleanup_current(owner, workspace, state, profile_lock_fd=profile_lock_fd)
-        return changed
+            return changed
     finally:
         session.close()
 

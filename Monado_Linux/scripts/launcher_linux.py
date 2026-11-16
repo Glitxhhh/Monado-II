@@ -19,6 +19,7 @@ import sys
 import hashlib
 import importlib.util
 import selectors
+import time
 
 import run_linux
 
@@ -539,6 +540,15 @@ def arguments(argv=None):
 
 def main(argv=None):
     parser, args = arguments(argv)
+    startup_started = time.monotonic()
+    def startup_phase(phase):
+        # [XCDE] LINUX-111: the outer builder captures stderr before any
+        # profile/log access. Preserve dry-run stdout as its JSON protocol.
+        if not args.dry_run:
+            print('[startup] ' + json.dumps({'phase': phase,
+                'elapsed_seconds': round(time.monotonic() - startup_started, 6),
+                'utc': time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime())}, sort_keys=True),
+                file=sys.stderr, flush=True)
     lock_fd = log_fd = runtime_fd = None
     updates = None
     games = None
@@ -546,18 +556,23 @@ def main(argv=None):
     metadata_mirror = None
     result = 1
     try:
+        startup_phase('checking-input-location')
         if not recover_input(args):
             return 0
+        startup_phase('planning-launcher-and-game')
         launch = prepare(args)
+        startup_phase('checking-game-input')
         launch['input_check'] = check_input(launch['input'])
         if args.dry_run:
             print(json.dumps(launch, indent=2))
             return 0
         # Validate both actual artifacts before acquiring or writing the profile.
+        startup_phase('checking-runtime-before-profile-admission')
         for executable in (args.launcher_executable, args.game_executable):
             run_linux.validate_runtime(run_linux.plan(executable, args.state_root))
         os.umask(0o077)
         state = Path(launch['state'])
+        startup_phase('waiting-for-profile-lease')
         lock_fd = acquire_lock(state)
         if not args.shot and not args.ui_script and (ROOT.parent / 'update-version.json').exists():
             # Managed versions mirror their active version at the original root.
@@ -570,14 +585,18 @@ def main(argv=None):
             module = importlib.util.module_from_spec(spec)
             sys.modules[spec.name] = module
             spec.loader.exec_module(module)
+            startup_phase('synchronizing-installation-and-retention')
             module.sync_installation_version(ROOT.parent, state, lock_fd)
         # Startup maintenance runs before admitting this session. Recheck the
         # artifacts under a shared installation lease after that exclusive phase;
         # cleanup may have retired an obsolete selection while admission waited.
+        startup_phase('waiting-for-installation-runtime-lease')
         runtime_fd = install_lease.acquire_runtime(ROOT)
+        startup_phase('checking-runtime-after-maintenance')
         launch = prepare(args)
         for executable in (args.launcher_executable, args.game_executable):
             run_linux.validate_runtime(run_linux.plan(executable, args.state_root))
+        startup_phase('preparing-native-session')
         logs_fd = mkdir_private(state / 'logs')
         try:
             log_fd = regular_open(logs_fd, 'launcher-console.log', os.O_WRONLY | os.O_APPEND)
@@ -619,6 +638,7 @@ def main(argv=None):
                 activity=lambda: updates is not None and (updates.kind == 'install' or updates.prepared is not None))
         params = (launch.get('execution_argv', launch['argv']),
                   launch.get('runtime_environment', clean_environment(launch['library_path'])), lock_fd, log_fd)
+        startup_phase('native-gui-handoff')
         result = wait_session(*params, updates=updates, runtime_fd=runtime_fd,
                               metadata_mirror=metadata_mirror, games=games)
         # Every owned child is reaped. Drop SH before the updater requests EX;

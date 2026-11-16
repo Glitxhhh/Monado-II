@@ -61,9 +61,17 @@ def build_graph(base, *, jobs=4):
     sys.path.insert(0, str(ROOT / 'scripts'))
     try:
         import build_portable_dependencies as portable
+        rebuild = False
         try:
             component_path, component = portable.verify_existing()
-        except (OSError, ValueError, RuntimeError):
+        except (OSError, ValueError, RuntimeError) as error:
+            rebuild = True
+            print('Preparing portable graphics/audio libraries: no current verified provider ('
+                  + type(error).__name__ + '). Existing outputs are preserved.', flush=True)
+        # A missing first-build marker is ordinary cache state, not a build
+        # error. Leave its exception context before running the real build so
+        # an actual compiler failure reports its own diagnostic unambiguously.
+        if rebuild:
             portable.baseline.prepare()
             portable.build(ROOT / '.deps/portable/build' / ('deps-' + uuid.uuid4().hex), jobs)
             component_path, component = portable.verify_existing()

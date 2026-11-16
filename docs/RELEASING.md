@@ -6,7 +6,7 @@ labelled experimental in its identity, download instructions and release notes.
 Do not mark the whole release prerelease merely to label Windows experimental,
 since both current update clients check the ordinary latest release.
 
-## Linux0.1.24
+## Linux0.1.25
 
 Publish the reviewed standalone builder AppImage, Linux source/setup tarball,
 byte-identical legacy `-source.tar.gz` alias, AppImage runtime source/relink
@@ -14,7 +14,7 @@ companion and combinedSHA256SUMS. The internal legacy source-root name is retain
 for existing Linux updater compatibility. Source archives contain no binaries,
 input, generated code, game shaders/caches, saves, keys or vendor SDKs.
 
-The public0.1.24 standalone AppImage contains setup software and its reviewed
+The public0.1.25 standalone AppImage contains setup software and its reviewed
 private startup runtime. Game/runtime compilation remains local. Local migration
 images may also contain a verified authored runtime; that local transport is not
 a public binary redistribution approval. The

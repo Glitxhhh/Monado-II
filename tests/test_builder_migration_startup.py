@@ -118,7 +118,8 @@ class MigrationStartup(unittest.TestCase):
                         files={bootstrap.ARCHIVE: {}})
         args = SimpleNamespace(data_dir=data, dry_run=False, state_root=inherited_state,
             setup=False, self_check=False, headless_frames=None, screenshot=None)
-        broker = SimpleNamespace(adopt=mock.Mock(), open=mock.Mock(return_value=available))
+        broker = SimpleNamespace(adopt=mock.Mock(), open=mock.Mock(),
+            adopt_and_open=mock.Mock())
         backend_module = SimpleNamespace(Broker=mock.Mock(return_value=broker))
         def adopt(request):
             # Adoption persists the same owner and recovery status before the
@@ -127,7 +128,10 @@ class MigrationStartup(unittest.TestCase):
             (data / 'installation.json').write_text(json.dumps(dict(schema=1, workspace=str(self.port.parent))))
             (session / 'status.json').write_text(json.dumps(dict(
                 schema=1, phase='installed' if available else 'input_missing')))
-        broker.adopt.side_effect = adopt
+        def adopt_and_open(request):
+            adopt(request)
+            return available
+        broker.adopt_and_open.side_effect = adopt_and_open
         worker = SimpleNamespace(poll=lambda: 0, returncode=0)
         frontend = SimpleNamespace(poll=lambda: 0, returncode=0)
         with mock.patch.object(bootstrap, 'validate_image', return_value=manifest), \
@@ -145,8 +149,9 @@ class MigrationStartup(unittest.TestCase):
     def test_missing_inherited_input_opens_recovery_frontend_and_keeps_owner(self):
         result, broker, _, spawn, legacy, data = self.migration_open(available=False)
         self.assertEqual(result, 0)
-        broker.adopt.assert_called_once()
-        broker.open.assert_called_once()
+        broker.adopt_and_open.assert_called_once()
+        broker.adopt.assert_not_called()
+        broker.open.assert_not_called()
         legacy.assert_not_called()
         self.assertEqual(spawn.call_count, 2, 'missing input must show the recovery worker and frontend')
         self.assertIn('--serve', spawn.call_args_list[0].args[0])
@@ -158,8 +163,9 @@ class MigrationStartup(unittest.TestCase):
     def test_available_inherited_installation_still_opens_without_setup(self):
         result, broker, _, spawn, legacy, _ = self.migration_open(available=True)
         self.assertEqual(result, 0)
-        broker.adopt.assert_called_once()
-        broker.open.assert_called_once()
+        broker.adopt_and_open.assert_called_once()
+        broker.adopt.assert_not_called()
+        broker.open.assert_not_called()
         spawn.assert_not_called()
         legacy.assert_not_called()
 
@@ -169,6 +175,7 @@ class MigrationStartup(unittest.TestCase):
             available=False, inherited_state=inherited)
         self.assertEqual(result, 0)
         backend_module.Broker.assert_not_called()
+        broker.adopt_and_open.assert_not_called()
         broker.adopt.assert_not_called()
         broker.open.assert_not_called()
         legacy.assert_called_once_with(self.root / 'source', self.port.parent, inherited)

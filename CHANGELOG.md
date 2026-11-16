@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.1.25 — November 16, 2026
+
+- Fix Fedora/Distrobox portable SDL builds where a host package-tool wrapper
+  accidentally selected a target-sysroot executable with incompatible libraries.
+  Keep host build tools and pinned target development files separate, including
+  the private startup-Python build.
+- Prepare the private Python build's allowlisted non-glibc dependencies before
+  build-time extension checks. Use native certificate stores and license text
+  from pinned upstream sources, without Ubuntu-only host paths.
+- Keep target header/library discovery inside the pinned sysroot and disable the
+  unsupported optional SDL liburing backend. This prevents a host-only header
+  from enabling code the isolated compiler cannot build; normal fallback remains.
+- Preserve required X11/Wayland/audio support, pinned source/ABI checks and the
+  earlier file-limit, cold-cache and portable launcher packaging corrections.
+- Show dependency-build phases, elapsed progress and bounded nested failure
+  details in outer logs. Cold-cache preparation is distinguished from a failure.
+- Reduce repeated internal migration and source-policy work during launcher
+  startup. Retain exact byte verification, changed-file rejection, installation
+  leases and final artifact checks; do not use a persistent trust bypass.
+- Preserve game input, native saves, settings, Quick Step metadata and existing
+  gameplay/renderer features. Optional features retain their defaults.
+- Windows remains **Experimental 0.1.0**, with unchanged release assets and the
+  existing temporal/DLSS flickering and hardware/gameplay qualification limits.
+
 ## 0.1.24 — November 16, 2026
 
 - Fix another older-installation update failure during launcher AppImage

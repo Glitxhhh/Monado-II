@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-The recommended download is **`monado-ii-0.1.24-linux-builder-x86_64.AppImage`** from
+The recommended download is **`monado-ii-0.1.25-linux-builder-x86_64.AppImage`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases/latest). It provides
 folder selection, local build progress and the normal settings launcher after
 building. The source/setup archive and terminal route remain available below.
@@ -25,8 +25,8 @@ building. The source/setup archive and terminal route remain available below.
 If FUSE is unavailable, extraction mode works without installing it:
 
 ```sh
-chmod +x monado-ii-0.1.24-linux-builder-x86_64.AppImage
-./monado-ii-0.1.24-linux-builder-x86_64.AppImage --appimage-extract-and-run
+chmod +x monado-ii-0.1.25-linux-builder-x86_64.AppImage
+./monado-ii-0.1.25-linux-builder-x86_64.AppImage --appimage-extract-and-run
 ```
 
 **Use an existing installation** links a checked installation in place, preserving
@@ -571,3 +571,26 @@ This release also retains the file-limit and cold-cache prerequisite fixes
 described above. If an update to 0.1.21, 0.1.22 or 0.1.23 failed, retry the new
 release through the launcher. These corrections do not require a system upgrade
 or a change to game input, saves or settings.
+
+
+### Cross-distribution dependency preparation and launcher startup
+
+Linux 0.1.25 separates host build tools from the pinned target development files.
+This fixes Fedora package-tool wrapper failures that could make SDL report missing
+Wayland support, and prevents unrelated host headers from enabling an unsupported
+optional liburing build. These cases need a corrected build recipe rather than
+extra random system libraries. The earlier file-limit, Python prerequisite and
+portable launcher packaging corrections are retained.
+
+Dependency preparation reports its current operation and elapsed time. Compilation
+can take longer on handhelds; an active phase is not by itself a failure. On a
+failure, the outer log includes the end of the failing component log. Full SDL
+logs are retained under `Monado_Linux/.deps/portable/build/deps-*/logs/`, including
+`sdl-configure.log` and `sdl-build.log`. Private startup-Python logs are under
+`Monado_Linux/.deps/portable/python/*/logs/`. In a staged update, these paths are
+inside its candidate workspace. Review logs before sharing them.
+
+Launcher startup reuses checks only within a protected operation and for exact
+verified bytes. Source/runtime checks, changed-file rejection, installation leases
+and existing save formats remain in place. Retry through the existing launcher;
+failed preparation keeps the previous working build selected.

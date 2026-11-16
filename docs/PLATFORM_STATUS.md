@@ -1,4 +1,4 @@
-# Platform status: Linux 0.1.24 and Windows Experimental 0.1.0
+# Platform status: Linux 0.1.25 and Windows Experimental 0.1.0
 
 Monado II provides native x86-64 SDL/Vulkan implementations. Each player builds
 from their own extracted Definitive Edition2.0.0 input. Downloads contain no game
@@ -6,8 +6,27 @@ input, generated game-code library, game shader cache, saves or keys.
 
 | Platform | Current status |
 | --- | --- |
-| Linux0.1.24 | Maintainer-accepted desktop/NVIDIA dev104R5, with current renderer, frame generation, graphics controls and portable graphical setup. Physical ultrawide and handheld performance testing remains requested. |
+| Linux0.1.25 | Maintainer-accepted desktop/NVIDIA dev104R5, with current renderer, frame generation, graphics controls and portable graphical setup. Physical ultrawide and handheld performance testing remains requested. |
 | WindowsExperimental0.1.0 | Native portable setup, modern launcher and gameplay options. Native builds and title startup were tested on Windows11/RTX4070SUPER/NVIDIA595.97. Purple DLSS/DLAA/temporal flashes and flickering remain reported. |
+
+## Linux portability and startup hotfix in 0.1.25
+
+Portable builds keep host build tools separate from the pinned target sysroot.
+This addresses Fedora's package-tool wrapper accidentally selecting an incompatible
+Ubuntu executable and disabling required SDL backends. Target header/library
+searches stay inside the sysroot; the unsupported optional liburing backend is
+disabled rather than depending on an unrelated host header. Required desktop and
+audio support, source/archive checks and the glibc baseline remain enforced.
+The private Python build also stages only its approved non-glibc libraries for
+build-time checks, uses standard native certificate stores and retains license
+text from the pinned source instead of relying on Ubuntu host paths.
+
+The startup path avoids duplicate internal migration checks and repeated policy
+scans of identical verified source within a single protected operation. Final
+artifact checks and installation leases remain in place. Build progress and nested
+failure diagnostics are visible rather than appearing to stop at dependencies.
+Existing input, saves/settings and all gameplay features remain in place.
+Windows Experimental0.1.0 release materials are unchanged.
 
 ## Linux update hotfix in 0.1.24
 

@@ -96,7 +96,8 @@ class LauncherEntryTests(unittest.TestCase):
     def test_dlss_wraps_gui_before_guard_and_keeps_selection_argv(self):
         self.enable_dlss()
         calls = []
-        def namespace(argv, state, *, pid_namespace=True):
+        def namespace(argv, state, *, pid_namespace=True, cuda_task_metadata=False):
+            self.assertFalse(cuda_task_metadata)
             calls.append((argv, state, pid_namespace))
             return ['/synthetic/bwrap', '--', *argv], {'x11_socket_bind': False}
         with mock.patch.object(launcher.run_linux, 'private_tmp_alias', return_value=False), \
@@ -132,8 +133,11 @@ class LauncherEntryTests(unittest.TestCase):
         receipt = json.loads(receipt_path.read_text())
         receipt['executable']['sha256'] = hashlib.sha256(self.game.read_bytes()).hexdigest()
         receipt_path.write_text(json.dumps(receipt))
-        def inspect_selection(argv, environment, lock_fd, log_fd, *, updates, runtime_fd):
+        def inspect_selection(argv, environment, lock_fd, log_fd, *, updates, runtime_fd,
+                              metadata_mirror=None, games=None):
             self.assertIsNone(updates)
+            self.assertIsNone(metadata_mirror)
+            self.assertIsNone(games)
             self.assertEqual(fcntl.fcntl(runtime_fd, fcntl.F_GETFL) & os.O_ACCMODE, os.O_RDONLY)
             with self.assertRaises(BlockingIOError):
                 launcher.install_lease.acquire_maintenance(self.root)
@@ -145,21 +149,33 @@ class LauncherEntryTests(unittest.TestCase):
                                         'game_sha256': hashlib.sha256(self.game.read_bytes()).hexdigest()})
             self.assertEqual(argv[argv.index('--game-executable') + 1], str(self.game))
             return 0
-        with mock.patch.object(launcher, 'check_input', return_value='synthetic checker passed'), \
+        with mock.patch.object(launcher, 'recover_input', return_value=True), \
+             mock.patch.object(launcher, 'check_input', return_value='synthetic checker passed'), \
              mock.patch.object(launcher.run_linux, 'validate_runtime', return_value={'status': 'passed'}) as runtime, \
-             mock.patch.object(launcher, 'wait_session', side_effect=inspect_selection) as wait:
+             mock.patch.object(launcher, 'wait_session', side_effect=inspect_selection) as wait, \
+             contextlib.redirect_stderr(io.StringIO()) as startup:
             self.assertEqual(launcher.main(self.argv()), 0)
         wait.assert_called_once()
         self.assertEqual(runtime.call_count, 4)  # Revalidate after startup maintenance/admission.
+        phases = [json.loads(line.removeprefix('[startup] '))
+                  for line in startup.getvalue().splitlines() if line.startswith('[startup] ')]
+        self.assertEqual(phases[-1]['phase'], 'native-gui-handoff')
+        self.assertLess(next(i for i, row in enumerate(phases) if row['phase'] ==
+            'checking-runtime-before-profile-admission'), next(i for i, row in enumerate(phases)
+            if row['phase'] == 'waiting-for-profile-lease'))
+        self.assertEqual([row['elapsed_seconds'] for row in phases],
+                         sorted(row['elapsed_seconds'] for row in phases))
 
     def test_runtime_failure_prevents_state_lock_logs_and_gui(self):
-        with mock.patch.object(launcher, 'check_input', return_value='synthetic checker passed'), \
-             mock.patch.object(launcher.run_linux, 'validate_runtime', side_effect=ValueError('authored missing runtime ABI')), \
+        with mock.patch.object(launcher, 'recover_input', return_value=True), \
+             mock.patch.object(launcher, 'check_input', return_value='synthetic checker passed'), \
+             mock.patch.object(launcher.run_linux, 'validate_runtime', side_effect=ValueError('authored missing runtime ABI')) as runtime, \
              mock.patch.object(launcher, 'acquire_lock') as lock, \
              mock.patch.object(launcher, 'wait_session') as wait, \
              contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as stopped:
             launcher.main(self.argv())
         self.assertEqual(stopped.exception.code, 1)
+        runtime.assert_called_once()
         lock.assert_not_called(); wait.assert_not_called()
         self.assertFalse(self.state.exists())
 

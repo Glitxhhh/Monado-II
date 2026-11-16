@@ -513,8 +513,8 @@ class Broker:
             if state != layout.profile_port(port) / 'play/launcher':
                 raise BuilderError('GUI build profile does not match its original owner')
         else:
-            updater = module(workspace / 'tools/update_linux.py', '_monado_builder_adopt_updater')
-            updater.installed_sources(workspace)
+            # The same workspace was fully checked above. The final native
+            # supervisor validates its selection again before profile access.
             value = updater.pair(workspace / updater.IMAGE)
             selected = {}
             for key in ('game', 'launcher'):
@@ -545,11 +545,31 @@ class Broker:
         missing = selected['input_location']['missing']
         if not missing:
             self.verify_launch(selected)
+        self._register_selected(selected)
+
+    def _register_selected(self, selected):
         self.registered = selected['owner']
         atomic(self.state / REGISTRY, dict(schema=1, workspace=str(self.registered)))
         if self.missing_input(selected):
             return
         self.update(phase='installed', message='Existing installation linked', output=str(self.registered), version=selected['version'], detail='Your existing game input, settings, caches and saves stay in place.', can_open=True, input_previous='')
+
+    def adopt_and_open(self, request):
+        """Internal migration transaction; resolve and dry-check only once.
+
+        This is not a frontend dispatch action or a reusable selection token.
+        The ordinary native supervisor still performs fresh runtime checks
+        before profile admission and after maintenance/installation leases.
+        """
+        selected = self.installation(request.get('output', ''))
+        if selected['input_location']['missing']:
+            self._register_selected(selected)
+            return False
+        self.update(message='Checking the installed launcher',
+                    detail='Verifying the existing game and settings launcher without moving any files.')
+        self.verify_launch(selected)
+        self._register_selected(selected)
+        return self._open_selected(selected)
 
     def relocate(self, request):
         if self.registered is None:
@@ -584,6 +604,9 @@ class Broker:
             return False
         self.update(message='Checking the installed launcher', detail='Verifying the existing game and settings launcher without moving any files.')
         self.verify_launch(selected)
+        return self._open_selected(selected)
+
+    def _open_selected(self, selected):
         # Existing launcher supervisor owns its session and profile lease. It may
         # legitimately outlive this setup window; never kill a running game when
         # the setup UI closes. No Play button or scripted gameplay is invoked.
@@ -600,7 +623,9 @@ class Broker:
         # Reap this wrapper when it exits while setup remains open, but do not
         # impose compiler cancellation semantics on a user-controlled session.
         threading.Thread(target=child.wait, daemon=True).start()
-        self.update(phase='installed', message='Settings launcher opened', version=selected['version'], detail='Configure the game there. Closing this setup window will not close a running game.', can_open=True, input_previous='')
+        # Popen hands off to the supervisor, which still has admission and
+        # runtime checks to perform. Do not claim a visible window exists yet.
+        self.update(phase='installed', message='Settings launcher is starting', version=selected['version'], detail='Final installation and runtime checks are running. The settings launcher will open when they finish. Closing this setup window will not close a running game.', can_open=True, input_previous='')
         return True
 
     def dispatch(self, request):

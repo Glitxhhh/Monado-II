@@ -19,19 +19,29 @@ import stat
 import subprocess
 import tarfile
 import tempfile
+import textwrap
 import time
 import urllib.request
 
 import setup_portable_baseline as baseline
-from build_portable_dependencies import elf_floor
+from build_portable_dependencies import build_environment, elf_floor, phase_failure, wait_for_build
 
 ROOT = baseline.ROOT
 LOCK = ROOT / 'python-runtime-linux.lock.json'
+ENVIRONMENT_RECIPE = Path(__file__).with_name('build_portable_dependencies.py')
+# Same standard native stores as tools/builder_appimage/python_entry.c. The
+# packaging probe runs before that wrapper exists; OpenSSL's compiled Ubuntu
+# defaults alone do not locate Fedora's system trust store.
+SYSTEM_CA_FILES = ('/etc/ssl/certs/ca-certificates.crt',
+    '/etc/pki/tls/certs/ca-bundle.crt', '/etc/ssl/cert.pem',
+    '/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem')
 LIBS = {'libz.so.1':'zlib1g', 'libexpat.so.1':'libexpat1',
     'libssl.so.3':'libssl3t64', 'libcrypto.so.3':'libssl3t64',
     'libffi.so.8':'libffi8', 'libsqlite3.so.0':'libsqlite3-0',
     'libbz2.so.1.0':'libbz2-1.0', 'liblzma.so.5':'liblzma5',
     'libzstd.so.1':'libzstd1', 'libuuid.so.1':'libuuid1'}
+GLIBC_SONAMES = {'libc.so.6', 'libm.so.6', 'libpthread.so.0', 'libdl.so.2',
+    'librt.so.1', 'libmvec.so.1', 'libanl.so.1', 'ld-linux-x86-64.so.2'}
 COMPILERS = ('.deps/bin/clang-cc', '.deps/bin/clang-cxx',
              '.venv/lib/python3.14/site-packages/ziglang/zig')
 REQUIRED_MODULES = ('_asyncio', '_bisect', '_blake2', '_bz2', '_codecs_cn',
@@ -46,6 +56,77 @@ REQUIRED_MODULES = ('_asyncio', '_bisect', '_blake2', '_bz2', '_codecs_cn',
     'termios', 'unicodedata', 'zlib')
 
 def encoded(x): return (json.dumps(x, indent=2, sort_keys=True)+'\n').encode()
+
+
+def system_ca_file():
+    for name in SYSTEM_CA_FILES:
+        path = Path(name)
+        try:
+            if path.is_file() and os.access(path, os.R_OK):
+                return str(path)
+        except OSError:
+            continue
+    raise ValueError('No readable standard system CA trust store found. Install or repair '
+                     'your distribution\'s ca-certificates package before building portable Python.')
+
+
+def prepare_build_libraries(directory, libdir):
+    """Give CPython's build-time extension checks their target non-glibc libs.
+
+    A successful link is followed by imports during make, before installation.
+    Fedora's bzip2 SONAME differs from Noble's, so host resolution alone cannot
+    import every target extension. Never expose the complete target library
+    directory (and its old libc/loader) to native compiler/tool children.
+    """
+    directory, libdir = Path(directory), Path(libdir)
+    if set(LIBS) & GLIBC_SONAMES or any(name.startswith('ld-') or '/' in name for name in LIBS):
+        raise ValueError('Portable Python build libraries must exclude glibc and loaders')
+    directory.mkdir(mode=0o700)
+    rows = {}
+    for name in LIBS:
+        source = (libdir / name).resolve(strict=True)
+        if not source.is_relative_to(libdir.resolve()) or not source.is_file():
+            raise ValueError('Portable Python build library escaped its pinned sysroot: ' + name)
+        before = {'bytes': source.stat().st_size, 'sha256': baseline.sha(source)}
+        target = directory / name
+        shutil.copyfile(source, target)
+        rows[name] = {**before, 'source': str(source), 'glibc_max': elf_floor(target)}
+        if target.stat().st_size != before['bytes'] or baseline.sha(target) != before['sha256']:
+            raise ValueError('Portable Python build library copy differs: ' + name)
+    verify_build_libraries(directory, rows)
+    return rows
+
+
+def verify_build_libraries(directory, rows):
+    directory = Path(directory)
+    if set(rows) != set(LIBS) or {path.name for path in directory.iterdir()} != set(LIBS):
+        raise ValueError('Portable Python build library inventory changed')
+    for name, row in rows.items():
+        path = directory / name
+        if (path.is_symlink() or not path.is_file() or path.stat().st_nlink != 1
+                or path.stat().st_size != row['bytes'] or baseline.sha(path) != row['sha256']):
+            raise ValueError('Portable Python build library changed: ' + name)
+
+
+def apache_license_text(source):
+    """Retain the complete operative Apache terms from the pinned Python source."""
+    text = (Path(source) / 'Doc/license.rst').read_text()
+    section = text.split('\nOpenSSL\n-------\n', 1)
+    if len(section) != 2:
+        raise ValueError('Pinned Python OpenSSL license section changed')
+    section = section[1].split('\n\nexpat\n-----\n', 1)
+    if len(section) != 2:
+        raise ValueError('Pinned Python OpenSSL license boundary changed')
+    section = section[0]
+    beginning = re.search(r'(?m)^[ \t]*Apache License\n[ \t]*Version 2\.0, January 2004\n', section)
+    if beginning is None or section.count('END OF TERMS AND CONDITIONS') != 1:
+        raise ValueError('Pinned Python Apache license text is incomplete')
+    # Keep any upstream appendix with the operative terms, through the checked
+    # next-section boundary. The full source license document is retained too.
+    terms = textwrap.dedent(section[beginning.start():]).strip() + '\n'
+    if any(not re.search(r'(?m)^\s*' + str(number) + r'\. ', terms) for number in range(1, 10)):
+        raise ValueError('Pinned Python Apache license sections are incomplete')
+    return terms
 
 def download():
     row = json.loads(LOCK.read_text())
@@ -87,7 +168,8 @@ def verify_existing():
     receipt=json.loads(receipt_path.read_text())
     if (receipt.get('status')!='passed' or receipt.get('lock_sha256')!=baseline.sha(LOCK)
         or receipt.get('recipe_sha256')!=baseline.sha(__file__)
-        or receipt.get('baseline_lock_sha256')!=baseline.sha(baseline.LOCK)):
+        or receipt.get('baseline_lock_sha256')!=baseline.sha(baseline.LOCK)
+        or receipt.get('environment_recipe_sha256')!=baseline.sha(ENVIRONMENT_RECIPE)):
         raise ValueError('Portable Python recipe or baseline differs')
     if set(receipt.get('compiler',{})) != set(COMPILERS):
         raise ValueError('Portable Python compiler identity missing')
@@ -108,13 +190,14 @@ def compiler_entry(directory, name, compiler):
     return entry
 
 
-def run_owned_process(argv, *, cwd, env, stdout, timeout=1200):
+def run_owned_process(argv, *, cwd, env, stdout, timeout=1200, progress=None):
     """A canceled make/configure must not outlive its private source tree."""
     process=subprocess.Popen(list(map(str,argv)),cwd=cwd,env=env,
         stdin=subprocess.DEVNULL,stdout=stdout,stderr=subprocess.STDOUT,
         start_new_session=True)
     try:
-        return process.wait(timeout=timeout)
+        return (wait_for_build(process, progress, timeout=timeout) if progress
+                else process.wait(timeout=timeout))
     except BaseException:
         try:
             os.killpg(process.pid,signal.SIGTERM)
@@ -158,6 +241,7 @@ def build(output, jobs=4):
 
 
 def build_private(out, workspace, prepared, archive, development, jobs):
+    trust_store = system_ca_file()
     logs=workspace/'logs'; logs.mkdir()
     with tarfile.open(archive) as tar:
         tar.extractall(workspace,filter=baseline.archive_filter)
@@ -181,20 +265,29 @@ def build_private(out, workspace, prepared, archive, development, jobs):
             process.stdout.close()
             if process.poll() is None: process.kill();process.wait()
     libdir=sysroot/'usr/lib/x86_64-linux-gnu'
+    build_libdir=workspace/'build-libraries'
+    build_libraries=prepare_build_libraries(build_libdir,libdir)
     tools=workspace/'tools'; tools.mkdir()
     cc=compiler_entry(tools,'cc',ROOT/'.deps/bin/clang-cc')
     cxx=compiler_entry(tools,'cxx',ROOT/'.deps/bin/clang-cxx')
     flags='-target x86_64-linux-gnu.2.39 -march=x86_64_v2 -fPIC -O2 -ffp-contract=off -fno-strict-aliasing'
-    env={'PATH':str(sysroot/'usr/bin')+':/usr/bin:/bin','LANG':'C.UTF-8','LC_ALL':'C.UTF-8',
+    # [XCDE] LINUX-111: the host pkg-config wrapper must resolve its host helper,
+    # never an executable from the target development sysroot.
+    env=build_environment(sysroot)
+    env.update({
+        'LD_LIBRARY_PATH':str(build_libdir),
         'CC':str(cc),'CXX':str(cxx),
         'CFLAGS':flags,'CPPFLAGS':'-I'+str(sysroot/'usr/include')+' -I'+str(sysroot/'usr/include/x86_64-linux-gnu'),
         'LDFLAGS':'-target x86_64-linux-gnu.2.39 -L'+str(libdir),
-        'PKG_CONFIG_SYSROOT_DIR':str(sysroot),'PKG_CONFIG_LIBDIR':str(libdir/'pkgconfig')+':'+str(sysroot/'usr/share/pkgconfig'),
         'PKG_CONFIG':'/usr/bin/pkg-config','PYTHONDONTWRITEBYTECODE':'1',
-        'SOURCE_DATE_EPOCH':'1775520000'} # upstream release date, reproducible build metadata
+        'SOURCE_DATE_EPOCH':'1775520000'}) # upstream release date, reproducible build metadata
     receipt={'schema':1,'status':'running','version':'3.14.4','minimum_glibc':'2.39',
         'lock_sha256':baseline.sha(LOCK),'recipe_sha256':baseline.sha(__file__),
-        'baseline_lock_sha256':baseline.sha(baseline.LOCK),'commands':[], 'outputs':{}}
+        'baseline_lock_sha256':baseline.sha(baseline.LOCK),
+        'environment_recipe_sha256':baseline.sha(ENVIRONMENT_RECIPE),
+        'runtime_certificate_store':trust_store,'commands':[], 'outputs':{}}
+    receipt['build_libraries']={'directory':str(build_libdir),'files':build_libraries,
+        'scope':'Private copies of the reviewed non-glibc runtime dependencies only; native host libc/loader unchanged'}
     receipt['compiler']={name:baseline.sha(ROOT/name) for name in COMPILERS}
     receipt['source_archive']={'bytes':archive.stat().st_size,'sha256':baseline.sha(archive)}
     receipt['baseline_source_manifest_sha256']=prepared.get('source_manifest_sha256')
@@ -205,9 +298,12 @@ def build_private(out, workspace, prepared, archive, development, jobs):
     def save(): (out/'receipt.json').write_bytes(encoded(receipt))
     def run(name,argv,cwd=work,env_override=None):
         start=time.monotonic(); code=None; failure=None
+        verify_build_libraries(build_libdir,build_libraries)
+        print('python-'+name+': starting; log: '+str(out/'logs'/(name+'.log')),flush=True)
         try:
             with (logs/(name+'.log')).open('wb') as log:
-                code=run_owned_process(argv,cwd=cwd,env=env_override or env,stdout=log)
+                code=run_owned_process(argv,cwd=cwd,env=env_override or env,stdout=log,
+                    progress='python-'+name)
         except BaseException as error:
             failure=type(error).__name__+': '+str(error)
             raise
@@ -217,7 +313,10 @@ def build_private(out, workspace, prepared, archive, development, jobs):
             if failure: row['error']=failure
             receipt['commands'].append(row)
             save()
-        if code: raise RuntimeError(name+' failed: '+str(out/'logs'/(name+'.log')))
+        if code:
+            raise phase_failure('python-'+name,logs/(name+'.log'),code,
+                display_path=out/'logs'/(name+'.log'))
+        print('python-'+name+': completed ('+format(time.monotonic()-start,'.1f')+'s)',flush=True)
     try:
         save()
         run('configure',[source/'configure','--prefix='+str(prefix),'--without-ensurepip','--disable-test-modules'])
@@ -226,7 +325,7 @@ def build_private(out, workspace, prepared, archive, development, jobs):
         run('install',[make,'install'])
         # Copy only reviewed non-glibc dependencies. The host owns libc/loader.
         for soname,package in LIBS.items():
-            shutil.copy2((libdir/soname).resolve(),prefix/'lib'/soname)
+            shutil.copy2(build_libdir/soname,prefix/'lib'/soname)
         notices=prefix/'share/doc/monado-ii'; notices.mkdir(parents=True,exist_ok=True)
         # Upstream LICENSE covers Python itself, while Doc/license.rst and
         # embedded HACL headers carry additional incorporated-code notices.
@@ -243,11 +342,18 @@ def build_private(out, workspace, prepared, archive, development, jobs):
         (notices/'Python-copyright.txt').write_text('\n\n'.join(texts)+'\n')
         for package in sorted(set(LIBS.values())):
             shutil.copy2(sysroot/'usr/share/doc'/package/'copyright',notices/(package+'-copyright.txt'))
-        shutil.copy2('/usr/share/common-licenses/Apache-2.0',notices/'Apache-2.0.txt')
+        # Fedora has no Debian common-licenses directory. The hash-locked
+        # Python source already contains these complete Apache operative terms.
+        (notices/'Apache-2.0.txt').write_text(apache_license_text(source))
+        receipt['license_sources'] = {'Apache-2.0.txt': {
+            'path': 'Python-3.14.4/Doc/license.rst', 'source_sha256': baseline.sha(source/'Doc/license.rst'),
+            'section': 'OpenSSL / Apache License 2.0, sections 1 through 9',
+            'sha256': baseline.sha(notices/'Apache-2.0.txt')}}
         shutil.copy2(source/'LICENSE',prefix/'lib/python3.14/LICENSE.txt')
         # No runtime kind marker yet: the packaging wrapper is installed later.
         probe='''import importlib,ssl,sqlite3,sys; from compression import zstd; assert sys.version_info[:3]==(3,14,4); assert sqlite3.connect(':memory:').execute('select 42').fetchone()==(42,); assert zstd.decompress(zstd.compress(b'portable'))==b'portable'; assert ssl.create_default_context().get_ca_certs(); modules=''' + repr(REQUIRED_MODULES) + '''; [importlib.import_module(name) for name in modules]; print('portable Python '+str(len(modules))+' imports/TLS/SQLite/zstd: PASS')'''
-        runtime_env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','LC_ALL':'C.UTF-8','PYTHONDONTWRITEBYTECODE':'1','LD_LIBRARY_PATH':str(prefix/'lib')}
+        runtime_env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','LC_ALL':'C.UTF-8','PYTHONDONTWRITEBYTECODE':'1',
+            'LD_LIBRARY_PATH':str(prefix/'lib'),'SSL_CERT_FILE':trust_store}
         python=prefix/'bin/python3.14'
         run('probe-current',[python,'-I','-B','-c',probe],env_override=runtime_env)
         run('probe-noble',[libdir/'ld-linux-x86-64.so.2','--library-path',str(prefix/'lib')+':'+str(libdir),python,'-I','-B','-c',probe],env_override=runtime_env)
@@ -264,6 +370,8 @@ def build_private(out, workspace, prepared, archive, development, jobs):
             if p.suffix!='.pyc': receipt['outputs'][p.relative_to(prefix).as_posix()]=row
         if baseline.sha(__file__)!=receipt['recipe_sha256']:
             raise ValueError('Python recipe changed during build; preserve output and rebuild from stable source')
+        if baseline.sha(ENVIRONMENT_RECIPE)!=receipt['environment_recipe_sha256']:
+            raise ValueError('Python build environment recipe changed during build')
         if any(baseline.sha(ROOT/name)!=expected for name,expected in receipt['compiler'].items()):
             raise ValueError('Python compiler changed during build')
         if baseline.sha(LOCK)!=receipt['lock_sha256'] or baseline.sha(baseline.LOCK)!=receipt['baseline_lock_sha256']:

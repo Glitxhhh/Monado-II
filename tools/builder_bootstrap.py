@@ -390,8 +390,7 @@ def run(appdir, args):
             return 0
         trusted_backend = backend_module(source)
         broker = trusted_backend.Broker(source, session, state, runtime_manifest=runtime_manifest)
-        broker.adopt({'id': 'migration-adopt', 'output': str(workspace)})
-        if broker.open({'id': 'migration-open'}) is not False:
+        if broker.adopt_and_open({'id': 'migration-open', 'output': str(workspace)}) is not False:
             backendlog.close()
             return 0
         # A valid inherited installation can have missing game input. Adopt
