@@ -1,0 +1,453 @@
+{
+  "schema": 1,
+  "platform": "windows-amd64",
+  "purpose": "Exact pinned Python/tool binary archives, corresponding source archives, upstream recipes and license notices. No code in downloaded archives is executed.",
+  "binary_archives": [
+    {
+      "id": "cpython",
+      "version": "3.14.0",
+      "filename": "python-3.14.0-embed-amd64.zip",
+      "bytes": 11994671,
+      "sha256": "8d4d3590c10449d78aa4375f534e6d5f3027d67fdc362dd1a882279db6f90fdf",
+      "url": "https://www.python.org/ftp/python/3.14.0/python-3.14.0-embed-amd64.zip",
+      "license_expression": "PSF-2.0 and bundled third-party notices; Microsoft runtime redistribution notice",
+      "source_artifacts": [
+        "cpython",
+        "cpython-bzip2",
+        "cpython-libffi",
+        "cpython-openssl",
+        "cpython-mpdecimal",
+        "cpython-sqlite",
+        "cpython-xz",
+        "cpython-zlib",
+        "cpython-zstd"
+      ]
+    },
+    {
+      "id": "ziglang",
+      "version": "0.14.1",
+      "filename": "ziglang-0.14.1-py3-none-win_amd64.whl",
+      "bytes": 83574233,
+      "sha256": "e4f7e089a44d5ce34181853a90cdb8456e63c6640f5d44b844a117055326c375",
+      "url": "https://files.pythonhosted.org/packages/9d/53/b15661c6f4442c0e1ec1223c17f7a47e5cc108cb171bbdadbc675479582d/ziglang-0.14.1-py3-none-win_amd64.whl",
+      "license_expression": "MIT and bundled libc/LLVM notices",
+      "source_artifacts": [
+        "zig",
+        "zig-bootstrap",
+        "zig-pypi"
+      ]
+    },
+    {
+      "id": "capstone",
+      "version": "5.0.6",
+      "filename": "capstone-5.0.6-py3-none-win_amd64.whl",
+      "bytes": 1271345,
+      "sha256": "761c3deae00b22ac697081cdae1383bb90659dd0d79387a09cf5bdbb22b17064",
+      "url": "https://files.pythonhosted.org/packages/da/72/ff7894c2fb5716d9a3ce9c27ba34b29d991a11d8442d2ef0fcdc5564ba7e/capstone-5.0.6-py3-none-win_amd64.whl",
+      "license_expression": "BSD-3-Clause",
+      "source_artifacts": [
+        "capstone"
+      ]
+    },
+    {
+      "id": "unicorn",
+      "version": "2.1.4",
+      "filename": "unicorn-2.1.4-cp37-abi3-win_amd64.whl",
+      "bytes": 15943079,
+      "sha256": "d7107500c64ce5c168fbff6bef9485b5db1350050036f4cea568650cf8bdbdf5",
+      "url": "https://files.pythonhosted.org/packages/70/3d/de7be9bd1addabe6d8a1369381f8a080400c349850e978689c5e18287957/unicorn-2.1.4-cp37-abi3-win_amd64.whl",
+      "license_expression": "GPL-2.0 engine/QEMU; separately licensed BSD Python bindings; bundled LGPL/GLib notices",
+      "source_artifacts": [
+        "unicorn-sdist",
+        "unicorn-repository"
+      ],
+      "notice_gap": "Pinned wheel has no LICENSE/COPYING. Engine GPL/QEMU notices must accompany the release."
+    },
+    {
+      "id": "lz4",
+      "version": "4.4.5",
+      "filename": "lz4-4.4.5-cp314-cp314-win_amd64.whl",
+      "bytes": 101497,
+      "sha256": "92159782a4502858a21e0079d77cdcaade23e8a5d252ddf46b0652604300d7be",
+      "url": "https://files.pythonhosted.org/packages/18/2c/8332080fd293f8337779a440b3a143f85e374311705d243439a3349b81ad/lz4-4.4.5-cp314-cp314-win_amd64.whl",
+      "license_expression": "BSD-3-Clause bindings and BSD-2-Clause bundled LZ4",
+      "source_artifacts": [
+        "lz4"
+      ]
+    },
+    {
+      "id": "zstandard",
+      "version": "0.25.0",
+      "filename": "zstandard-0.25.0-cp314-cp314-win_amd64.whl",
+      "bytes": 516118,
+      "sha256": "c19bcdd826e95671065f8692b5a4aa95c52dc7a02a4c5a0cac46deb879a017a2",
+      "url": "https://files.pythonhosted.org/packages/3a/43/241f9615bcf8ba8903b3f0432da069e857fc4fd1783bd26183db53c4804b/zstandard-0.25.0-cp314-cp314-win_amd64.whl",
+      "license_expression": "BSD-3-Clause bindings and bundled Zstandard BSD license choice",
+      "source_artifacts": [
+        "zstandard"
+      ]
+    }
+  ],
+  "source_artifacts": [
+    {
+      "id": "cpython",
+      "filename": "Python-3.14.0.tar.xz",
+      "url": "https://www.python.org/ftp/python/3.14.0/Python-3.14.0.tar.xz",
+      "bytes": 23595844,
+      "sha256": "2299dae542d395ce3883aca00d3c910307cd68e0b2f7336098c8e7b7eee9f3e9",
+      "prefix": "Python-3.14.0/",
+      "source": [
+        "Python/pythonrun.c",
+        "Include/Python.h"
+      ],
+      "recipes": [
+        "PCbuild/build.bat",
+        "PCbuild/get_externals.bat",
+        "PCbuild/prepare_libffi.bat",
+        "PCbuild/prepare_ssl.bat",
+        "PCbuild/pythoncore.vcxproj"
+      ],
+      "licenses": [
+        "LICENSE",
+        "PC/crtlicense.txt",
+        "Modules/expat/COPYING"
+      ]
+    },
+    {
+      "id": "zig",
+      "filename": "zig-0.14.1.tar.xz",
+      "url": "https://ziglang.org/download/0.14.1/zig-0.14.1.tar.xz",
+      "bytes": 17787696,
+      "sha256": "237f8abcc8c3fd68c70c66cdbf63dce4fb5ad4a2e6225ac925e3d5b4c388f203",
+      "prefix": "zig-0.14.1/",
+      "source": [
+        "src/main.zig",
+        "lib/std/std.zig"
+      ],
+      "recipes": [
+        "build.zig",
+        "CMakeLists.txt"
+      ],
+      "licenses": [
+        "LICENSE",
+        "lib/libcxx/LICENSE.TXT",
+        "lib/libcxxabi/LICENSE.TXT",
+        "lib/libunwind/LICENSE.TXT"
+      ]
+    },
+    {
+      "id": "zig-bootstrap",
+      "filename": "zig-bootstrap-0.14.1.tar.xz",
+      "url": "https://ziglang.org/download/0.14.1/zig-bootstrap-0.14.1.tar.xz",
+      "bytes": 48041028,
+      "sha256": "89b2fce50bfbb1eee29c382193d22c6eb0c7da3a96b5ba6d05e0af2945b3ca3d",
+      "prefix": "zig-bootstrap-0.14.1/",
+      "source": [
+        "llvm/lib/IR/Module.cpp",
+        "clang/lib/Frontend/CompilerInvocation.cpp",
+        "zig/src/main.zig",
+        "zlib/adler32.c",
+        "zstd/lib/compress/zstd_compress.c"
+      ],
+      "recipes": [
+        "build",
+        "README.md"
+      ],
+      "licenses": [
+        "llvm/LICENSE.TXT",
+        "clang/LICENSE.TXT",
+        "lld/LICENSE.TXT",
+        "zig/LICENSE",
+        "zlib/LICENSE",
+        "zstd/LICENSE"
+      ]
+    },
+    {
+      "id": "zig-pypi",
+      "filename": "zig-pypi-906e60b627f25a113cbe2dd2cbcd8228032f0e7e.tar.gz",
+      "url": "https://codeload.github.com/ziglang/zig-pypi/tar.gz/906e60b627f25a113cbe2dd2cbcd8228032f0e7e",
+      "bytes": 7001,
+      "sha256": "4d4ef16cef07c3fa6348e6910d3cb9e920ab999f8e5c1cacc1c3027f21c65918",
+      "prefix": "zig-pypi-906e60b627f25a113cbe2dd2cbcd8228032f0e7e/",
+      "source": [
+        "make_wheels.py"
+      ],
+      "recipes": [
+        "make_wheels.py",
+        "README.md"
+      ],
+      "licenses": [
+        "LICENSE.txt"
+      ],
+      "revision": "906e60b627f25a113cbe2dd2cbcd8228032f0e7e",
+      "provenance": "Latest upstream packaging revision before the pinned wheel upload, 2025-05-26. Wrapper source is independently compared to the exact shipped wheel."
+    },
+    {
+      "id": "unicorn-sdist",
+      "filename": "unicorn-2.1.4.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/b2/1b/b4248aa8422e86de690cf8e85cf8feae4c33405a097d1ebe71570bdaa6f5/unicorn-2.1.4.tar.gz",
+      "bytes": 2900334,
+      "sha256": "00567a70e323f749b419cd86bee4f9115beab7ebba32194581c090cbb7c59cff",
+      "prefix": "unicorn-2.1.4/",
+      "source": [
+        "src/uc.c",
+        "src/qemu/target/arm/translate-a64.c"
+      ],
+      "recipes": [
+        "setup.py",
+        "pyproject.toml",
+        "src/CMakeLists.txt"
+      ],
+      "licenses": [
+        "src/qemu/COPYING",
+        "src/qemu/COPYING.LIB",
+        "src/qemu/LICENSE"
+      ]
+    },
+    {
+      "id": "unicorn-repository",
+      "filename": "unicorn-8028ec436f2d9376525352dd38ed9ed6b9f6be10.tar.gz",
+      "url": "https://codeload.github.com/unicorn-engine/unicorn/tar.gz/8028ec436f2d9376525352dd38ed9ed6b9f6be10",
+      "bytes": 4256886,
+      "sha256": "9d2a2003f0307d0fc239af439654564fe6ef17b67f7c5a39b45fad4c69d6aec2",
+      "prefix": "unicorn-8028ec436f2d9376525352dd38ed9ed6b9f6be10/",
+      "source": [
+        "uc.c",
+        "qemu/target/arm/translate-a64.c"
+      ],
+      "recipes": [
+        "CMakeLists.txt",
+        "bindings/python/setup.py",
+        ".github/workflows/build-wheels-publish.yml"
+      ],
+      "licenses": [
+        "COPYING",
+        "COPYING.LGPL2",
+        "COPYING_GLIB",
+        "qemu/COPYING",
+        "qemu/COPYING.LIB",
+        "qemu/LICENSE"
+      ],
+      "revision": "8028ec436f2d9376525352dd38ed9ed6b9f6be10",
+      "provenance": "Official unicorn-engine/unicorn 2.1.4 tag target; include complete engine/QEMU and upstream wheel build workflow."
+    },
+    {
+      "id": "capstone",
+      "filename": "capstone-5.0.6.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/d5/b0/1f126035a4cbc6f488b97e4bd57a46a28b6ba29ca8b938cbda840601a18a/capstone-5.0.6.tar.gz",
+      "bytes": 2945704,
+      "sha256": "b11a87d67751b006b9b44428d59c99512e6d6c89cf7dff8cdd92d9065628b5a0",
+      "prefix": "capstone-5.0.6/",
+      "source": [
+        "src/cs.c"
+      ],
+      "recipes": [
+        "setup.py",
+        "pyproject.toml",
+        "src/CMakeLists.txt"
+      ],
+      "licenses": [
+        "LICENSE.TXT",
+        "src/LICENSE.TXT"
+      ]
+    },
+    {
+      "id": "lz4",
+      "filename": "lz4-4.4.5.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/57/51/f1b86d93029f418033dddf9b9f79c8d2641e7454080478ee2aab5123173e/lz4-4.4.5.tar.gz",
+      "bytes": 172886,
+      "sha256": "5f0b9e53c1e82e88c10d7c180069363980136b9d7a8306c4dca4f760d60c39f0",
+      "prefix": "lz4-4.4.5/",
+      "source": [
+        "lz4/block/_block.c",
+        "lz4libs/lz4.c"
+      ],
+      "recipes": [
+        "setup.py",
+        "pyproject.toml"
+      ],
+      "licenses": [
+        "LICENSE",
+        "lz4libs/lz4.c"
+      ]
+    },
+    {
+      "id": "zstandard",
+      "filename": "zstandard-0.25.0.tar.gz",
+      "url": "https://files.pythonhosted.org/packages/fd/aa/3e0508d5a5dd96529cdc5a97011299056e14c6505b678fd58938792794b1/zstandard-0.25.0.tar.gz",
+      "bytes": 711513,
+      "sha256": "7713e1179d162cf5c7906da876ec2ccb9c3a9dcbdffef0cc7f70c3667a205f0b",
+      "prefix": "zstandard-0.25.0/",
+      "source": [
+        "c-ext/backend_c.c",
+        "zstd/zstd.c"
+      ],
+      "recipes": [
+        "setup.py",
+        "pyproject.toml"
+      ],
+      "licenses": [
+        "LICENSE",
+        "zstd/LICENSE",
+        "zstd/COPYING"
+      ]
+    },
+    {
+      "id": "cpython-bzip2",
+      "filename": "cpython-source-deps-05301997b2f9590f49c672cf3dfd3d3dfa7ad521.tar.gz",
+      "url": "https://codeload.github.com/python/cpython-source-deps/tar.gz/05301997b2f9590f49c672cf3dfd3d3dfa7ad521",
+      "bytes": 819016,
+      "sha256": "ab14accac86cdd92021d50465deeb221b476d6675bd1383d3c7fb83751c2e0a3",
+      "prefix": "cpython-source-deps-05301997b2f9590f49c672cf3dfd3d3dfa7ad521/",
+      "source": [
+        "bzlib.c"
+      ],
+      "recipes": [
+        "Makefile"
+      ],
+      "licenses": [
+        "LICENSE"
+      ],
+      "revision": "05301997b2f9590f49c672cf3dfd3d3dfa7ad521",
+      "provenance": "CPython3.14.0 PCbuild/get_externals.bat version bzip2-1.0.8"
+    },
+    {
+      "id": "cpython-libffi",
+      "filename": "cpython-source-deps-73b247f34ef3ae1859b8c2c34d321d34ebc5db15.tar.gz",
+      "url": "https://codeload.github.com/python/cpython-source-deps/tar.gz/73b247f34ef3ae1859b8c2c34d321d34ebc5db15",
+      "bytes": 1376474,
+      "sha256": "a9b2840c1b99a2b57746c50f1f2ab902420628111690ec420e7293ec1f502d7b",
+      "prefix": "cpython-source-deps-73b247f34ef3ae1859b8c2c34d321d34ebc5db15/",
+      "source": [
+        "src/prep_cif.c"
+      ],
+      "recipes": [
+        "configure.ac"
+      ],
+      "licenses": [
+        "LICENSE",
+        "LICENSE-BUILDTOOLS"
+      ],
+      "revision": "73b247f34ef3ae1859b8c2c34d321d34ebc5db15",
+      "provenance": "CPython3.14.0 PCbuild/get_externals.bat version libffi-3.4.4"
+    },
+    {
+      "id": "cpython-openssl",
+      "filename": "cpython-source-deps-d0ce1389744189a6612104d6d3136a9ad8156947.tar.gz",
+      "url": "https://codeload.github.com/python/cpython-source-deps/tar.gz/d0ce1389744189a6612104d6d3136a9ad8156947",
+      "bytes": 15508457,
+      "sha256": "fdb03ec8df97aa5d10e7bf9914e433afa76bac744c2c8d29ef5f5c2a259eae41",
+      "prefix": "cpython-source-deps-d0ce1389744189a6612104d6d3136a9ad8156947/",
+      "source": [
+        "ssl/ssl_lib.c"
+      ],
+      "recipes": [
+        "Configure",
+        "INSTALL.md"
+      ],
+      "licenses": [
+        "LICENSE.txt"
+      ],
+      "revision": "d0ce1389744189a6612104d6d3136a9ad8156947",
+      "provenance": "CPython3.14.0 PCbuild/get_externals.bat version openssl-3.0.18"
+    },
+    {
+      "id": "cpython-mpdecimal",
+      "filename": "cpython-source-deps-48316ec025c1ebe500854c332be0a12c640c7301.tar.gz",
+      "url": "https://codeload.github.com/python/cpython-source-deps/tar.gz/48316ec025c1ebe500854c332be0a12c640c7301",
+      "bytes": 319969,
+      "sha256": "2db089d12f3467f7ec6cc964e821faa18fb662c467b2fa713e32a39c374441e3",
+      "prefix": "cpython-source-deps-48316ec025c1ebe500854c332be0a12c640c7301/",
+      "source": [
+        "libmpdec/mpdecimal.c"
+      ],
+      "recipes": [
+        "configure"
+      ],
+      "licenses": [
+        "COPYRIGHT.txt"
+      ],
+      "revision": "48316ec025c1ebe500854c332be0a12c640c7301",
+      "provenance": "CPython3.14.0 PCbuild/get_externals.bat version mpdecimal-4.0.0"
+    },
+    {
+      "id": "cpython-sqlite",
+      "filename": "cpython-source-deps-ef547e549b49a2822214ef7880c0ca212b32929e.tar.gz",
+      "url": "https://codeload.github.com/python/cpython-source-deps/tar.gz/ef547e549b49a2822214ef7880c0ca212b32929e",
+      "bytes": 2845160,
+      "sha256": "e8d069c4d94cca67809f2d38c299ecc596f93b00061db197c0562cdd042a3418",
+      "prefix": "cpython-source-deps-ef547e549b49a2822214ef7880c0ca212b32929e/",
+      "source": [
+        "sqlite3.c"
+      ],
+      "recipes": [
+        "README.md"
+      ],
+      "licenses": [
+        "sqlite3.h"
+      ],
+      "revision": "ef547e549b49a2822214ef7880c0ca212b32929e",
+      "provenance": "CPython3.14.0 PCbuild/get_externals.bat version sqlite-3.50.4.0"
+    },
+    {
+      "id": "cpython-xz",
+      "filename": "cpython-source-deps-c6bc0c612605622aaef101a33a751f9de2ecc193.tar.gz",
+      "url": "https://codeload.github.com/python/cpython-source-deps/tar.gz/c6bc0c612605622aaef101a33a751f9de2ecc193",
+      "bytes": 1745919,
+      "sha256": "115433c946ee069e857fd04cf41b38a4a74ed45d868a3b2e08ccd4a1f04f39d0",
+      "prefix": "cpython-source-deps-c6bc0c612605622aaef101a33a751f9de2ecc193/",
+      "source": [
+        "src/liblzma/common/common.c"
+      ],
+      "recipes": [
+        "configure"
+      ],
+      "licenses": [
+        "COPYING",
+        "COPYING.GPLv2",
+        "COPYING.LGPLv2.1"
+      ],
+      "revision": "c6bc0c612605622aaef101a33a751f9de2ecc193",
+      "provenance": "CPython3.14.0 PCbuild/get_externals.bat version xz-5.2.5"
+    },
+    {
+      "id": "cpython-zlib",
+      "filename": "cpython-source-deps-a502e047655c31db29601def76ad6539acacf43d.tar.gz",
+      "url": "https://codeload.github.com/python/cpython-source-deps/tar.gz/a502e047655c31db29601def76ad6539acacf43d",
+      "bytes": 2417691,
+      "sha256": "bdd663f25d83d29814bd903746392108b7bd5b880d101fc8a07aa3c12dd521f5",
+      "prefix": "cpython-source-deps-a502e047655c31db29601def76ad6539acacf43d/",
+      "source": [
+        "adler32.c"
+      ],
+      "recipes": [
+        "CMakeLists.txt"
+      ],
+      "licenses": [
+        "LICENSE.md"
+      ],
+      "revision": "a502e047655c31db29601def76ad6539acacf43d",
+      "provenance": "CPython3.14.0 PCbuild/get_externals.bat version zlib-ng-2.2.4"
+    },
+    {
+      "id": "cpython-zstd",
+      "filename": "cpython-source-deps-eef946ae8cf1591c0e5cc5f43486210768647c2e.tar.gz",
+      "url": "https://codeload.github.com/python/cpython-source-deps/tar.gz/eef946ae8cf1591c0e5cc5f43486210768647c2e",
+      "bytes": 2442365,
+      "sha256": "21eb6a5658925a22148703284e70aa5603ce19ad688a116a2a3f08278c1e86bc",
+      "prefix": "cpython-source-deps-eef946ae8cf1591c0e5cc5f43486210768647c2e/",
+      "source": [
+        "lib/compress/zstd_compress.c"
+      ],
+      "recipes": [
+        "build/cmake/CMakeLists.txt"
+      ],
+      "licenses": [
+        "LICENSE",
+        "COPYING"
+      ],
+      "revision": "eef946ae8cf1591c0e5cc5f43486210768647c2e",
+      "provenance": "CPython3.14.0 PCbuild/get_externals.bat version zstd-1.5.7"
+    }
+  ]
+}

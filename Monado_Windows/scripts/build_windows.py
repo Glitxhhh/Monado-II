@@ -46,6 +46,50 @@ LIBRARIES = ["SDL3", "shaderc_shared", "vulkan-1", "opus", "avcodec", "avformat"
 FLAGS = ["-O1", "-UNDEBUG", "-march=x86_64_v2", "-ffp-contract=off", "-fno-fast-math", "-fno-strict-aliasing", "-fvisibility=hidden"]
 
 
+def validate_windows_baseline(value):
+    """Source identity only; public artifact approval is a separate boundary."""
+    legacy = {"schema", "accepted_baseline", "implementation", "public_release"}
+    if (not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1
+            or value.get("accepted_baseline") != "dev104 R5" or value.get("public_release") is not False):
+        raise RuntimeError("Unrecognized native Windows source baseline")
+    if set(value) == legacy and value["implementation"] == "Windows development":
+        return value
+    version = value.get("version")
+    if (set(value) == legacy | {"version", "release_channel"}
+            and value["implementation"] == "Windows Experimental"
+            and value["release_channel"] == "experimental"
+            and isinstance(version, str) and len(version) <= 64
+            and re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", version)):
+        return value
+    raise RuntimeError("Unrecognized native Windows source baseline")
+
+
+def read_windows_baseline(path):
+    def unique(pairs):
+        value = {}
+        for key, item in pairs:
+            if key in value:
+                raise ValueError("Duplicate native Windows baseline key")
+            value[key] = item
+        return value
+    try:
+        if not ordinary(path) or path.stat().st_size > 4096:
+            raise ValueError("Nonordinary or oversized native Windows baseline")
+        raw = path.read_bytes()
+        if len(raw) > 4096:
+            raise ValueError("Oversized native Windows baseline")
+        value = json.loads(raw, object_pairs_hook=unique)
+    except (OSError, ValueError) as error:
+        raise RuntimeError("Unreadable native Windows source baseline") from error
+    return validate_windows_baseline(value), hashlib.sha256(raw).hexdigest()
+
+
+def windows_baseline_label(value):
+    value = validate_windows_baseline(value)
+    implementation = value["implementation"] + (" " + value["version"] if "version" in value else "")
+    return value["accepted_baseline"] + " · " + implementation
+
+
 def digest(path):
     with path.open("rb") as f:
         return hashlib.file_digest(f, "sha256").hexdigest()
@@ -264,6 +308,7 @@ class Builder:
             raise RuntimeError("Build output must be below Monado_Windows/build")
         if self.output.resolve() != self.output:
             raise RuntimeError("Build output/ancestors must be ordinary, canonical Windows paths")
+        baseline, baseline_sha256 = read_windows_baseline(ROOT / "windows-baseline.json")
         self.output.mkdir(parents=True)
         (self.output / "logs").mkdir()
         self.receipt = {"schema": 1, "implementation": "windows-parity-development", "status": "started",
@@ -283,13 +328,8 @@ class Builder:
         self.receipt["prefix"] = str(self.prefix)
         self.receipt["zig"] = importlib.metadata.version("ziglang")
         self.receipt.update(git_identity())
-        baseline_path = ROOT / "windows-baseline.json"
-        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
-        if (baseline.get("schema") != 1 or baseline.get("accepted_baseline") != "dev104 R5" or
-                baseline.get("implementation") != "Windows development" or baseline.get("public_release") is not False):
-            raise RuntimeError("Unrecognized native Windows development baseline")
         self.receipt["baseline"] = baseline
-        self.receipt["sources"]["windows-baseline.json"] = digest(baseline_path)
+        self.receipt["sources"]["windows-baseline.json"] = baseline_sha256
         self.receipt["native_build_identity"] = (self.receipt["git_commit"] or "source kit") + " / " + self.output.name
         if self.receipt["zig"] != "0.14.1":
             raise RuntimeError("This Windows recipe requires pinned ziglang==0.14.1")
@@ -365,7 +405,7 @@ class Builder:
                 cmd.remove("-DXCDE_GFX")
             if source == ROOT / "tools/launcher/launcher.cpp":
                 cmd += ["-I" + str(self.output / "inc/launcher-theme"), "-DMONADO_LAUNCHER_RESOURCES", "-DMONADO_LAUNCHER_ARTWORK"]
-                cmd += ["-DMONADO_WINDOWS_BASELINE_LABEL=" + json.dumps(self.receipt["baseline"]["accepted_baseline"] + " · " + self.receipt["baseline"]["implementation"]),
+                cmd += ["-DMONADO_WINDOWS_BASELINE_LABEL=" + json.dumps(windows_baseline_label(self.receipt["baseline"])),
                         "-DMONADO_WINDOWS_BUILD_IDENTITY=" + json.dumps(self.receipt["native_build_identity"])]
                 cmd += ["-DMONADO_FSR4_CONTEXT_SHA256=" + json.dumps(self.receipt.get("preparation_context_sha256", ""))]
                 selected = self.receipt.get("providers", {}).get("selection", {})

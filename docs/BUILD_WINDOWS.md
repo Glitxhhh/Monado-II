@@ -1,4 +1,4 @@
-# Native Windows development builds
+# Native Windows experimental setup and source builds
 
 This branch is bringing the accepted Linux dev104 R5 behavior into the native
 Windows port. It has produced native game/settings builds and a physically
@@ -7,27 +7,32 @@ save/reload, long sessions, all providers, other GPUs and full DE/Future Connect
 coverage still require maintainer testing. See [platform status](PLATFORM_STATUS.md)
 and the acceptance matrix in the [handoff](WINDOWS_PORT_HANDOFF.md).
 
-There is no new public Windows release. The existing
-`monado-ii-windows-original-implementation-setup.zip` download remains the
-historical implementation; Linux version numbers never identify Windows updates.
-Local receipts use `windows-parity-development`, without borrowing a Linux release
-number. The accepted Linux source and deferred notes remain unchanged.
+The updated Windows package is **Windows Experimental 0.1.0**. Reported DLSS/DLAA
+purple flashes and flickering remain unresolved. Full gameplay/provider and
+performance qualification is incomplete. The historical
+`monado-ii-windows-original-implementation-setup.zip` describes the old port;
+use the separate `MonadoII-Windows-Setup.exe` for this experimental port. Linux
+release numbers never identify Windows updates. Internal local receipts retain
+the compatible `windows-parity-development` schema. The accepted Linux source
+and deferred notes remain unchanged.
 
 ## Portable graphical setup
 
-The authored native setup frontend and backend support selecting already-extracted
-input, a fresh installation directory, worker limits 1–6, real build progress,
-cancellation/retry and optional shader preparation. A private development setup
-EXE can be built with `Monado_Windows/tools/build_windows_builder.py` from a clean
-reviewed Windows source export, the original pinned Python/wheel archives and a
-successful native dependency receipt. It embeds a checked persistent local tool
-cache; reopening uses that cache and the installation registry. It opens settings
-only when requested and never presses Play.
+The portable EXE opens with the original launcher's artwork, fonts and theme.
+First use asks for already-extracted game input and an installation directory,
+with worker limits 1–6, real build progress, cancellation/retry and optional
+shader preparation. A successful build opens the checked settings launcher.
+Reopening the same EXE uses its verified cache and installation registry to reach
+that launcher again. Play remains a manual action.
 
-This development payload is not approved for public redistribution. Dependency,
-GPL/corresponding-source and optional vendor/model obligations require a separate
-review. No extracted game data, generated game C, game-code DLL, shader cache or
-save belongs in a setup payload. Users generate their own game library locally.
+Public experimental mode in `Monado_Windows/tools/build_windows_builder.py`
+requires a versioned reviewed Windows source export and complete, byte-verified
+native/Python corresponding-source and frontend relink companions. Required
+notices are embedded in the tool cache. Private mode still produces a `-Dev.exe`
+without publication approval. See [release materials](../Monado_Windows/docs/WINDOWS_RELEASE.md)
+for the assets to attach with the EXE. No extracted game data, generated game C,
+game-code DLL, shader cache or save belongs in a setup payload. Users generate
+their own game library locally; optional vendor/model components remain local.
 
 Adopt checks a completed native build without importing or resetting its profile.
 Locate requires the same original executable and RomFS inventories before changing
@@ -51,15 +56,15 @@ Windows machine or Windows runner. The existing `source-release.yml` workflow
 only packages source archives, including the historical Windows ZIP; it does
 not build this portable EXE. The Windows source-check CI job is also not an EXE
 release job. Do not use the historical Windows ZIP declaration to publish this
-updated Windows port. A dedicated Windows EXE release pipeline and its release
-metadata remain to be implemented.
+updated Windows port. The dedicated Windows source packager produces the new
+updater archive/metadata; a fully automatic Windows EXE CI job remains future work.
 
 The locally tested `MonadoII-Windows-Setup-Dev.exe`, dependency archives,
 native receipts and private test evidence are not stored in Git. Preserve those
 Windows-local files if reusing that development package. The latest experimental
-DLSS labels are source changes; rebuild the package to include them. Public
-distribution still requires the dependency/license and corresponding-source
-review described above, with independent Windows update metadata. Do not publish
+DLSS labels require rebuilding older development packages. Public setup mode
+requires the exact dependency/license, corresponding-source and relink evidence
+described above, with independent Windows update metadata. Do not publish
 game input, generated game code, caches or saves. These Windows requirements do
 not change the accepted Linux build or release flow.
 

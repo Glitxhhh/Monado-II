@@ -38,6 +38,7 @@ Every edit to a copied file is marked `[XCDE]` (the project's working name) and 
 | Component | License |
 |---|---|
 | SDL3 | zlib |
+| Portable setup's statically linked libiconv | LGPL-2.1-or-later; exact source, build recipe and replacement/relink objects accompany public setup packages |
 | Vulkan headers / loader, Vulkan Memory Allocator | Apache-2.0 / MIT |
 | shaderc (glslang, SPIRV-Tools) | Apache-2.0 |
 | FFmpeg (selected local build) | LGPL-2.1+ or GPL, according to enabled components |
@@ -47,10 +48,13 @@ Every edit to a copied file is marked `[XCDE]` (the project's working name) and 
 The native Windows development dependency lock records the exact official MSYS2
 packages, hashes and declared licenses. Its FFmpeg closure includes GPL-enabled
 components; the historical LGPL-only description does not describe this local
-development build. Complete package notices remain in the private dependency
-tree. These local dependencies are not an approved public binary bundle; any
-distribution must satisfy the actual selected components' licenses and applicable
-corresponding-source obligations.
+development build. Public experimental setup packaging verifies the exact
+redistributed native/Python file subsets against their source companions and
+copies the selected component notices into the tool cache. The release includes
+the matching source archives, build recipes, licenses and the native frontend's
+relink objects/static libraries. Private development mode does not establish this
+qualification. Keep all required source companions with a public release;
+see [Windows release materials](docs/WINDOWS_RELEASE.md).
 
 ## Optional vendor binaries (not redistributed; each user downloads them)
 

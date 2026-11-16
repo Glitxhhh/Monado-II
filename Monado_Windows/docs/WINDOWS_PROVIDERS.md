@@ -4,8 +4,8 @@
 still reports purple flashes and flickering after the temporal camera and SDK
 corrections. This rendering issue remains unresolved. Native builds, shader
 preparation and authored SDK/GPU checks do not establish a gameplay image-quality
-pass. Windows development is paused at the maintainer's request; the accepted
-Linux implementation is unchanged.
+pass. The experimental Windows release keeps this limitation explicit; the
+accepted Linux implementation is unchanged.
 
 The settings launcher shows which optional SDKs were staged with its actual
 runtime. That identifies local files; the game still checks provider entry points,
@@ -14,8 +14,8 @@ selection does not change the chosen upscaler or enable frame generation.
 
 Choose **Manage local graphics SDKs and updates** to open the checked portable
 manager for this installation. Close game/settings windows before applying a new
-runtime. Reopening the portable setup normally opens settings and leaves its
-management window available, minimized in the taskbar. `--manage` opens management
+runtime. Reopening the portable setup normally opens settings and closes the
+setup window. `--manage` opens management
 without automatically opening settings; `--manage --installation "C:/My install"`
 selects one previously checked installation explicitly.
 

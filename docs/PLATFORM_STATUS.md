@@ -1,4 +1,4 @@
-# Windows parity development status
+# Windows experimental release status
 
 This branch targets accepted Linux **dev104 R5**, including its exact frozen
 source inventory. Native Windows runtime/gameplay/renderer/build bundles now
@@ -12,18 +12,24 @@ boundaries. This is development evidence, not a full-game or provider pass.
 
 **Windows DLSS/DLAA remains experimental.** The maintainer still reports purple
 flashes and flickering in the latest native candidate after the temporal camera
-and SDK corrections. Windows work is paused at the maintainer's request; this
-issue is unresolved. The accepted Linux implementation remains unchanged.
+and SDK corrections. This issue is unresolved in the experimental release.
+The accepted Linux implementation remains unchanged.
 
-The native portable setup/update workflow is under final integration. Optional
+The branded portable setup uses the original launcher artwork, fonts and theme.
+Its first-run page selects the user's extracted game folder and installation
+location, then reports local build progress. Reopening the same EXE reaches the
+checked existing settings launcher; Play remains a manual action. Source and
+relink materials accompany the experimental Windows setup. Optional
 prepared FSR4 and external driver methods retain explicit availability boundaries;
 actual assets, provider/GPU behavior, gameplay/save-reload, full DE/FC, other GPUs
 and clean-machine distribution remain unqualified. See the [Windows guide](BUILD_WINDOWS.md)
-and [handoff acceptance matrix](WINDOWS_PORT_HANDOFF.md). No public release,
-Windows version number, tag or parity-completion claim is made.
+and [handoff acceptance matrix](WINDOWS_PORT_HANDOFF.md). The independent Windows
+version is 0.1.0 Experimental. This does not certify full parity or full-game
+qualification. Publishing a GitHub release remains a maintainer action.
 
 The public release history below still describes the historical downloads. Its
-original Windows ZIP has not been replaced by these private development builds.
+original Windows ZIP describes that historical implementation, rather than the
+new experimental setup EXE.
 
 # Platform status
 

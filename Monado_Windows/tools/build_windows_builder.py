@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Build a private, game-free portable Windows setup EXE from reviewed exports.
+"""Build a game-free branded portable Windows setup EXE from reviewed exports.
 
 No network, global installation or game generation occurs here. Every source
 member comes from an explicit checked export manifest. Python/tool files come
 from the pinned original archives, and native files from the checked dependency
-inventory plus a successful native build's actual dependency closure.
+inventory plus a successful native build's actual dependency closure. Public
+experimental mode also requires exact corresponding-source and relink evidence.
 """
 from __future__ import annotations
 import argparse
@@ -20,6 +21,12 @@ import struct
 import subprocess
 import sys
 import zipfile
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+try:
+    from .windows_branded_frontend import compile_native_frontend
+except ImportError:
+    from windows_branded_frontend import compile_native_frontend
 
 PORT = Path(__file__).resolve().parents[1]
 MAX_FILE = 512 * 1024 * 1024
@@ -317,6 +324,11 @@ def write_payload(path, members):
 def build(args):
     if os.name != "nt":
         raise ValueError("The portable executable is built and qualified natively on Windows")
+    release_version=getattr(args,'release_version',None)
+    native_sources=getattr(args,'native_sources',None)
+    python_sources=getattr(args,'python_sources',None)
+    if any((release_version,native_sources,python_sources)) and not all((release_version,native_sources,python_sources)):
+        raise ValueError('Public release packaging requires a version and both exact corresponding-source reports')
     output = args.output.absolute()
     if output.exists() or output.resolve() != output or not output.is_relative_to(PORT / "build"):
         raise ValueError("Choose a fresh ordinary output below Monado_Windows/build")
@@ -324,33 +336,38 @@ def build(args):
     members = Members()
     reviewed_source(args.source_export.resolve(), args.source_manifest.resolve(), members)
     reviewed_port = args.source_export.resolve() / "Monado_Windows"
-    for name in ("tools/build_windows_builder.py", "tools/windows-python-runtime.lock.json", "tools/windows-python.lock.txt", "tools/windows-deps.lock.json"):
+    for name in ("tools/build_windows_builder.py", "tools/windows_branded_frontend.py", "tools/windows-python-runtime.lock.json", "tools/windows-python.lock.txt", "tools/windows-deps.lock.json"):
         if ordinary(PORT / name) != ordinary(reviewed_port / name):
             raise ValueError("Packager recipe differs from reviewed source export: " + name)
+    if release_version:
+        from windows_release_gate import public_source
+        for name in ('windows_release_gate.py','windows_release_sources.py','windows-release-native-source-review.json','relink_windows_setup.py','RELINK_WINDOWS_SETUP.md'):
+            if ordinary(PORT/'tools'/name)!=ordinary(reviewed_port/'tools'/name):raise ValueError('Release qualification recipe differs from reviewed source')
+        for name in ('windows_python_release_sources.py','windows_python_release_sources.lock.json'):
+            if ordinary(PORT.parent/'tools'/name)!=ordinary(args.source_export.resolve()/'tools'/name):raise ValueError('Python source qualification recipe differs from reviewed source')
+        public_source(args.source_export,args.source_manifest,release_version)
     archives = python_archives(args.python_archives.resolve(), members)
+    qualification=None
     try:
         native_dependencies(args.prefix.resolve(), args.native_receipt.resolve(), members)
+        baseline = document(reviewed_port / "windows-baseline.json")
+        label = baseline["implementation"] + (" " + baseline["version"] if baseline.get("version") else "")
+        if release_version and (baseline.get('version')!=release_version or baseline.get('implementation')!='Windows Experimental'):
+            raise ValueError('Public setup version differs from the experimental Windows source baseline')
+        frontend = compile_native_frontend(reviewed_port, args.prefix.resolve(), output, label)
+        if release_version:
+            from windows_release_gate import qualify
+            qualification,notices=qualify(members,version=release_version,native_report=native_sources,
+                python_report=python_sources,frontend=frontend,relink_output=output/'qualified-native-sources')
+            for target,raw in notices.items():add(members,target,Member(data=raw))
         manifest = write_payload(output / "setup.payload", members)
     finally:
         for archive in archives:
             archive.close()
-    env = os.environ.copy()
-    env["ZIG_GLOBAL_CACHE_DIR"] = str(PORT / ".deps/zig-global-cache")
-    resource = output / "builder.res"
-    baseline = document(reviewed_port / "windows-baseline.json")
-    label = baseline["accepted_baseline"] + " · " + baseline["implementation"]
-    commands = [[sys.executable, "-m", "ziglang", "rc", "/I", str(reviewed_port / "tools/builder"), "/fo", str(resource), str(reviewed_port / "tools/builder/builder.rc")],
-                [sys.executable, "-m", "ziglang", "c++", "-std=c++17", "-O1", "-UNDEBUG", "-march=x86_64_v2", "-ffp-contract=off", "-fno-fast-math",
-                 "-DMONADO_WINDOWS_BASELINE_LABEL=" + json.dumps(label), str(reviewed_port / "tools/builder/windows_builder.cpp"), str(resource), "-o", str(output / "builder-base.exe"), "-lbcrypt", "-ladvapi32", "-lcabinet", "-lole32", "-lshell32", "-lcomctl32", "-luuid", "-lgdi32", "-luser32", "-Wl,--subsystem,windows", "-municode"]]
-    for index, command in enumerate(commands):
-        result = subprocess.run(command, cwd=PORT, env=env, capture_output=True, timeout=600)
-        (output / f"native-{index}.out").write_bytes(result.stdout)
-        (output / f"native-{index}.err").write_bytes(result.stderr)
-        if result.returncode:
-            raise RuntimeError("Native builder compilation failed: " + result.stderr.decode("utf-8", "replace"))
-    target = output / "MonadoII-Windows-Setup-Dev.exe"
+    commands = frontend["commands"]
+    target = output / ("MonadoII-Windows-Setup.exe" if release_version else "MonadoII-Windows-Setup-Dev.exe")
     with target.open("xb") as stream:
-        stream.write(ordinary(output / "builder-base.exe"))
+        stream.write(ordinary(Path(frontend["base_exe"])))
         offset = stream.tell()
         h = hashlib.sha256()
         with (output / "setup.payload").open("rb") as source:
@@ -361,11 +378,13 @@ def build(args):
         stream.write(FOOTER.pack(b"M2BNDL01", offset, size, h.digest()))
         stream.flush()
         os.fsync(stream.fileno())
-    evidence = {"schema": 1, "kind": "private-native-windows-portable-setup-development", "public_distribution_approved": False,
+    evidence = {"schema": 1, "kind": "native-windows-experimental-setup" if release_version else "private-native-windows-portable-setup-development", "public_distribution_approved": qualification is not None,
                 "executable": {"bytes": target.stat().st_size, "sha256": digest(ordinary(target, 2 * 1024 * 1024 * 1024))},
                 "payload_sha256": h.hexdigest(), "payload_manifest_sha256": digest(encoded(manifest)),
                 "source_manifest_sha256": digest(ordinary(args.source_manifest)), "commands": commands,
-                "members": len(members), "contains_game_code": False, "baseline": baseline}
+                "members": len(members), "contains_game_code": False, "baseline": baseline,
+                "frontend": frontend, "branded_first_run": True,
+                "release_version": release_version, "release_qualification": qualification}
     (output / "builder-receipt.json").write_bytes(encoded(evidence))
     print(target)
 
@@ -378,6 +397,9 @@ def main(argv=None):
     p.add_argument("--prefix", required=True, type=Path)
     p.add_argument("--native-receipt", required=True, type=Path)
     p.add_argument("--output", required=True, type=Path)
+    p.add_argument('--release-version', help='Independent numeric Windows version; requires both corresponding-source reports')
+    p.add_argument('--native-sources', type=Path, help='Complete native corresponding-source report; checked against actual payload/static/relink bytes')
+    p.add_argument('--python-sources', type=Path, help='Complete Python/tool corresponding-source report; checked against actual payload bytes')
     args = p.parse_args(argv)
     try:
         build(args)

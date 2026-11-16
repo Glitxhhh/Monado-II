@@ -1,6 +1,8 @@
 {
   "schema": 1,
   "accepted_baseline": "dev104 R5",
-  "implementation": "Windows development",
+  "implementation": "Windows Experimental",
+  "version": "0.1.0",
+  "release_channel": "experimental",
   "public_release": false
 }
