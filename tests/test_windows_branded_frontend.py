@@ -11,6 +11,7 @@ import uuid
 
 ROOT=Path(__file__).resolve().parents[1]
 PORT=ROOT/'Monado_Windows'
+from native_renderer_support import require_native_graphics
 spec=importlib.util.spec_from_file_location('authored_windows_branded_frontend',PORT/'tools/windows_branded_frontend.py')
 frontend=importlib.util.module_from_spec(spec);sys.modules[spec.name]=frontend;spec.loader.exec_module(frontend)
 
@@ -18,8 +19,9 @@ frontend=importlib.util.module_from_spec(spec);sys.modules[spec.name]=frontend;s
 @unittest.skipUnless(os.name=='nt','native static SDL3/ImGui frontend')
 class NativeBrandedFrontend(unittest.TestCase):
     def test_hidden_software_theme_and_retained_relative_relink(self):
+        require_native_graphics()
         run=PORT/'runs'/('branded-frontend-'+uuid.uuid4().hex)
-        run.mkdir()
+        run.mkdir(parents=True)
         source=run/'reviewed source 漢字 $() `'
         output=run/'package output 漢字'
         output.mkdir()

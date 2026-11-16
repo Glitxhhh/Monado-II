@@ -10,15 +10,17 @@ import uuid
 
 ROOT=Path(__file__).absolute().parents[1]
 PORT=ROOT/'Monado_Windows'
+from native_renderer_support import require_pinned_zig
 
 
 @unittest.skipUnless(os.name=='nt','actual Windows native policy fixture')
 class BrandedSetupPolicy(unittest.TestCase):
     def test_production_policy_handles_first_run_reopen_cancel_and_checked_handoff(self):
+        native = require_pinned_zig()
         run=PORT/'runs/temporal-delivery-r2'/('branded-setup-policy-'+uuid.uuid4().hex)
-        run.mkdir()
+        run.mkdir(parents=True)
         executable=run/'authored-policy.exe'
-        compiler=os.environ.get('MONADO_NATIVE_TEST_COMPILER')
+        compiler=str(native)
         command=([compiler,'c++'] if compiler else [sys.executable,'-m','ziglang','c++'])+[
             '-std=c++17','-O1','-UNDEBUG','-march=x86_64_v2','-ffp-contract=off','-fno-fast-math',
             '-I',str(PORT/'tools/builder'),str(PORT/'tests/native/test_branded_setup_policy_windows.cpp'),'-o',str(executable)]

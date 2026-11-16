@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased (Linux development build)
+## 0.1.21 — November 15, 2026
 
 - Add native temporal FSR3 upscaling on Linux, with compatible inputs for the
   existing experimental 2× frame generator. Preserve native NVIDIA DLSS/DLAA.
@@ -54,8 +54,34 @@
   unrelated files and other processes remain confined. No driver/system changes.
 - Preserve existing save formats, settings and the frame-generation-off path.
   Authored component/GPU tests do not establish smoothness, input latency or
-  full-game compatibility. Gameplay testing is requested for this dev build;
-  Windows is unchanged. See [frame generation](docs/FRAME_GENERATION.md).
+  full-game compatibility. The maintainer accepted the Linux development build; physical ultrawide and
+  handheld testing is still requested. See [frame generation](docs/FRAME_GENERATION.md).
+
+
+### Windows Experimental 0.1.0
+
+- Add a native portable graphical setup EXE that builds from your own extracted
+  game folder, shows progress and returns to the settings launcher on later opens.
+- Bring the modern launcher and gameplay options to Windows, including optional
+  cheats, the dedicated Quick Step slot, 99 manual save slots, high-refresh timing,
+  Exit to desktop, party controls, aspect choices and the on-screen FPS counter.
+- Add native graphics/provider, shader-preparation, input recovery, support-report
+  and checked update adapters with independent Windows version metadata.
+- **Windows remains experimental.** DLSS/DLAA and temporal upscaling still have
+  reported purple flashes/flickering. Native builds and title startup do not
+  establish full-game, save/reload, provider, clean-machine or all-hardware coverage.
+- Keep Windows at its own **0.1.0** version. Ship its matching source/update archive,
+  metadata and native/Python corresponding-source and relink companions with the EXE.
+
+### Updating and defaults
+
+- Linux requires a full local rebuild; existing input, settings, saves and Quick
+  Step metadata stay in the original profile. No save conversion is required.
+- Original aspect/quality defaults remain. Quick Step, cheats, vibration and frame
+  generation remain off by default. Optional Quick Step may still have quirks in
+  untested equipment/story combinations; broader coverage will improve over time.
+- Thanks to **patrickksmdev** for isolating and testing the retained RADV artifact
+  workaround, and to the handheld/ultrawide reporters for continued testing.
 
 ## 0.1.20 — November 14, 2026
 

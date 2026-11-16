@@ -112,6 +112,8 @@ class RendererNativeContracts(unittest.TestCase):
             return result.stdout
 
     def test_feedback_and_zero_sharpening(self):
+        if PORT.name != "Monado_Windows":
+            self.skipTest("Native Windows feedback fixture and Vulkan headers")
         source = (PORT / "runtime/nvn/vulkan/exec.c").read_text(encoding="utf8")
         template = (PORT / "tests/native/test_renderer_feedback_windows.c").read_text(encoding="utf8")
         names = ["feedback_load_clear_ready", "feedback_layout", "feedback_sample_layout", "vk_feedback_boundary",

@@ -4,12 +4,13 @@ from pathlib import Path
 import subprocess
 import unittest
 import uuid
-from tests.native_renderer_support import WINDOWS,PORT,compiler_command,compiler_environment,graphics_prefix,native_flags
+from tests.native_renderer_support import WINDOWS,PORT,compiler_command,compiler_environment,graphics_prefix,native_flags,require_native_graphics
 
 @unittest.skipUnless(WINDOWS,'Actual native SDL/Win32 window transitions')
 class NativeWindowing(unittest.TestCase):
     def test_actual_hidden_monitor_placement_fullscreen_restore_and_failure(self):
-        directory=PORT/'runs'/('window-native-'+uuid.uuid4().hex);directory.mkdir()
+        require_native_graphics()
+        directory=PORT/'runs'/('window-native-'+uuid.uuid4().hex);directory.mkdir(parents=True)
         compiler=compiler_command();environment=compiler_environment();prefix=graphics_prefix()
         environment['PATH']=str(prefix/'bin')+os.pathsep+environment.get('PATH','')
         resource=directory/'native-process.res'

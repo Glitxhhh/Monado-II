@@ -7,13 +7,13 @@ import tempfile
 import unittest
 import uuid
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from native_renderer_support import PORT,compiler_command,compiler_environment
+from native_renderer_support import PORT,compiler_command,compiler_environment,compiler_is_zig
 
 @unittest.skipUnless(os.name=='nt','Native Win32 optional DLL mapping')
 class OptionalLibraryNative(unittest.TestCase):
     def test_native_optional_dll_boundaries(self):
         compiler=compiler_command()
-        if not compiler:self.skipTest('Pinned native compiler required')
+        if not compiler or not compiler_is_zig():self.skipTest('Pinned native Windows Zig compiler/resource tools required')
         environment=compiler_environment()
         with tempfile.TemporaryDirectory(prefix='monado-sdk-loader-') as temporary:
             root=Path(temporary);local=root/'native SDK-雪-résumé-$()-`';local.mkdir()

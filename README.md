@@ -1,23 +1,14 @@
 # Monado II
 
-> **On Windows: tell Codex "Read START_WINDOWS_PORT.md and follow it."**
-> [Open the complete start prompt](START_WINDOWS_PORT.md).
->
-> **Windows parity development branch.** This branch targets
-> the maintainer-accepted Linux **dev104 R5**, including the latest renderer,
-> temporal upscalers, frame generation, graphics controls and portable builder.
-> Native Windows development builds now reach the title screen; full gameplay,
-> provider and portable setup qualification remain in progress. Start with
-> [the complete Windows handoff](docs/WINDOWS_PORT_HANDOFF.md). This is not a
-> new Windows release. Linux polish/performance follow-up is deferred until Windows
-> parity is complete.
+> **Linux 0.1.21 and Windows Experimental 0.1.0 are available.**
+> Windows now includes the modern launcher and gameplay options, with known
+> temporal/DLSS flickering and incomplete hardware/gameplay qualification.
 
 **Xenoblade Chronicles: Definitive Edition, recompiled for PC.**
 
 A community fork of **Monado** by **TheMonadoGuy / Monado contributors**, built
 on **Peiikai’s LASRecomp**. Monado II adds a native Linux port and optional
-quality-of-life features. This branch is adapting them to the native Windows
-implementation; existing public Windows downloads remain historical.
+quality-of-life features, alongside a new experimental native Windows port.
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/69fabc08-665d-41bc-8900-f707138d630f" alt="Monado II’s native Linux launcher, with artwork, graphics settings and build tools" width="1000" />
@@ -35,13 +26,16 @@ implementation; existing public Windows downloads remain historical.
 > **Definitive Edition 2.0.0** files from your own legally obtained Nintendo Switch.
 > No game files, keys or firmware are provided.
 
-## Linux highlights
+## Features
 
 | Feature | What it adds |
 |---|---|
 | Graphical setup and launcher | Open one Linux AppImage, select your extracted game folder and build location, watch the local build, then use the themed settings launcher. |
 | High-refresh improvements | Timing, animation, menu-navigation and footstep corrections, plus a choice of 30 FPS-style or faster 60 FPS-style menu navigation. |
-| DLSS Super Resolution / DLAA | Native support on compatible NVIDIA hardware, included in normal Linux builds. |
+| Temporal upscaling | Native FSR3, NVIDIA DLSS / DLAA and optional experimental FSR4 Lite. Provider availability depends on the platform and hardware. |
+| Graphics controls | Original defaults, optional quality controls, GPU selection and a local support report. |
+| Frame generation | Experimental FSR 3 interpolation (2×), refresh matching and separate game/output counters. Linux also offers NVIDIA Smooth Motion when supported driver components are installed. Off by default. |
+| Controller vibration | Optional rumble, off by default. |
 | Shader preparation | Prepare shaders before playing with the launcher’s **Precompile shaders** button. |
 | Exit to desktop | Native title-screen and in-game System menu entries, with confirmation and Cancel/No selected by default. Exiting does not save progress. |
 | Built-in updates | Stable-release notifications, local rebuilds when required, progress, cancellation and automatic cleanup of superseded builds. |
@@ -51,9 +45,10 @@ implementation; existing public Windows downloads remain historical.
 | On-screen FPS counter | Optional **Show FPS on screen** in **Graphics → Quality**, visible in fullscreen. Off by default; separates Game FPS from submitted FSR or measured NVIDIA driver output when available. [Frame-generation notes](docs/FRAME_GENERATION.md). |
 | Clearer Linux setup | Early dependency checks, distro-specific package instructions and optional guided Fedora 45 Distrobox repair. |
 
-The Linux-specific launcher, timing, menu, save, Quick Step and cheat improvements have
-not been backported. Windows retains its upstream launcher and vendor/shader
-integrations; Windows parity work is separate from this Linux release.
+The applicable gameplay and launcher features now have native Windows
+implementations in **Windows Experimental
+0.1.0**. Windows provider support and gameplay coverage remain experimental; see
+[platform status](docs/PLATFORM_STATUS.md) and the [Windows guide](docs/BUILD_WINDOWS.md).
 
 ### A dedicated Quick Step gem slot
 
@@ -87,12 +82,13 @@ one graphical builder AppImage. **The game is still built locally from your own 
 
 | Platform | Recommended download | Full instructions |
 |---|---|---|
-| Linux x86-64 | [Graphical builder AppImage](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.20/monado-ii-0.1.20-linux-builder-x86_64.AppImage) | [Linux setup and build guide](docs/BUILD_LINUX.md) |
-| Windows x86-64 | [Original Windows implementation `.zip`](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.20/monado-ii-windows-original-implementation-setup.zip) | [Windows build guide](docs/BUILD_WINDOWS.md) |
+| Linux x86-64 | [Graphical builder AppImage](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.21/monado-ii-0.1.21-linux-builder-x86_64.AppImage) | [Linux setup and build guide](docs/BUILD_LINUX.md) |
+| Windows x86-64 | [Windows Experimental 0.1.0 setup EXE](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.21/MonadoII-Windows-Setup.exe) | [Windows build guide](docs/BUILD_WINDOWS.md) |
 
-> **Windows is the original implementation.** Linux release numbers and the
-> Linux features shown above do not describe the Windows download. Its version-free
-> filename stays unchanged until Windows itself receives updates.
+> **Windows is experimental and independently versioned.** Download and run
+> **MonadoII-Windows-Setup.exe**. It builds locally from your own extracted game
+> folder and returns to the settings launcher on later opens. DLSS/DLAA purple
+> flashes and flickering are still reported; broader testing is needed.
 
 ### Linux quick start
 
@@ -111,7 +107,7 @@ game. Keep the installed build folder and its input available. If you already
 have Monado II installed, **Use an existing installation** adopts it in place,
 including its settings, saves and current update. See the [graphical setup guide](docs/GRAPHICAL_BUILDER.md).
 
-The [Linux source/setup kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.20/monado-ii-0.1.20-linux-setup.tar.gz)
+The [Linux source/setup kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.21/monado-ii-0.1.21-linux-setup.tar.gz)
 remains available for terminal builds and existing updaters. After extracting it
 and arranging its `game_files/exefs` and `game_files/romfs` input, the established
 commands are still:
@@ -179,8 +175,8 @@ launcher. It never presses Play.
   rebuild the game locally.
 - Saves, settings and shared game input stay in the original installation.
   Failed or cancelled preparation keeps the previous version selected.
-- **Updating to 0.1.20 requires a full local game rebuild** for the aspect-ratio
-  corrections and on-screen FPS counter. The updater keeps your existing saves,
+- **Updating Linux to 0.1.21 requires a full local game rebuild** for the
+  renderer, timing and new graphics features. The updater keeps your existing saves,
   settings and game input in place; no save conversion is needed.
   Missing prerequisites leave the working version selected and show instructions
   for retrying.
@@ -213,10 +209,11 @@ Source-kit downloads use the **`-setup` kit**. A legacy Linux **`-source`** arch
 in releases solely for installed-updater compatibility. Both contain source, not
 precompiled playable games. No compiled game binary, private vendor SDK binary,
 game-derived cache or user data is distributed. The graphical AppImage contains
-only setup software and its reviewed startup dependencies. **0.1.19 is a regular
-Linux release**; the optional Quick Step feature is stable, while frame generation
-and the new aspect modes remain experimental. Original 16:9 is still the default.
-Windows has no updater in this release.
+setup software and reviewed startup dependencies; game/runtime compilation stays local.
+**0.1.21 is a regular Linux release**; optional frame generation and non-original
+aspect modes remain experimental. Original 16:9 remains the default. The Windows
+experimental setup has its own versioned update metadata and retains its profile
+through checked updates; a Linux-only version does not advance Windows.
 
 Version **0.1.14** targets severe AMD/RADV submission overhead with a
 capability-gated memory path and safe fallback. **AMD gameplay performance still
@@ -245,13 +242,13 @@ cutscenes, effects and live resizing still need testing. See the
 | Platform | Current state |
 |---|---|
 | **Linux x86-64** | Native SDL/Vulkan port. Opening cutscenes and battles through first character control were tested by the maintainer. Expanded saves, scan responsiveness, Quick Step, trading and the Bionis Interior crash correction received positive manual feedback. |
-| **Windows x86-64** | Original Monado implementation retained. The original author reported full-game playability on NVIDIA RTX; this fork has not independently built or validated Windows. Linux additions are not included in this Windows download. |
+| **Windows x86-64** | Experimental 0.1.0 native build, portable graphical setup and modern gameplay/launcher features. Native builds and title startup were tested; temporal/DLSS flickering remains reported. Full-game, save/reload, provider, clean-machine and other-hardware qualification is incomplete. |
 
 Full-game, **Future Connected**, long-session, other-GPU/driver and save/recovery
 coverage remain incomplete. Passing source CI and component tests do not establish
 full-game compatibility. Native FSR3 and optional experimental FSR4 Lite now have
 Linux component/GPU checks; their gameplay and performance still need testing.
-Windows retains its original vendor integrations. See [platform status](docs/PLATFORM_STATUS.md)
+Windows has native provider adapters with separate qualification limits. See [platform status](docs/PLATFORM_STATUS.md)
 and [remaining work](TODO.md).
 
 The public source accepts plain **TTF/OTF/TTC** font input. It does not ship Nintendo

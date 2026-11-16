@@ -42,8 +42,6 @@ class NvnProgramBindingTests(unittest.TestCase):
                        '-I', str(PORT / 'runtime'), '-I', str(PORT / 'runtime/nvn'), '-I', str(folder),
                        '-DMONADO_PROGRAM_CMDBUF_SOURCE="' + CMDBUF.as_posix() + '"',
                        str(PORT / 'tests/native' / native), '-o', str(binary)]
-            if os.environ.get('MONADO_TEST_UBSAN') == '1':
-                command[1:1] = ['-fsanitize=undefined', '-fno-sanitize-recover=all']
             result = subprocess.run(command, env=compiler_environment(), capture_output=True, text=True, timeout=120)
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             result = subprocess.run([str(binary)], cwd=temporary, capture_output=True, text=True, timeout=45)

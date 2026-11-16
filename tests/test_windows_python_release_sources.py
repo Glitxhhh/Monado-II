@@ -79,9 +79,9 @@ class ArchiveContracts(unittest.TestCase):
 @unittest.skipUnless(os.name=='nt','native Windows held-file/ownership source fixture')
 class NativeCompanion(unittest.TestCase):
     def setUp(self):
-        # Explicit authored temporary data under the workspace; no production
-        # prefix, cache, profile, extracted input, or existing source is changed.
-        parent=ROOT/'Monado_Windows/runs/temporal-delivery-r2'
+        # Independent authored data in the physical temporary directory; no
+        # source checkout, production prefix, cache, profile or input is changed.
+        parent=Path(tempfile.gettempdir()).resolve()
         self.temp=tempfile.TemporaryDirectory(prefix='authored-python-sources-',dir=parent)
         self.base=Path(self.temp.name);self.binary=self.base/'binary';self.local=self.base/'sources'
         self.binary.mkdir();self.local.mkdir();self.lock={'binary_archives':[],'source_artifacts':[]}

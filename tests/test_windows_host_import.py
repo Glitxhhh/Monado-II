@@ -4,13 +4,14 @@ from pathlib import Path
 import subprocess
 import unittest
 import uuid
-from tests.native_renderer_support import WINDOWS,PORT,compiler_command,compiler_environment,graphics_prefix,native_flags
+from tests.native_renderer_support import WINDOWS,PORT,compiler_command,compiler_environment,graphics_prefix,native_flags,require_native_graphics
 
 @unittest.skipUnless(WINDOWS,'Native guest host-memory import correctness')
 class NativeHostImport(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.directory=PORT/'runs'/('host-import-'+uuid.uuid4().hex);cls.directory.mkdir()
+        require_native_graphics()
+        cls.directory=PORT/'runs'/('host-import-'+uuid.uuid4().hex);cls.directory.mkdir(parents=True)
         cls.environment=compiler_environment();cls.prefix=graphics_prefix()
         cls.environment['PATH']=str(cls.prefix/'bin')+os.pathsep+cls.environment.get('PATH','')
     def run_fixture(self,name,sources,libraries=(),args=(),allow_unavailable=False):

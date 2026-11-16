@@ -8,13 +8,13 @@ import sys
 import tempfile
 import unittest
 sys.path.insert(0,str(Path(__file__).resolve().parent))
-from native_renderer_support import PORT,compiler_command,compiler_environment
+from native_renderer_support import PORT,compiler_command,compiler_environment,compiler_is_zig
 
 @unittest.skipUnless(os.name=='nt','Native Win32 API module path fixture')
 class ModulePathsNative(unittest.TestCase):
     def test_production_module_path_and_long_owned_game_library(self):
         compiler=compiler_command()
-        if not compiler:self.skipTest('Pinned native compiler required')
+        if not compiler or not compiler_is_zig():self.skipTest('Pinned native Windows Zig compiler/resource tools required')
         environment=compiler_environment()
         with tempfile.TemporaryDirectory(prefix='monado-module-path-') as temporary:
             root=Path(temporary);identity='a'*64

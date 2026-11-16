@@ -45,6 +45,10 @@ class Fsr4ReceiptPolicy(unittest.TestCase):
 class NativeFsr4Component(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        from native_renderer_support import require_native_graphics
+        # setup.build below exercises the production default dependency paths;
+        # a partial/alternate configured setup must fail rather than skip.
+        require_native_graphics(production_defaults=True)
         cls.output=PORT/'.deps/fsr4/build'/('authored-fixture-'+uuid.uuid4().hex)
         cls.receipt=setup.build(cls.output)
         sys.path.insert(0,str(ROOT/'tests'))

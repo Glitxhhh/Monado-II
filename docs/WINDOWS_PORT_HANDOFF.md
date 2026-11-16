@@ -1,3 +1,9 @@
+> **Historical implementation brief.** Windows Experimental0.1.0 now contains
+> the native implementation developed from this plan. The checklists below retain
+> their original acceptance requirements; unchecked or historical wording is not
+> a statement that all code is absent. Current implementation/qualification is in
+> [platform status](PLATFORM_STATUS.md) and the [Windows guide](BUILD_WINDOWS.md).
+
 # Windows implementation handoff — accepted Linux R5 reference
 
 Prepared November 14, 2026. **This branch prepares Windows development; it does

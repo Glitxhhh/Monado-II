@@ -8,7 +8,7 @@ import re
 import subprocess
 import unittest
 import uuid
-from tests.native_renderer_support import WINDOWS,PORT,compiler_command,compiler_environment,graphics_prefix,native_flags
+from tests.native_renderer_support import WINDOWS,PORT,compiler_command,compiler_environment,graphics_prefix,native_flags,require_native_graphics
 from tests.test_windows_renderer import extract
 
 def shader_source(source,name,next_name):
@@ -20,6 +20,7 @@ def shader_source(source,name,next_name):
 @unittest.skipUnless(WINDOWS,'Native Windows Vulkan geometry oracle')
 class TemporalInputsNativeGPU(unittest.TestCase):
     def test_actual_production_prep_perspective_motion_jitter_depth_and_negative_viewport(self):
+        require_native_graphics()
         output=PORT/'runs'/('temporal-inputs-gpu-'+uuid.uuid4().hex);output.mkdir()
         prefix=graphics_prefix();environment=compiler_environment();environment['PATH']=str(prefix/'bin')+os.pathsep+environment.get('PATH','')
         shaders=(PORT/'runtime/nvn/vulkan/shaders.c').read_text()

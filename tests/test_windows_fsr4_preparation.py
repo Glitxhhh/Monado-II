@@ -100,8 +100,8 @@ class NativePreparation(unittest.TestCase):
         result=run([sys.executable,'-I','-S','-B','-X','utf8',PORT/'third_party/fsr4cap/extract.py',self.root/'MUST-NOT-EXECUTE.exe',self.root,output],cwd=self.root,log=self.root/'bad-trace.log',environment=dict(os.environ,FSR4CAP_MODEL='lite'),timeout=10)
         self.assertEqual(result['exit'],6,(self.root/'bad-trace.log').read_bytes());self.assertIn(b'no assets written',(self.root/'bad-trace.log').read_bytes());self.assertFalse(output.exists())
     def test_actual_native_recorder_unicode_io_without_sdk_or_gpu(self):
-        compiler=Path(sys.executable).parent/'Lib/site-packages/ziglang/zig.exe'
-        if not compiler.exists():compiler=PORT/'.venv/Lib/site-packages/ziglang/zig.exe'
+        from native_renderer_support import require_pinned_zig
+        compiler=require_pinned_zig()
         exe=self.root/'fsr4-capture-測試.exe'
         environment=dict(os.environ,ZIG_LOCAL_CACHE_DIR=str(self.root/'zig-local'),ZIG_GLOBAL_CACHE_DIR=str(PORT/'build/zig-global-cache'))
         built=subprocess.run([str(compiler),'cc','-std=c11','-O1','-UNDEBUG','-municode',str(PORT/'tests/native/test_fsr4_capture_windows.c'),'-o',str(exe)],capture_output=True,env=environment,timeout=120)

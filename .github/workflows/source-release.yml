@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: Linux release/source snapshot version; Windows remains original
+        description: Linux source release version; Windows EXE is built and packaged natively
         required: true
-        default: 0.1.20
+        default: 0.1.21
         type: string
 
 permissions:
@@ -15,7 +15,7 @@ permissions:
 jobs:
   source-kit:
     name: Reviewed ${{ matrix.platform }} source kit
-    # Both archives are source/setup kits; this does not compile a Windows game.
+    # Linux source only. The experimental Windows EXE has a native release pipeline.
     runs-on: ubuntu-latest
     timeout-minutes: 15
     strategy:
@@ -25,9 +25,6 @@ jobs:
           - platform: linux
             archive_pattern: monado-ii-*-linux-*.tar.gz
             artifact_name: monado-ii-linux-setup
-          - platform: windows
-            archive_pattern: monado-ii-windows-original-implementation-setup.zip
-            artifact_name: monado-ii-windows-original-implementation-setup
     env:
       PYTHONDONTWRITEBYTECODE: '1'
       GIT_CONFIG_COUNT: '1'

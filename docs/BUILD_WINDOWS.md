@@ -1,7 +1,7 @@
 # Native Windows experimental setup and source builds
 
-This branch is bringing the accepted Linux dev104 R5 behavior into the native
-Windows port. It has produced native game/settings builds and a physically
+Windows Experimental 0.1.0 brings the accepted Linux dev104 R5 behavior into
+the native Windows port. It has produced native game/settings builds and a physically
 confirmed title screen on Windows 11, RTX 4070 SUPER, driver 595.97. Gameplay,
 save/reload, long sessions, all providers, other GPUs and full DE/Future Connected
 coverage still require maintainer testing. See [platform status](PLATFORM_STATUS.md)
@@ -15,6 +15,11 @@ use the separate `MonadoII-Windows-Setup.exe` for this experimental port. Linux
 release numbers never identify Windows updates. Internal local receipts retain
 the compatible `windows-parity-development` schema. The accepted Linux source
 and deferred notes remain unchanged.
+
+Download **MonadoII-Windows-Setup.exe** from the
+[latest release](https://github.com/brendonbusker/Monado-II/releases/latest).
+The support/source ZIPs on that page accompany the setup; they are not additional
+files ordinary users need to run.
 
 ## Portable graphical setup
 

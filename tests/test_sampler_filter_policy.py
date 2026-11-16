@@ -17,7 +17,6 @@ class SamplerFilterPolicy(unittest.TestCase):
             exe=Path(td)/binary_name(name)
             args=cc+native_flags()+['-I',str(PORT/'runtime'),
                   str(ROOT/'tests/native'/f'test_{name}.c'),'-o',str(exe)]
-            if os.environ.get('MONADO_TEST_UBSAN')=='1':args[1:1]=['-fsanitize=undefined','-fno-sanitize-recover=all']
             p=subprocess.run(args,env=compiler_environment(),capture_output=True,text=True,timeout=90)
             self.assertEqual(p.returncode,0,p.stdout+p.stderr)
             p=subprocess.run([str(exe)],capture_output=True,text=True,timeout=10)

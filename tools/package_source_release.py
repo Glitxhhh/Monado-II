@@ -261,6 +261,8 @@ def package(source: Path, platform: str, version: str, output: Path) -> dict:
         raise ReleaseError('output must be fresh and separate from source')
     _guard(source)
     document, raw = _document(source)
+    if platform == 'windows' and 'Monado_Windows/tools/build_windows_builder.py' in document['files']:
+        raise ReleaseError('native Windows releases require the native Windows packager and independent metadata; legacy original-implementation export refused')
     selected_port = PORTS[platform]
     other_port = PORTS['windows' if platform == 'linux' else 'linux']
     selected = {name: metadata for name, metadata in document['files'].items()

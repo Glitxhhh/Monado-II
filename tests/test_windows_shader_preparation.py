@@ -5,13 +5,14 @@ import subprocess
 import sys
 import unittest
 import uuid
-from tests.native_renderer_support import PORT,WINDOWS,compiler_command,compiler_environment,graphics_prefix,native_flags
+from tests.native_renderer_support import PORT,WINDOWS,compiler_command,compiler_environment,graphics_prefix,native_flags,require_native_graphics
 
 @unittest.skipUnless(WINDOWS,'Native Windows cache transactions')
 class NativeShaderPreparation(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.root=PORT/'runs'/('shader-native-'+uuid.uuid4().hex);cls.root.mkdir()
+        require_native_graphics()
+        cls.root=PORT/'runs'/('shader-native-'+uuid.uuid4().hex);cls.root.mkdir(parents=True)
         cls.environment=compiler_environment();cls.prefix=graphics_prefix()
         cls.environment['PATH']=str(cls.prefix/'bin')+os.pathsep+cls.environment.get('PATH','')
         resource=cls.root/'process-manifest.res';compiler=compiler_command()

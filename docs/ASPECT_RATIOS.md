@@ -1,11 +1,10 @@
-# Native display aspect ratios (Linux 0.1.20, experimental)
+# Native display aspect ratios (Linux 0.1.21, experimental)
 
-Release 0.1.20 addresses a report of scene width changing
-during gameplay and Alt-Tab. It handles reduced-resolution scene composites with
-multiple inputs and keeps the renderer camera aligned with its logical camera.
-Bounded `[aspect]` diagnostics help distinguish output placement from composite
-decisions. The reporter's ultrawide gameplay still needs validation; return to
-Original if an experimental mode misbehaves.
+Release 0.1.21 addresses a competing game render-resolution controller in
+non-original aspect modes. This targets the remaining width/stretching changes
+reported under GPU load and above30FPS after0.1.20. Original16:9 retains its
+normal controller. The reporter's physical ultrawide confirmation is still
+needed; return to Original if an experimental mode misbehaves.
 
 In Graphics, **Aspect ratio** offers these choices on every monitor:
 

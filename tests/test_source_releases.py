@@ -154,12 +154,22 @@ class SourceReleaseTests(unittest.TestCase):
         self.assertEqual(content['update-version.json'], self.payloads['update-version.json'])
         self.assertNotIn('source_release_version', receipt)
 
-    def test_workflow_selects_canonical_windows_asset_and_both_linux_names(self):
+    def test_current_workflow_packages_linux_without_mislabeling_native_windows(self):
         workflow = (Path(__file__).resolve().parents[1] / '.github/workflows/source-release.yml').read_text()
-        self.assertIn('archive_pattern: monado-ii-windows-original-implementation-setup.zip', workflow)
-        self.assertIn('artifact_name: monado-ii-windows-original-implementation-setup', workflow)
+        self.assertNotIn('platform: windows', workflow)
         self.assertIn('archive_pattern: monado-ii-*-linux-*.tar.gz', workflow)
         self.assertIn('${{ matrix.archive_pattern }}', workflow)
+
+    def test_native_windows_tree_cannot_be_exported_as_original_implementation(self):
+        name = 'Monado_Windows/tools/build_windows_builder.py'
+        data = b'# authored native builder fixture\n'
+        (self.source / name).parent.mkdir(parents=True)
+        (self.source / name).write_bytes(data)
+        self.manifest['files'][name] = dict(bytes=len(data), sha256=hashlib.sha256(data).hexdigest())
+        self.save_manifest()
+        with self.assertRaisesRegex(release.ReleaseError, 'native Windows packager'):
+            self.package('windows')
+        self.assertFalse((self.base / 'result').exists())
 
     def test_corrupted_linux_alias_never_reaches_final_output(self):
         copy = release.shutil.copyfile

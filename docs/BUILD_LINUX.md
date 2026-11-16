@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-The recommended download is **`monado-ii-0.1.19-linux-builder-x86_64.AppImage`** from
+The recommended download is **`monado-ii-0.1.21-linux-builder-x86_64.AppImage`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases/latest). It provides
 folder selection, local build progress and the normal settings launcher after
 building. The source/setup archive and terminal route remain available below.
@@ -25,8 +25,8 @@ building. The source/setup archive and terminal route remain available below.
 If FUSE is unavailable, extraction mode works without installing it:
 
 ```sh
-chmod +x monado-ii-0.1.19-linux-builder-x86_64.AppImage
-./monado-ii-0.1.19-linux-builder-x86_64.AppImage --appimage-extract-and-run
+chmod +x monado-ii-0.1.21-linux-builder-x86_64.AppImage
+./monado-ii-0.1.21-linux-builder-x86_64.AppImage --appimage-extract-and-run
 ```
 
 **Use an existing installation** links a checked installation in place, preserving

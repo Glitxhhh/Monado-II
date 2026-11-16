@@ -13,8 +13,8 @@
       "sha256": "6ad28ca4bfe27f376c961c8bd5c0ff3c5550eeb9c2a5cce4ec3970cf9535f85c"
     },
     ".github/workflows/source-release.yml": {
-      "bytes": 3263,
-      "sha256": "e519d2bb3b67b5ca1275dd821de5f6581486b6a326da36a9ec553806ff604cb4"
+      "bytes": 3090,
+      "sha256": "3ab9a439477e371f28aa8e40d5c9e8c6b9d4043b089242af9917615133f641d5"
     },
     ".gitignore": {
       "bytes": 1053,
@@ -37,8 +37,8 @@
       "sha256": "fc908ddd148e06cb024ce9ea9f98307c32af7147bcba2504b8b6a726526197cc"
     },
     "CHANGELOG.md": {
-      "bytes": 41754,
-      "sha256": "d4cd523386894746d55b2b2fedca17257830d0a1fde174b5688043c72cb8cf4e"
+      "bytes": 43393,
+      "sha256": "62da26c9bd8722aad0059b0426cedfe74a4581fe0c26a62d2642aee42175cd3e"
     },
     "CONTRIBUTING.md": {
       "bytes": 1798,
@@ -5185,8 +5185,8 @@
       "sha256": "111d3bdcc8b4dd86e9bc0b59a2431dd5439c4de0ba94c9bee96756ad5399a053"
     },
     "README.md": {
-      "bytes": 19130,
-      "sha256": "c4de6f31467686b6c0c79a213ec0abc335bce9f35e6e683c30e5e5def631844a"
+      "bytes": 19304,
+      "sha256": "85f0a440d0d139559a1c81e338a9262c51568e3f74e526f2dbdd17ea2c51ace5"
     },
     "Rollback_Monado_II.sh": {
       "bytes": 8873,
@@ -5197,8 +5197,8 @@
       "sha256": "26e949319396e5380de9d383b5455c9b52c31eec02908f500824997ccfbc105a"
     },
     "TODO.md": {
-      "bytes": 7979,
-      "sha256": "092a0e71d8eb01b83c4dff838fbd842384303767b1acd3572024c47fe54896e8"
+      "bytes": 5842,
+      "sha256": "2e2ed14a96d88c0776437883a46cbea479c35b300527347690e97cf5bbd1b6f8"
     },
     "appimage-runtime.lock.json": {
       "bytes": 635,
@@ -5209,16 +5209,16 @@
       "sha256": "b02349c0967589923977560a06075fd048ec31817a67e6ede518c5d2886a7004"
     },
     "docs/ASPECT_RATIOS.md": {
-      "bytes": 2942,
-      "sha256": "9fd3885471bb11669e190081012ec74fb3da1d86d8e8945f0b15c0b9bfaf31d9"
+      "bytes": 2888,
+      "sha256": "3d962611b3ba82b475006f2bf93af964ba09b880f70289d59edac6d587b2a99e"
     },
     "docs/BUILD_LINUX.md": {
       "bytes": 30459,
-      "sha256": "62b01336dc8115f527d4000c723efab89f1ffb9585f9d350d0b1325346b83de3"
+      "sha256": "74be65ffb67ca74bbeaa928c953f9a35c21ec7b4de918c98d6bc0a7fd38d72e2"
     },
     "docs/BUILD_WINDOWS.md": {
-      "bytes": 7829,
-      "sha256": "e6f959136d0a737e712416af4b781183d6cb707ad14fffd04c3d91029ea0313c"
+      "bytes": 8083,
+      "sha256": "cb577361e98f01b9183638f00eb286580f484e729c073d5104b0f0828933fc92"
     },
     "docs/CHEATS.md": {
       "bytes": 3024,
@@ -5237,8 +5237,8 @@
       "sha256": "26abd117d0307aa954d851883874a709ea07b994abe69f248d71373100451739"
     },
     "docs/PLATFORM_STATUS.md": {
-      "bytes": 12659,
-      "sha256": "6da1a4e2aa0cfeb219c8b03dde2b2549a8e7453abcecb624a7126789cd6e580a"
+      "bytes": 4652,
+      "sha256": "0f760f9c13dc9e833c3ddcc1ea5c82d1c0e3ae93458d3bfbd545d3cef1692f28"
     },
     "docs/QUICKSTEP.md": {
       "bytes": 4893,
@@ -5249,16 +5249,16 @@
       "sha256": "ce4c8d6a5ffb65a08a25abb6450235929887d2079cb63321c327261b123b1eec"
     },
     "docs/RELEASING.md": {
-      "bytes": 16276,
-      "sha256": "0b2b74ce225811e293603425b3fb8afd54810ead92cf3fbd9a91b5e25e1094a7"
+      "bytes": 4255,
+      "sha256": "2b8ea09361f405d11214e606e15347ac7045122e65f26755310fc55dd95f94f3"
     },
     "docs/WINDOWS_PARITY_INVENTORY.json": {
       "bytes": 233647,
       "sha256": "90a0ba8258a7bf3c0fd11b9cc7dafe8114a71588ce547de07c446bd8ec9cfad9"
     },
     "docs/WINDOWS_PORT_HANDOFF.md": {
-      "bytes": 49133,
-      "sha256": "8ca8a8c0653e40afe5a312a798e8e7daf747ec2abb89917eb55c4481f595f361"
+      "bytes": 49540,
+      "sha256": "30130b989516f0585af6f28af790f9d73f5f04f949925e882149d4f4603852f5"
     },
     "docs/windows-parity/DEFERRED_NOTES.md": {
       "bytes": 5544,
@@ -5473,8 +5473,8 @@
       "sha256": "160c0ba2f7fbb27660bf9fd41a5ca6c8f0b22597b2135b3108f33656c7689ef4"
     },
     "tests/native_renderer_support.py": {
-      "bytes": 2040,
-      "sha256": "3c578b22737bf48019b4e9822f54d48e8e4bfa32a07607da914ce70f35045c8a"
+      "bytes": 6131,
+      "sha256": "791397a1ccdb6b046b89e3890627068dfab78ed5452d010a9419403d6f6198bb"
     },
     "tests/test_aspect_composite.py": {
       "bytes": 2126,
@@ -5752,9 +5752,13 @@
       "bytes": 22677,
       "sha256": "3ac9bf2f7bd036c2a890071c53754ae6e9b0fe654c9a74812150a18d1c8e08e4"
     },
+    "tests/test_native_renderer_support.py": {
+      "bytes": 4755,
+      "sha256": "a8fb6035d96549a47c7b218c6585533ab251e5b0e0e4feee440eae9cc8955023"
+    },
     "tests/test_nvn_program_binding.py": {
-      "bytes": 4427,
-      "sha256": "d012ae077dba9ae15e7ee9c87309b7f4eb66564f8e37a511020c18b720b2cddd"
+      "bytes": 4283,
+      "sha256": "9d3a7e5d92159962f1e5984a62cdc2479b33d004deb42c6fa7d48543478ca3bc"
     },
     "tests/test_packaged_launcher.py": {
       "bytes": 23434,
@@ -5897,8 +5901,8 @@
       "sha256": "c802d99e6c7797b11733eea8e0c0f1da6d3b84135ee7cbbcb511501ca6567a1a"
     },
     "tests/test_sampler_filter_policy.py": {
-      "bytes": 1377,
-      "sha256": "636199eb1207a94322f6ae4b5860334f8d1a72c197f6a8bbb0efbf906adf1b7b"
+      "bytes": 1258,
+      "sha256": "d231a3d1a3de606833c27ec7ff0fee64e4b214fa5153682b47831d7d7cb5673b"
     },
     "tests/test_shader_snapshots.py": {
       "bytes": 1539,
@@ -5909,8 +5913,8 @@
       "sha256": "1942d80c611fe73ce4e227f067febff94755d3f36424350fd264fa884c5f07ba"
     },
     "tests/test_source_releases.py": {
-      "bytes": 17140,
-      "sha256": "de60a2a7f2fa52d274d314e53551697e95f48e791f57e364123f4dc5bb60f87d"
+      "bytes": 17617,
+      "sha256": "ae188fe60a8484864d5f737314beb154cb0638afffa1f478480aa7e051fc7eec"
     },
     "tests/test_standalone_appimage_adapter.py": {
       "bytes": 14601,
@@ -5957,12 +5961,12 @@
       "sha256": "f4b0d6f3201aafb6f87a86ae222769a75da895f72388e38cbb36f3bf9afe8bd8"
     },
     "tests/test_windows_branded_frontend.py": {
-      "bytes": 6057,
-      "sha256": "aa8b139ad4d5f302214c883d37455d9e558763123197b4674ec18828b89c1420"
+      "bytes": 6163,
+      "sha256": "ecb6299862eda3f16a84bce1f17009c989484cda1b347bda11b93827724b8f2a"
     },
     "tests/test_windows_branded_setup_policy.py": {
-      "bytes": 3326,
-      "sha256": "0c810eda055ce6f79235c6715f842ee41001192d0a1010cfdcca5bdd72548f60"
+      "bytes": 3397,
+      "sha256": "74ec11e3411fef7a88403a24b85fac2be9c61809203a64567b2a004939faacee"
     },
     "tests/test_windows_feedback_device.py": {
       "bytes": 6445,
@@ -5981,12 +5985,12 @@
       "sha256": "91f89db55c638719e32670fed88648320d753fa81e6ec9d8a68cdbd0dd5b68fe"
     },
     "tests/test_windows_fsr4.py": {
-      "bytes": 9378,
-      "sha256": "3bbaca86414dcbb821b1a0c78974854fdb89cf2deaa8ac601f72a2abd53e7987"
+      "bytes": 9658,
+      "sha256": "9b4bbc15fee244a34a41609f43f445a12bd5d863f6b6639df65a456c177d1f3d"
     },
     "tests/test_windows_fsr4_preparation.py": {
-      "bytes": 9500,
-      "sha256": "7b29e46c4831bc4966f08726c4669ca2385daa8cecf9467311b5efea4711dbe4"
+      "bytes": 9431,
+      "sha256": "42041a0721525e56b8a4db0f2a8d9e47612755eacb52ec049aba8fa0c31ca827"
     },
     "tests/test_windows_game_library.py": {
       "bytes": 16227,
@@ -5997,32 +6001,32 @@
       "sha256": "1467fd87d5d254ca53c0d65f4657405fe29716484139cde43c878c56992baac2"
     },
     "tests/test_windows_host_import.py": {
-      "bytes": 4512,
-      "sha256": "8c08b6d7e9fa21859296a6d9e560dfb8591f3abd2a28f11e4b74065f1d2fe16a"
+      "bytes": 4582,
+      "sha256": "9663265004ba4586f4158ac0334ada1b4bd52dccaee67a2a6ef2d77f170c10bd"
     },
     "tests/test_windows_launcher_profile.py": {
       "bytes": 8933,
       "sha256": "76ddeca40177339f2869477b7d0a1c2d43637d020557d60f51a200019ae749c8"
     },
     "tests/test_windows_module_paths.py": {
-      "bytes": 3347,
-      "sha256": "e6ed34cb159742e8cd864d2b712f502071c5d5ab37226330ebf86b8e11e0fdaa"
+      "bytes": 3415,
+      "sha256": "4ab88518d1840392996e1e7afc7254e75335a65a19312d4433c260a828eb17b2"
     },
     "tests/test_windows_optional_library.py": {
-      "bytes": 5487,
-      "sha256": "05d8d3240f99a1812c2070641a2ed23f0904c8ea20394de81a73c14d3bb1a95d"
+      "bytes": 5555,
+      "sha256": "7c4be8343d892c8bc8ee252df8fbb581b3cb7e0adc2abfe084b40bba15cc2cbb"
     },
     "tests/test_windows_python_release_sources.py": {
-      "bytes": 11158,
-      "sha256": "83183cca3cc3c889014dfa08384cac6f58d68285aea5b48eac55934d686916eb"
+      "bytes": 11146,
+      "sha256": "073d4135f6ae610fe05c13aedeab4659c557776bdc9604170831c44185d1bbf9"
     },
     "tests/test_windows_release_package.py": {
       "bytes": 11250,
       "sha256": "67e3a432d412e2fce4cfff20f3ca1714e912d240deaba70b473ba12955d0022f"
     },
     "tests/test_windows_renderer.py": {
-      "bytes": 10895,
-      "sha256": "405812b02a79794e3aabe369aac84a97e7f43727f62ddc73fd6f71f077498c6c"
+      "bytes": 11017,
+      "sha256": "548c9e99518c04030cfa075e2ea123a456a5554a1604b15370fc29b54e61f339"
     },
     "tests/test_windows_settings.py": {
       "bytes": 1678,
@@ -6033,28 +6037,28 @@
       "sha256": "345c0a92a9e5e6e6655b8a40889636ae39449af20fc913061c4e1bada34a0ee9"
     },
     "tests/test_windows_shader_preparation.py": {
-      "bytes": 6940,
-      "sha256": "373633ca39b242c3f535c483bd89bade52e61acfb2db64f1cd143722afc60538"
+      "bytes": 7010,
+      "sha256": "377a2b4ca48f3433e3d5d6807ffcfe2cafaf3715f0ba6d0a30560d7a46c02ae3"
     },
     "tests/test_windows_source_export.py": {
       "bytes": 4198,
       "sha256": "54b5d6fe75e9964edfc727b793615b943537931bb4df91bacfb0c46cce04a0b4"
     },
     "tests/test_windows_temporal_inputs_gpu.py": {
-      "bytes": 5374,
-      "sha256": "b01cd6c121274cb52dd7b0251a63d2bf7d4113bf94a88a0818d2f1b996c0e088"
+      "bytes": 5432,
+      "sha256": "62930fa5ea3dc05ae7c3e0e1b55ea2f59501cbc8fa29d9d5c3c1ac1ea4c9fd21"
     },
     "tests/test_windows_temporal_scene.py": {
-      "bytes": 4944,
-      "sha256": "99ee15295a463cc2ae06811589eb045634656d53bea993fdd27fadec95eb64a0"
+      "bytes": 5014,
+      "sha256": "14d80803fe312e31b4f70b658bc7fe9f3b54c226531df66f7a34fae9f0121d70"
     },
     "tests/test_windows_update_release.py": {
       "bytes": 9799,
       "sha256": "68eb7177b658c30ebf710cd83c2919aa0ef2f539857ee1514e0e658b91540b78"
     },
     "tests/test_windows_windowing.py": {
-      "bytes": 1852,
-      "sha256": "90c751a15a57f927fc86e1b26a90ceff5cbbdfa57a6b66b99d17ce8e267eec70"
+      "bytes": 1922,
+      "sha256": "cb1d221642f9a1c165ce035c0a6b6ec4d8bce91b2167f184aff9b7b9f16cd148"
     },
     "tests/test_xcde_aspect.py": {
       "bytes": 5996,
@@ -6181,8 +6185,8 @@
       "sha256": "afc0a6c76c637a31a0f278c0a8f8bc65f3257dcb5ba5bed49d50576252c12e9d"
     },
     "tools/package_source_release.py": {
-      "bytes": 19899,
-      "sha256": "d984e7f77e0e374081d2440a56d1c47840f36a5ec583febdad7d97ae870c96e1"
+      "bytes": 20164,
+      "sha256": "40751a2cf7e7d3d07cda87ee5850862758600a041c1f6c7d79976820407cfe64"
     },
     "tools/portable_runtime.py": {
       "bytes": 12883,
@@ -6230,7 +6234,7 @@
     },
     "update-version.json": {
       "bytes": 58,
-      "sha256": "ffe9f495d87b9b4203553db1e5e34746426df80d47149f4e9aff67b4c1a42f82"
+      "sha256": "d74c062b547fea41e25cf940e7d9f2d253213dd656cff6ef7eb7eefee36a1e1d"
     }
   },
   "project": "Monado II",
