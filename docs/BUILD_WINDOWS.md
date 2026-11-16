@@ -38,6 +38,31 @@ keeps the current selection. Activation changes the checked runtime selection wh
 the original profile remains stable. Obsolete owned update transactions are eligible
 for cleanup only after success; busy, changed or unsafe trees are deferred.
 
+## Preparing a Windows release from Linux
+
+The current Windows source export and setup EXE packager require native Windows:
+the exporter uses Win32 file guards, and the packager uses Windows compression
+APIs, pinned Windows dependencies and a successful native build receipt. They
+do not currently support a Linux-only build of the setup EXE.
+
+A Linux session can maintain the source, prepare release notes and metadata, and
+upload an already reviewed Windows artifact. A fresh setup EXE still needs a
+Windows machine or Windows runner. The existing `source-release.yml` workflow
+only packages source archives, including the historical Windows ZIP; it does
+not build this portable EXE. The Windows source-check CI job is also not an EXE
+release job. Do not use the historical Windows ZIP declaration to publish this
+updated Windows port. A dedicated Windows EXE release pipeline and its release
+metadata remain to be implemented.
+
+The locally tested `MonadoII-Windows-Setup-Dev.exe`, dependency archives,
+native receipts and private test evidence are not stored in Git. Preserve those
+Windows-local files if reusing that development package. The latest experimental
+DLSS labels are source changes; rebuild the package to include them. Public
+distribution still requires the dependency/license and corresponding-source
+review described above, with independent Windows update metadata. Do not publish
+game input, generated game code, caches or saves. These Windows requirements do
+not change the accepted Linux build or release flow.
+
 ## Source and BAT fallback
 
 Use Windows 10/11 x86-64 and a native CPython 3.14 interpreter. Run normal builds
