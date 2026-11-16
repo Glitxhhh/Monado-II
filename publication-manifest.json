@@ -5521,8 +5521,8 @@
       "sha256": "5ce9710348b94ee0b6dcb2117b5da38929031d292f47956c24bb22561f68be66"
     },
     "tests/test_builder_update_python.py": {
-      "bytes": 4656,
-      "sha256": "fa884a85341d37e7af1b9d5107c2208736b660c370da253065e2e47f4e08507e"
+      "bytes": 4670,
+      "sha256": "2c9e60d84e6588e8f3e4f0655a7783277600ecb846313bada59b749020b0b34e"
     },
     "tests/test_cheats_combat.py": {
       "bytes": 2009,

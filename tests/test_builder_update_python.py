@@ -35,7 +35,7 @@ class PersistentBuildPython(unittest.TestCase):
 
     def test_host_installation_keeps_legacy_build_entry(self):
         command = update.build_command(self.root / 'next workspace', self.game, True)
-        self.assertEqual(command, [str(self.root / 'next workspace/Build_Monado_II.sh'), '--without-dlss'])
+        self.assertEqual(command, [str(self.root / 'next workspace/Build_Monado_II.sh'), '--without-dlss', '--framegen'])
 
     def test_private_interpreter_is_used_without_a_candidate_venv(self):
         self.marker.write_text(json.dumps(self.value))
