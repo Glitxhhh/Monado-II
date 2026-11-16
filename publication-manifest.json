@@ -5977,8 +5977,8 @@
       "sha256": "46ad402c56c7d219db0b2e1ac7d53b6cce20b7fc1538eef266062fadc31c33f2"
     },
     "tests/test_windows_file_guard.py": {
-      "bytes": 7028,
-      "sha256": "43e776d6fd6838bef5cf4c2b7b15a5d6237162f7e1fa94306736276dbd8cc3a4"
+      "bytes": 7138,
+      "sha256": "7cdf7115e50d5fc3bb185e3321c376cba3cf1216ba0f126927fde7aaab6560dc"
     },
     "tests/test_windows_fps_acquire_contract.py": {
       "bytes": 2877,
@@ -5989,8 +5989,8 @@
       "sha256": "9b4bbc15fee244a34a41609f43f445a12bd5d863f6b6639df65a456c177d1f3d"
     },
     "tests/test_windows_fsr4_preparation.py": {
-      "bytes": 9431,
-      "sha256": "42041a0721525e56b8a4db0f2a8d9e47612755eacb52ec049aba8fa0c31ca827"
+      "bytes": 9635,
+      "sha256": "7b1eef5988b4a59defd03bd17a6c1e15fb5181dbf48e139d67ce572044a653e8"
     },
     "tests/test_windows_game_library.py": {
       "bytes": 16227,

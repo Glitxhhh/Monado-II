@@ -29,7 +29,10 @@ class PreparationSources(unittest.TestCase):
 @unittest.skipUnless(os.name=='nt','Native Windows fixtures')
 class NativePreparation(unittest.TestCase):
     def setUp(self):
-        self.tmp=tempfile.TemporaryDirectory(prefix='fsr4 authored 測試 $() ` ',dir=PORT/'runs');self.root=Path(self.tmp.name)
+        # Keep authored files independent of the publication checkout. Resolve
+        # the system temporary parent before the Win32 ordinary-path checks.
+        parent=Path(tempfile.gettempdir()).resolve()
+        self.tmp=tempfile.TemporaryDirectory(prefix='fsr4 authored 測試 $() ` ',dir=parent);self.root=Path(self.tmp.name)
         self.addCleanup(self.tmp.cleanup)
     def test_actual_child_unicode_literal_arguments_failure_and_existing_log_preservation(self):
         arguments=['spaces here','測試', '$()','`literal`','trailing\\','a"b']

@@ -14,10 +14,12 @@ import windows_file_guard as guard
 @unittest.skipUnless(os.name=='nt','Native Win32 only; no production fallback')
 class NativeFileGuard(unittest.TestCase):
     def setUp(self):
-        private=ROOT/'Monado_Windows/runs/file-guard-fixtures';private.mkdir(parents=True,exist_ok=True)
-        self.temporary=tempfile.TemporaryDirectory(prefix='authored-',dir=private)
+        # Native file leases need an ordinary physical path, not a shared
+        # source-tree runs parent that survives this fixture's own cleanup.
+        private=Path(tempfile.gettempdir()).resolve()
+        self.temporary=tempfile.TemporaryDirectory(prefix='file-guard-authored-',dir=private)
+        self.addCleanup(self.temporary.cleanup)
         self.root=Path(self.temporary.name);self.profile=self.root/'profile-résumé-雪-$()-`';self.profile.mkdir()
-    def tearDown(self):self.temporary.cleanup()
     def test_unicode_owned_new_read_stream(self):
         data=b'authored'*300000
         with guard.locked_directory(self.profile,owner=True) as directory:
