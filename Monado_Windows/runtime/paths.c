@@ -150,6 +150,14 @@ static bool game_dir_ok(const char *game_dir) {
 }
 
 bool rt_remove_game_file(const char *game_dir, const char *name) {
+#ifdef _WIN32
+    // WINPARITY-004: native Windows accepts an already-extracted, shared input.
+    // It never owns that data, even if a legacy caller names it extracted/.
+    (void)game_dir;
+    (void)name;
+    fprintf(stderr, "[paths] extracted Windows game input is read-only\n");
+    return false;
+#else
     bool known = false;
     for (size_t i = 0; i < sizeof GAME_FILES / sizeof *GAME_FILES; i++) known |= !strcmp(name, GAME_FILES[i]);
     if (!known || !game_dir_ok(game_dir)) {
@@ -164,9 +172,15 @@ bool rt_remove_game_file(const char *game_dir, const char *name) {
         return false;
     }
     return is_dir(p) ? plat_remove_tree(p) : remove(p) == 0;  // (plat_remove_tree doesn't follow links inside)
+#endif
 }
 
 bool rt_remove_game_files(const char *game_dir) {
+#ifdef _WIN32
+    (void)game_dir;
+    fprintf(stderr, "[paths] extracted Windows game input is read-only\n");
+    return false;
+#else
     if (!game_dir_ok(game_dir)) {
         fprintf(stderr, "[paths] refusing to delete game files in %s (not <data root>/extracted)\n", game_dir);
         return false;
@@ -175,6 +189,7 @@ bool rt_remove_game_files(const char *game_dir) {
     for (size_t i = 0; i < sizeof GAME_FILES / sizeof *GAME_FILES; i++) ok &= rt_remove_game_file(game_dir, GAME_FILES[i]);
     rmdir(game_dir);  // only if empty: anything else in there stays
     return ok;
+#endif
 }
 
 static unsigned long long tree_size(const char *p) {

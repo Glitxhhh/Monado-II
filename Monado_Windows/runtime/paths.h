@@ -30,7 +30,9 @@ bool rt_dev_mode(void);           // dev / portable mode (rule 2 above): e.g. a 
 // starting directory or the executable's parent; NULL = shipped builds only). Absolute path in out; false = none.
 bool rt_resource(const char *name, const char *dev_rel, char *out, size_t n);
 
-// The only way the app deletes game files. Removes the named entry of game_dir (an extracted/ folder) only if
+// Native Windows always refuses these legacy deletion APIs: selected extracted
+// input is immutable. Generated outputs use checked build/update retention.
+// On legacy platforms, removes the named entry of game_dir (an extracted/ folder) only if
 // game_dir is <data root>/extracted itself (symlinks resolved; a symlinked extracted/ is refused) and the entry is
 // one the setup creates (exefs, romfs, romfs.bin, leftover folders) and not a link. The folder the user picked
 // never gets here. true = removed or not there.
