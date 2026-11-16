@@ -26,6 +26,7 @@ import threading
 import time
 import uuid
 
+sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 RUNTIME = """loader dispatch kernel ipc fnprof platform/windows platform/windows_fma services/fs services/romfs_virtual
 services/am services/acc services/time services/hid_set services/kbicons services/misc services/audio services/hwopus
@@ -52,6 +53,20 @@ def digest(path):
 
 def ordinary(path):
     return path.is_file() and not path.is_symlink() and not path.is_junction()
+
+
+def git_identity():
+    # A source-only export can be nested below an unrelated checkout. Never
+    # search upward and attribute that enclosing repository to this build.
+    repository = ROOT.parent
+    marker = repository / ".git"
+    if not marker.exists() or marker.is_symlink() or marker.is_junction():
+        return {"git_commit": None, "git_branch": None}
+    try:
+        return {"git_commit": subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=repository, stderr=subprocess.DEVNULL, text=True).strip(),
+                "git_branch": subprocess.check_output(["git", "branch", "--show-current"], cwd=repository, stderr=subprocess.DEVNULL, text=True).strip()}
+    except (OSError, subprocess.CalledProcessError):
+        return {"git_commit": None, "git_branch": None}
 
 
 def atomic_json(path, value):
@@ -232,11 +247,15 @@ class Builder:
         self.includes += ["-I" + str(self.prefix / "include"), "-I" + str(self.output / "inc"), "-I" + str(ROOT / "third_party/smaa/Textures")]
         self.receipt["prefix"] = str(self.prefix)
         self.receipt["zig"] = importlib.metadata.version("ziglang")
-        try:
-            self.receipt["git_commit"] = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
-            self.receipt["git_branch"] = subprocess.check_output(["git", "branch", "--show-current"], cwd=ROOT, text=True).strip()
-        except (OSError, subprocess.CalledProcessError):
-            self.receipt["git_commit"] = None  # a reviewed source-only kit can have no .git
+        self.receipt.update(git_identity())
+        baseline_path = ROOT / "windows-baseline.json"
+        baseline = json.loads(baseline_path.read_text(encoding="utf-8"))
+        if (baseline.get("schema") != 1 or baseline.get("accepted_baseline") != "dev104 R5" or
+                baseline.get("implementation") != "Windows development" or baseline.get("public_release") is not False):
+            raise RuntimeError("Unrecognized native Windows development baseline")
+        self.receipt["baseline"] = baseline
+        self.receipt["sources"]["windows-baseline.json"] = digest(baseline_path)
+        self.receipt["native_build_identity"] = (self.receipt["git_commit"] or "source kit") + " / " + self.output.name
         if self.receipt["zig"] != "0.14.1":
             raise RuntimeError("This Windows recipe requires pinned ziglang==0.14.1")
 
@@ -288,7 +307,10 @@ class Builder:
         print(f"Native dependency preflight passed; {len(closure)} runtime DLLs checked", flush=True)
 
     def compile(self, sources, tag=""):
-        header_paths = sorted(p for p in (ROOT / "runtime").rglob("*") if p.suffix in (".h", ".inc"))
+        def authored_headers():
+            return sorted([p for p in (ROOT / "runtime").rglob("*") if p.suffix in (".h", ".inc")] +
+                          list((ROOT / "tools/launcher").glob("*.h")) + list((ROOT / "tools/builder").glob("*.h")))
+        header_paths = authored_headers()
         headers = {str(p): digest(p) for p in header_paths}
         def one(source):
             relative = source.relative_to(ROOT).as_posix() if source.is_relative_to(ROOT) else str(source)
@@ -305,6 +327,9 @@ class Builder:
                 cmd.remove("-DXCDE_GFX")
             if source == ROOT / "tools/launcher/launcher.cpp":
                 cmd += ["-I" + str(self.output / "inc/launcher-theme"), "-DMONADO_LAUNCHER_RESOURCES", "-DMONADO_LAUNCHER_ARTWORK"]
+                cmd += ["-DMONADO_WINDOWS_BASELINE_LABEL=" + json.dumps(self.receipt["baseline"]["accepted_baseline"] + " · " + self.receipt["baseline"]["implementation"]),
+                        "-DMONADO_WINDOWS_BUILD_IDENTITY=" + json.dumps(self.receipt["native_build_identity"])]
+                cmd += ["-DMONADO_FSR4_CONTEXT_SHA256=" + json.dumps(self.receipt.get("preparation_context_sha256", ""))]
             self.run("compile-" + relative, cmd + ["-c", str(source), "-o", str(obj)])
             if digest(source) != before:
                 raise RuntimeError(f"Source changed during compile; retry in a new output: {source}")
@@ -326,7 +351,7 @@ class Builder:
                         break
         if errors:
             raise RuntimeError("\n".join(map(str, errors)))
-        if {str(p): digest(p) for p in sorted(p for p in (ROOT / "runtime").rglob("*") if p.suffix in (".h", ".inc"))} != headers:
+        if {str(p): digest(p) for p in authored_headers()} != headers:
             raise RuntimeError("Runtime headers changed during compilation; retry in a fresh build output")
         self.receipt["sources"].update({Path(p).relative_to(ROOT).as_posix(): sha for p, sha in headers.items()})
         return sorted(results)
@@ -343,7 +368,7 @@ class Builder:
         args = [str(p) for p in objects] + [str(resource), "-o", str(exe), "-march=x86_64_v2"]
         args += [self.libs[0]] if launcher else self.libs + ["-lwinmm", "-ldbghelp", "-lbcrypt", "-ladvapi32", "-Wl,--stack,268435456"]
         if launcher:
-            args += ["-Wl,--subsystem,windows", "-ladvapi32"]
+            args += ["-Wl,--subsystem,windows", "-ladvapi32", "-lbcrypt", "-lole32", "-lshell32", "-luuid"]
         args += extra or []
         response.write_text("\n".join('"' + a.replace("\\", "/").replace('"', '\\"') + '"' for a in args), encoding="utf-8")
         self.run("link-" + name, self.cxx + ["@" + str(response)], timeout=1800)
@@ -566,6 +591,8 @@ class Builder:
             paths.add(path)
         if "lasgame.dll" in names:
             paths.update(self.output / "build" / ("lasgame.dll" + suffix) for suffix in (".id", ".sha256"))
+        if self.receipt.get("preparation_context_sha256"):
+            paths.add(self.output / "fsr4-preparation-context.json")
         return {p.relative_to(self.output).as_posix(): digest(p) for p in sorted(paths)}
 
     def retention_inventory(self):
@@ -685,6 +712,18 @@ class Builder:
                 else:
                     self.link("xcde_boot.exe" if stage == "boot" else "xcde.exe", objects + game_objects)
         if stage in ("launcher", "all"):
+            helper_path = ROOT / "tools/preparation_context_windows.py"
+            spec = importlib.util.spec_from_file_location("monado_preparation_context", helper_path)
+            context_helper = importlib.util.module_from_spec(spec); spec.loader.exec_module(context_helper)
+            context = context_helper.create(ROOT, self.output,
+                installation=getattr(self.args, "preparation_installation", None) or self.output,
+                manifest=getattr(self.args, "preparation_python_manifest", None),
+                manifest_sha256=getattr(self.args, "preparation_python_manifest_sha256", None))
+            context_path = self.output / "fsr4-preparation-context.json"
+            atomic_json(context_path, context)
+            self.receipt.update(preparation_context=str(context_path), preparation_context_sha256=digest(context_path),
+                                preparation_available=context["status"] == "available", preparation_reason=context["reason"])
+            self.receipt["sources"]["tools/preparation_context_windows.py"] = digest(helper_path)
             (self.output / "inc").mkdir(exist_ok=True)
             self.run("launcher-resources", [sys.executable, "-B", "tools/launcher/theme_resource.py", "--assets", "tools/launcher/assets", "--output", str(self.output / "inc/launcher-theme")])
             self.link("xcde_launcher.exe", self.compile([ROOT / n for n in LAUNCHER]), launcher=True)
@@ -738,6 +777,9 @@ def main(argv=None):
     ap.add_argument("--reuse-game-build", type=Path, help="verify a selected private static compile receipt and reuse its unchanged game objects")
     ap.add_argument("--split-game", action="store_true", help="link an authored runtime plus locally generated lasgame.dll with strict identity/hash sidecars")
     ap.add_argument("--prefix", type=Path)
+    ap.add_argument("--preparation-python-manifest", type=Path)
+    ap.add_argument("--preparation-python-manifest-sha256")
+    ap.add_argument("--preparation-installation", type=Path)
     ap.add_argument("--jobs", type=int, choices=range(1, 7), default=4)
     ap.add_argument("--keep-going", action="store_true", help="retain all runtime compile diagnostics; never link failed objects")
     ap.add_argument("--launch-current", action="store_true", help="verify active pair/DLLs, then open only its settings launcher")

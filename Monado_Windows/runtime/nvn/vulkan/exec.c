@@ -14,6 +14,7 @@
 
 #include "../../kernel.h"
 #include "shaders.h"
+#include "variant_cache_windows.h"
 #include "vk.h"
 #include "../program_binding.h"
 #include "../aspect_canvas.h"
@@ -2964,9 +2965,8 @@ static void build_pipeline_(void *arg) {
         // taken whole from the driver's cache when the precompilation put it there (precompile.c builds every recorded
         // variant's optimized pipeline): the scene starts with its final pipelines instead of fast links that a
         // low-priority job replaces after their first draw. A miss (not precompiled, another driver) links as before.
-        static int precompiled = -1;
-        if (precompiled < 0) { FILE *pf = fopen("cache/precompile_done.txt", "r"); precompiled = pf != NULL; if (pf) fclose(pf); }
-        if ((pp->how & 0x80) && precompiled && !det_gpl) libs_ready = false;
+        // Cache bytes, rather than a legacy completion marker, decide whether a whole pipeline is available.
+        if((pp->how&0x80)&&!det_gpl)libs_ready=false;
         r = det_gpl || libs_ready ? VK_PIPELINE_COMPILE_REQUIRED
                                   : pipeline_whole(&pp->k, VK_PIPELINE_CREATE_FAIL_ON_PIPELINE_COMPILE_REQUIRED_BIT, &p);
         if (r == VK_SUCCESS) {
@@ -3081,6 +3081,7 @@ typedef struct {
     ShaderKey vkey, fkey;
     PipeKey k;  // (k.prog is NULL in the file)
 } Variant;
+size_t vk_precompile_variant_size(void){return sizeof(Variant);}
 static Variant *var_db;
 static size_t var_n, var_cap;
 static uint64_t var_set[1 << 18];  // hashes of the recorded variants (open addressing; [XCDE] T240: room for the whole game's tours)
@@ -3099,50 +3100,25 @@ static bool var_seen(uint64_t h) {
     }
     return true;  // (full: stop recording)
 }
-static void var_add(const Variant *v) {
-    if (var_n == var_cap) { var_cap = var_cap ? var_cap * 2 : 4096; var_db = realloc(var_db, var_cap * sizeof *var_db); }
-    var_db[var_n++] = *v;
+static bool var_add(const Variant *v) {
+    if(var_n==var_cap){size_t cap=var_cap?var_cap*2:4096;
+        if(cap>256u*1024*1024/sizeof *var_db)return false;
+        Variant *next=realloc(var_db,cap*sizeof *var_db);if(!next)return false;var_db=next;var_cap=cap;}
+    var_db[var_n++]=*v;return true;
 }
-static void var_write_header(FILE *f) { uint32_t hdr[2] = {0x56435843u, (uint32_t)sizeof(Variant)}; fwrite(hdr, 4, 2, f); }
+static WsGuard variant_guard;
 static void var_load(void) {
-    if (var_loaded) return;
-    var_loaded = true;
-    bool ok = false;
-    FILE *f = fopen("cache/variants.bin", "rb");
-    if (f) {
-        uint32_t hdr[2];
-        if (fread(hdr, 4, 2, f) == 2 && hdr[0] == 0x56435843u && hdr[1] == (uint32_t)sizeof(Variant)) {
-            ok = true;
-            Variant v;
-            while (fread(&v, sizeof v, 1, f) == 1)
-                if (!var_seen(hash_words(0xcbf29ce484222325ull, &v, sizeof v))) var_add(&v);
-        }
-        fclose(f);
-        LOG("[prewarm] %zu shader variants known (cache/variants.bin)\n", var_n);
+    if(var_loaded)return;var_loaded=true;
+    if(!wct_directory("cache"))return;
+    var_out=variant_cache_open_native("cache/variants.bin",sizeof(Variant),&variant_guard);
+    if(!var_out){LOG("[prewarm] local variant cache unavailable or incompatible; original preserved\n");return;}
+    Variant v;
+    while(fread(&v,sizeof v,1,var_out)==1){
+        if(v.k.prog||v.k.ncolor>8){fclose(var_out);var_out=NULL;ws_guard_close(&variant_guard);return;}
+        if(!var_seen(hash_words(0xcbf29ce484222325ull,&v,sizeof v))&&!var_add(&v)){fclose(var_out);var_out=NULL;ws_guard_close(&variant_guard);return;}
     }
-    {   // [XCDE] T211: the shipped seed (data/variants_seed.bin: variants recorded in real play, tools/merge_variants.py):
-        // a new player's first visit to an area finds them known as if seen before (prewarmed at its loading screen)
-        size_t n0 = var_n;
-        FILE *sf = fopen("data/variants_seed.bin", "rb");
-        uint32_t hdr[2];
-        if (sf && fread(hdr, 4, 2, sf) == 2 && hdr[0] == 0x56435843u && hdr[1] == (uint32_t)sizeof(Variant)) {
-            Variant v;
-            while (fread(&v, sizeof v, 1, sf) == 1)
-                if (!var_seen(hash_words(0xcbf29ce484222325ull, &v, sizeof v))) var_add(&v);
-            if (!ok && var_n > n0) ok = true;  // (then written into the player's own file below)
-        }
-        if (sf) fclose(sf);
-        if (var_n > n0) LOG("[prewarm] %zu more from the seed (data/variants_seed.bin)\n", var_n - n0);
-    }
-    mkdir("cache", 0755);
-    if (ok) {
-        // rewrite the deduplicated set (also drops a torn last record)
-        var_out = fopen("cache/variants.bin", "wb");
-        if (var_out) { var_write_header(var_out); fwrite(var_db, sizeof(Variant), var_n, var_out); fflush(var_out); }
-    } else {
-        var_out = fopen("cache/variants.bin", "wb");
-        if (var_out) var_write_header(var_out);
-    }
+    if(ferror(var_out)||_fseeki64(var_out,0,SEEK_END)){fclose(var_out);var_out=NULL;ws_guard_close(&variant_guard);}
+    LOG("[prewarm] %zu local shader variants known\n",var_n);
 }
 // a pipeline built for a draw: remember its variant
 static void var_record(const NvnProgram *np, const ShaderKey *vkey, const ShaderKey *fkey, const PipeKey *k) {
@@ -3156,8 +3132,10 @@ static void var_record(const NvnProgram *np, const ShaderKey *vkey, const Shader
     v.vkey = *vkey; v.fkey = *fkey;
     v.k = *k; v.k.prog = NULL;
     if (var_seen(hash_words(0xcbf29ce484222325ull, &v, sizeof v))) return;
-    var_add(&v);
-    if (var_out) { fwrite(&v, sizeof v, 1, var_out); fflush(var_out); }
+    if(!var_add(&v))return;
+    if(var_out&&(fwrite(&v,sizeof v,1,var_out)!=1||fflush(var_out))){
+        LOG("[prewarm] local variant append failed\n");fclose(var_out);var_out=NULL;ws_guard_close(&variant_guard);
+    }
 }
 // programs the game registered (game thread -> render thread)
 // [XCDE] T218: the queue grows - an area registers ~1,000 programs between two draws of the black transition and
@@ -3370,6 +3348,7 @@ void vk_prewarm_hold(uint64_t frame_draws) {
 // (the calling thread translates and compiles). Returns 0 if not built; *vs_attr = the vertex inputs it reads.
 int vk_precompile_program(const NvnProgram *np, const ShaderKey *vkey, const ShaderKey *fkey, uint32_t *vs_attr) {
     Prog *p = calloc(1, sizeof *p);
+    if(!p)return 0;
     memcpy(p->stages, np->stages, sizeof p->stages);
     p->bloom_kind=bloom_kind(np->stages[1].code_copy,np->stages[1].code_copy_size);
     p->bloom_mode=bloom_mode(p->bloom_kind,xcde_graphics_option(GFX_BLOOM_STABILITY));
@@ -3407,7 +3386,7 @@ int vk_precompile_program(const NvnProgram *np, const ShaderKey *vkey, const Sha
     return ok;
 }
 
-// [XCDE] T240 (precompile.c): one recorded variant (cache/variants.bin / data/variants_seed.bin record, rec_size bytes)
+// [XCDE] T240 (precompile.c): one recorded variant (local cache/variants.bin record, rec_size bytes)
 // built the way the game ends up drawing it: its program (as vk_precompile_program) and then its whole optimized
 // pipeline with the recorded render state (vertex layout, targets, blend, ...). Precompiling runs without our pipeline
 // cache (g_vk.pcache null): the driver's own disk cache keeps the result, so the game's optimized build of that
@@ -3416,8 +3395,11 @@ int vk_precompile_variant(const NvnProgram *np, const void *rec, size_t rec_size
     if (rec_size != sizeof(Variant)) return 0;
     Variant v;
     memcpy(&v, rec, sizeof v);
-    if (v.has_gs) return 0;
+    if(v.has_gs||v.k.prog||v.k.ncolor>8||v.k.topo_class>2||!v.k.samples||
+        v.k.samples>64||(v.k.samples&(v.k.samples-1)))return 0;
+    for(unsigned i=0;i<32;i++)if((v.k.attr_mask&(1u<<i))&&v.k.attr_bind[i]>=17)return 0;
     Prog *p = calloc(1, sizeof *p);
+    if(!p)return 0;
     memcpy(p->stages, np->stages, sizeof p->stages);
     p->bloom_kind=bloom_kind(np->stages[1].code_copy,np->stages[1].code_copy_size);
     p->bloom_mode=bloom_mode(p->bloom_kind,xcde_graphics_option(GFX_BLOOM_STABILITY));

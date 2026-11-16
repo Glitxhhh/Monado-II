@@ -1,5 +1,6 @@
 // [XCDE] Portable native Windows setup frontend. Authored code, MIT license.
 #include "payload_windows.h"
+#include "../launcher/windows_preparation.h"
 #include <commctrl.h>
 #include <shobjidl.h>
 #include <shellapi.h>
@@ -11,20 +12,26 @@
 #include <thread>
 
 using namespace monado_builder;
+#ifndef MONADO_WINDOWS_BASELINE_LABEL
+#define MONADO_WINDOWS_BASELINE_LABEL "Windows development (authored component fixture)"
+#endif
 namespace {
 constexpr UINT UPDATE=WM_APP+10,FINISHED=WM_APP+11;
 constexpr int INPUT_FIELD=101,DEST=102,INPUT_BROWSE=103,DEST_BROWSE=104,BUILD=105,
-    CANCEL=106,OPEN=107,ADOPT=108,LOCATE=109,WORKERS=110,PREPARE=111,UPDATES=112,APPLY_UPDATE=113;
+    CANCEL=106,OPEN=107,ADOPT=108,LOCATE=109,WORKERS=110,PREPARE=111,UPDATES=112,APPLY_UPDATE=113,FSR4_PREPARE=114,FSR4_TOOLS=115;
 HWND window=nullptr,input=nullptr,destination=nullptr,workers=nullptr,prepare=nullptr,phase=nullptr,bar=nullptr,details=nullptr;
 HFONT font=nullptr;std::wstring cache,current_install,cancel_path;std::string payload_sha,manifest_sha;std::mutex state_mutex;
 std::atomic<bool> busy{false},closing{false},pending_cancel{false};std::thread worker;
 bool update_available=false;
 bool bootstrap_fixture=false;int fixture_exit=1;
-struct Event {std::wstring message,status,installation,launcher,log;std::vector<std::wstring> arguments;uint64_t done=0,total=0;bool complete=false,open_settings=false;DWORD exit=0;};
+monado_preparation::Selection fsr4_selection;
+monado_preparation::ToolSelection fsr4_tool_selection;
+struct Event {std::wstring message,status,installation,launcher,log,fsr4_sdk,fsr4_tools,fsr4_component,fsr4_archives,fsr4_support,fsr4_cmake,fsr4_ninja,fsr4_compiler,fsr4_vulkan_prefix;std::vector<std::wstring> arguments;uint64_t done=0,total=0;bool complete=false,open_settings=false;DWORD exit=0;};
+bool launcher_arguments(const std::vector<std::wstring> &arguments);
 void event(Event *e,UINT kind=UPDATE){if(!PostMessageW(window,kind,0,(LPARAM)e))delete e;}
 std::wstring text(HWND h){int n=GetWindowTextLengthW(h);std::wstring r((size_t)n+1,0);GetWindowTextW(h,r.data(),n+1);r.resize(n);return r;}
 void append(const std::wstring &s){if(s.empty())return;int n=GetWindowTextLengthW(details);if(n>200000)SetWindowTextW(details,L"");SendMessageW(details,EM_SETSEL,(WPARAM)-1,(LPARAM)-1);std::wstring line=s+L"\r\n";SendMessageW(details,EM_REPLACESEL,FALSE,(LPARAM)line.c_str());}
-void controls(bool active){for(int id:{INPUT_FIELD,DEST,INPUT_BROWSE,DEST_BROWSE,BUILD,OPEN,ADOPT,LOCATE,WORKERS,PREPARE,UPDATES})EnableWindow(GetDlgItem(window,id),active);EnableWindow(GetDlgItem(window,APPLY_UPDATE),active&&update_available);EnableWindow(GetDlgItem(window,CANCEL),!active);}
+void controls(bool active){for(int id:{INPUT_FIELD,DEST,INPUT_BROWSE,DEST_BROWSE,BUILD,OPEN,ADOPT,LOCATE,WORKERS,PREPARE,UPDATES})EnableWindow(GetDlgItem(window,id),active);EnableWindow(GetDlgItem(window,APPLY_UPDATE),active&&update_available);for(int id:{FSR4_PREPARE,FSR4_TOOLS})EnableWindow(GetDlgItem(window,id),active&&!current_install.empty());EnableWindow(GetDlgItem(window,CANCEL),!active);}
 void payload_progress(uint32_t done,uint32_t total){if(pending_cancel.load())throw std::runtime_error("Setup cancelled; checked cache members are preserved for retry");auto e=new Event;e->message=L"Checking portable tools and source";e->done=done;e->total=total;event(e);}
 
 // The backend protocol is one flat, bounded JSON object per line. Parse every
@@ -55,7 +62,7 @@ struct Json {
 };
 uint64_t number(const std::map<std::string,std::string>&v,const char *key){auto i=v.find(key);if(i==v.end()||i->second.empty()||i->second=="null")return 0;uint64_t r=0;for(char c:i->second){if(c==' ')continue;require(c>='0'&&c<='9'&&r<=1000000000,"Invalid setup progress count");r=r*10+c-'0';}return r;}
 std::wstring field(const std::map<std::string,std::string>&v,const char *key){auto i=v.find(key);return i==v.end()||i->second=="null"?L"":wide(i->second);}
-Event parse(const std::string &line){Json parser{line};auto v=parser.object();Event e;e.arguments=std::move(parser.arguments);e.message=field(v,"message");if(e.message.empty())e.message=field(v,"phase");e.status=field(v,"status");e.installation=field(v,"installation");e.launcher=field(v,"launcher");e.log=field(v,"log");e.done=number(v,"done");e.total=number(v,"total");return e;}
+Event parse(const std::string &line){Json parser{line};auto v=parser.object();Event e;e.arguments=std::move(parser.arguments);e.message=field(v,"message");if(e.message.empty())e.message=field(v,"phase");e.status=field(v,"status");e.installation=field(v,"installation");e.launcher=field(v,"launcher");e.log=field(v,"log");e.done=number(v,"done");e.total=number(v,"total");e.fsr4_sdk=field(v,"fsr4_sdk");e.fsr4_tools=field(v,"fsr4_tools");e.fsr4_component=field(v,"fsr4_component");e.fsr4_archives=field(v,"fsr4_archives");e.fsr4_support=field(v,"fsr4_support");e.fsr4_cmake=field(v,"fsr4_cmake");e.fsr4_ninja=field(v,"fsr4_ninja");e.fsr4_compiler=field(v,"fsr4_compiler");e.fsr4_vulkan_prefix=field(v,"fsr4_vulkan_prefix");return e;}
 std::wstring unique(){GUID g{};require(SUCCEEDED(CoCreateGuid(&g)),"Cannot create setup request identity");wchar_t b[40];StringFromGUID2(g,b,40);return b;}
 std::vector<wchar_t> clean_environment(){
     wchar_t *block=GetEnvironmentStringsW();require(block!=nullptr,"Cannot read setup process environment");std::vector<std::wstring> values;
@@ -69,6 +76,8 @@ bool protocol_fixture(){
     if(quote(L"C:\\authored path\\")!=L"\"C:\\authored path\\\\\"")return false;
     bool duplicate=false;try{parse(R"({"status":"success","status":"error"})");}catch(...){duplicate=true;}if(!duplicate)return false;
     bool cancelled=false;pending_cancel=true;try{payload_progress(1,2);}catch(...){cancelled=true;}pending_cancel=false;if(!cancelled)return false;
+    auto prepared=parse(R"({"status":"success","fsr4_sdk":"C:\\local sdk.dll","fsr4_tools":"C:\\local tools","fsr4_component":"C:\\local component.dll","launcher_args":["--profile-root","C:\\profile","--fsr4-assets","C:\\models","--fsr4-component","C:\\component.dll"]})");
+    if(prepared.fsr4_sdk!=L"C:\\local sdk.dll"||!launcher_arguments(prepared.arguments))return false;prepared.arguments[2]=L"--unknown";if(launcher_arguments(prepared.arguments))return false;
     SetEnvironmentVariableW(L"PYTHONPATH",L"authored hostile ambient module path");SetEnvironmentVariableW(L"PYTHONHOME",L"authored hostile ambient home");auto block=clean_environment();
     for(auto p=block.data();*p;p+=wcslen(p)+1){std::wstring value=p;for(auto &c:value)c=(wchar_t)towupper(c);if(value.rfind(L"PYTHONPATH=",0)==0||value.rfind(L"PYTHONHOME=",0)==0)return false;}return true;
 }
@@ -79,26 +88,29 @@ bool choose(std::wstring &out,const wchar_t *title){
     if(SUCCEEDED(dialog->Show(window))){IShellItem *item=nullptr;if(SUCCEEDED(dialog->GetResult(&item))){PWSTR path=nullptr;if(SUCCEEDED(item->GetDisplayName(SIGDN_FILESYSPATH,&path))){out=path;CoTaskMemFree(path);ok=true;}item->Release();}}
     dialog->Release();return ok;
 }
+bool launcher_arguments(const std::vector<std::wstring> &arguments){return arguments.empty()||((arguments.size()==2||arguments.size()==6)&&arguments[0]==L"--profile-root"&&!arguments[1].empty()&&(arguments.size()==2||(arguments[2]==L"--fsr4-assets"&&!arguments[3].empty()&&arguments[4]==L"--fsr4-component"&&!arguments[5].empty())));}
 void start_settings(const std::wstring &path,const std::vector<std::wstring> &arguments){
     require(ordinary(path)&&path.size()>4&&path.substr(path.size()-4)==L".exe","The checked settings launcher is missing");
-    require(arguments.empty()||(arguments.size()==2&&arguments[0]==L"--profile-root"&&!arguments[1].empty()),"Invalid checked settings launcher arguments");
+    require(launcher_arguments(arguments),"Invalid checked settings launcher arguments");
+    for(size_t i=1;i<arguments.size();i+=2)monado_preparation::absolute(arguments[i]);
     std::wstring command=quote(path);for(auto &a:arguments)command+=L" "+quote(a);std::vector<wchar_t>b(command.begin(),command.end());b.push_back(0);STARTUPINFOW si{};si.cb=sizeof si;PROCESS_INFORMATION pi{};
     auto slash=path.find_last_of(L"\\/");std::wstring cwd=path.substr(0,slash); // backend returns <install>/build/launcher; runtime cwd is parent of build.
     auto parent=cwd.find_last_of(L"\\/");if(parent!=std::wstring::npos)cwd.resize(parent);
     require(CreateProcessW(path.c_str(),b.data(),nullptr,nullptr,FALSE,0,nullptr,cwd.c_str(),&si,&pi),"Cannot open the checked settings launcher");CloseHandle(pi.hThread);CloseHandle(pi.hProcess);
 }
-void backend(std::wstring action,std::wstring selected_input,std::wstring selected_dest,int jobs,bool precompile,bool startup){
+void backend(std::wstring action,std::wstring selected_input,std::wstring selected_dest,int jobs,bool precompile,bool startup,monado_preparation::Selection sources,monado_preparation::ToolSelection tools){
     Event final;final.complete=true;
     try{
-        if(cache.empty()){
-            Handle self(CreateFileW(executable().c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));require(self.value!=INVALID_HANDLE_VALUE,"Cannot read portable setup executable");
-            auto payload=inspect(self.value);payload_sha=hex(payload.sha);materialize(self.value,payload,local_cache(),payload_progress);cache=payload.cache;manifest_sha=hex(payload.manifest_sha);require(payload.manifest_sha!=std::array<unsigned char,32>{},"Portable setup manifest is missing");
-        }
+        Handle self(CreateFileW(executable().c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));require(self.value!=INVALID_HANDLE_VALUE,"Cannot read portable setup executable");
+        PayloadLease immutable;auto payload=inspect(self.value);payload_sha=hex(payload.sha);auto checking=GetTickCount64();materialize(self.value,payload,local_cache(),payload_progress,&immutable);cache=payload.cache;manifest_sha=hex(payload.manifest_sha);require(payload.manifest_sha!=std::array<unsigned char,32>{},"Portable setup manifest is missing");
+        fprintf(stderr,"Native bootstrap leases: files=%zu directories=%zu check_ms=%llu\n",immutable.file_count(),immutable.directory_count(),(unsigned long long)(GetTickCount64()-checking));
         if(pending_cancel.load())throw std::runtime_error("Setup cancelled before starting the backend; checked tools are preserved");
         std::wstring id=unique(),progress=cache+L"\\state\\progress-"+id+L".jsonl",log=cache+L"\\state\\backend-"+id+L".log",request_cancel=cache+L"\\state\\cancel-"+id;{std::lock_guard<std::mutex> lock(state_mutex);cancel_path=request_cancel;}
         std::wstring python=cache+L"\\python\\python.exe",script=cache+L"\\setup\\bootstrap_windows.py";require(ordinary(python)&&ordinary(script),"The portable Python or setup backend is missing");
-        std::vector<std::wstring> args={python,L"-E",L"-s",L"-B",script,L"--action",action,L"--cache",cache,L"--payload-sha256",wide(payload_sha),L"--manifest-sha256",wide(manifest_sha),L"--progress",progress,L"--cancel-file",request_cancel,L"--jobs",std::to_wstring(jobs)};
+        std::vector<std::wstring> args={python,L"-I",L"-S",L"-B",script,L"--action",action,L"--cache",cache,L"--payload-sha256",wide(payload_sha),L"--manifest-sha256",wide(manifest_sha),L"--progress",progress,L"--cancel-file",request_cancel,L"--jobs",std::to_wstring(jobs)};
         if(!selected_input.empty()){args.push_back(L"--input");args.push_back(selected_input);}if(!selected_dest.empty()){args.push_back(L"--destination");args.push_back(selected_dest);}if(precompile)args.push_back(L"--precompile");
+        if(action==L"prepare-fsr4"){args.insert(args.end(),{L"--sdk",sources.sdk,L"--tools",sources.tools,L"--component",sources.component});}
+        if(action==L"build-fsr4-tools")args.insert(args.end(),{L"--archives",tools.archives,L"--support",tools.support,L"--cmake",tools.cmake,L"--ninja",tools.ninja,L"--compiler",tools.compiler});
         std::wstring command;for(auto &arg:args){if(!command.empty())command+=L' ';command+=quote(arg);}std::vector<wchar_t>b(command.begin(),command.end());b.push_back(0);
         SECURITY_ATTRIBUTES sa{sizeof sa,nullptr,TRUE};Handle output(CreateFileW(log.c_str(),GENERIC_WRITE,FILE_SHARE_READ,&sa,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr));Handle nul(CreateFileW(L"NUL",GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,&sa,OPEN_EXISTING,0,nullptr));require(output.value!=INVALID_HANDLE_VALUE&&nul.value!=INVALID_HANDLE_VALUE,"Cannot create setup diagnostic log");
         SIZE_T bytes=0;InitializeProcThreadAttributeList(nullptr,1,0,&bytes);std::vector<unsigned char>storage(bytes);auto attributes=(LPPROC_THREAD_ATTRIBUTE_LIST)storage.data();require(InitializeProcThreadAttributeList(attributes,1,0,&bytes),"Cannot initialize owned setup process");
@@ -126,33 +138,38 @@ void backend(std::wstring action,std::wstring selected_input,std::wstring select
 }
 void launch_action(const std::wstring &action,bool startup=false){
     if(busy.exchange(true))return;if(worker.joinable())worker.join();pending_cancel=false;{std::lock_guard<std::mutex> lock(state_mutex);cancel_path.clear();}controls(false);SetWindowTextW(phase,L"Checking selected installation and tools");SendMessageW(bar,PBM_SETMARQUEE,TRUE,30);
-    std::wstring selected_input=text(input),selected_dest=text(destination);if((action==L"locate-input"||action==L"resume"||action==L"check-update"||action==L"update")&&!current_install.empty())selected_dest=current_install;
+    std::wstring selected_input=text(input),selected_dest=text(destination);if((action==L"locate-input"||action==L"resume"||action==L"check-update"||action==L"update"||action==L"prepare-fsr4"||action==L"build-fsr4-tools")&&!current_install.empty())selected_dest=current_install;
     int jobs=(int)SendMessageW(workers,CB_GETCURSEL,0,0)+1;bool precompile=SendMessageW(prepare,BM_GETCHECK,0,0)==BST_CHECKED;
-    worker=std::thread(backend,action,selected_input,selected_dest,std::clamp(jobs,1,6),precompile,startup);
+    worker=std::thread(backend,action,selected_input,selected_dest,std::clamp(jobs,1,6),precompile,startup,fsr4_selection,fsr4_tool_selection);
 }
 HWND make(const wchar_t *cls,const wchar_t *label,DWORD style,int x,int y,int w,int height,int id=0){HWND handle=CreateWindowExW(0,cls,label,WS_CHILD|WS_VISIBLE|style,x,y,w,height,window,(HMENU)(INT_PTR)id,GetModuleHandleW(nullptr),nullptr);SendMessageW(handle,WM_SETFONT,(WPARAM)font,TRUE);return handle;}
 LRESULT CALLBACK procedure(HWND h,UINT message,WPARAM w,LPARAM l){
     try{
         if(message==WM_CREATE){window=h;font=CreateFontW(-16,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
-            make(L"STATIC",L"Monado II \u2014 Windows setup",0,20,16,690,28);make(L"STATIC",L"Select your extracted DE 2.0.0 folder containing exefs and romfs. Game files stay in place.",0,20,49,690,32);
+            make(L"STATIC",wide(std::string("Monado II — ")+MONADO_WINDOWS_BASELINE_LABEL).c_str(),0,20,16,690,28);make(L"STATIC",L"Select your extracted DE 2.0.0 folder containing exefs and romfs. Game files stay in place.",0,20,49,690,32);
             input=make(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,20,85,580,27,INPUT_FIELD);make(L"BUTTON",L"Game files\u2026",WS_TABSTOP,610,84,110,29,INPUT_BROWSE);
             make(L"STATIC",L"Choose an empty installation folder. Existing installations can be adopted below.",0,20,122,690,23);
             destination=make(L"EDIT",L"",WS_BORDER|ES_AUTOHSCROLL|WS_TABSTOP,20,150,580,27,DEST);make(L"BUTTON",L"Install folder\u2026",WS_TABSTOP,610,149,110,29,DEST_BROWSE);
             make(L"STATIC",L"Build workers",0,20,195,100,24);workers=make(L"COMBOBOX",L"",CBS_DROPDOWNLIST|WS_TABSTOP,125,191,65,180,WORKERS);for(int i=1;i<=6;++i)SendMessageW(workers,CB_ADDSTRING,0,(LPARAM)std::to_wstring(i).c_str());SendMessageW(workers,CB_SETCURSEL,3,0);
             prepare=make(L"BUTTON",L"Prepare shaders after building (optional)",BS_AUTOCHECKBOX|WS_TABSTOP,215,191,400,28,PREPARE);
             make(L"BUTTON",L"Build installation",WS_TABSTOP|BS_DEFPUSHBUTTON,20,233,165,34,BUILD);make(L"BUTTON",L"Cancel",WS_TABSTOP,195,233,90,34,CANCEL);make(L"BUTTON",L"Open settings",WS_TABSTOP,295,233,130,34,OPEN);
+            make(L"BUTTON",L"Prepare FSR4 Lite (optional)\u2026",WS_TABSTOP,435,233,285,34,FSR4_PREPARE);
             make(L"BUTTON",L"Use an existing installation\u2026",WS_TABSTOP,20,279,225,30,ADOPT);make(L"BUTTON",L"Locate game files\u2026",WS_TABSTOP,255,279,180,30,LOCATE);make(L"BUTTON",L"Check for updates",WS_TABSTOP,445,279,170,30,UPDATES);make(L"BUTTON",L"Update",WS_TABSTOP,625,279,95,30,APPLY_UPDATE);
-            phase=make(L"STATIC",L"Starting portable setup",0,20,326,700,25);bar=make(PROGRESS_CLASSW,L"",PBS_MARQUEE,20,357,700,20);
-            details=make(L"EDIT",L"",WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL,20,390,700,185);controls(true);return 0;
+            make(L"BUTTON",L"Build optional FSR4 preparation tools\u2026",WS_TABSTOP,20,320,340,30,FSR4_TOOLS);
+            phase=make(L"STATIC",L"Starting portable setup",0,20,362,700,25);bar=make(PROGRESS_CLASSW,L"",PBS_MARQUEE,20,393,700,20);
+            details=make(L"EDIT",L"",WS_BORDER|ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL,20,426,700,185);controls(true);return 0;
         }
         if(message==WM_COMMAND){int id=LOWORD(w);std::wstring path;if(id==INPUT_BROWSE&&choose(path,L"Choose extracted game files (exefs and romfs)"))SetWindowTextW(input,path.c_str());else if(id==DEST_BROWSE&&choose(path,L"Choose an empty final installation folder"))SetWindowTextW(destination,path.c_str());
             else if(id==BUILD)launch_action(L"build");else if(id==OPEN)launch_action(L"resume");else if(id==UPDATES)launch_action(L"check-update");else if(id==APPLY_UPDATE&&update_available)launch_action(L"update");
             else if(id==ADOPT&&choose(path,L"Choose an existing Monado II Windows installation")){SetWindowTextW(destination,path.c_str());launch_action(L"adopt");}
             else if(id==LOCATE&&choose(path,L"Locate the same extracted game files")){SetWindowTextW(input,path.c_str());launch_action(L"locate-input");}
+            else if(id==FSR4_PREPARE&&!current_install.empty()&&!busy.load()&&monado_preparation::choose(window,fsr4_selection))launch_action(L"prepare-fsr4");
+            else if(id==FSR4_TOOLS&&!current_install.empty()&&!busy.load()&&monado_preparation::choose_tools(window,fsr4_tool_selection,false))launch_action(L"build-fsr4-tools");
             else if(id==CANCEL&&busy.load()){pending_cancel=true;std::wstring target;{std::lock_guard<std::mutex> lock(state_mutex);target=cancel_path;}if(!target.empty()){Handle f(CreateFileW(native(target).c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));}append(L"Cancellation requested. Existing installation and logs are preserved.");}return 0;
         }
         if(message==UPDATE||message==FINISHED){std::unique_ptr<Event> e((Event*)l);if(!e->message.empty()){SetWindowTextW(phase,e->message.c_str());append(e->message);}if(e->total){SendMessageW(bar,PBM_SETMARQUEE,FALSE,0);SendMessageW(bar,PBM_SETRANGE32,0,1000);SendMessageW(bar,PBM_SETPOS,(WPARAM)std::min<uint64_t>(1000,e->done*1000/e->total),0);}
             if(!e->installation.empty())current_install=e->installation;
+            if(!e->fsr4_sdk.empty())fsr4_selection.sdk=e->fsr4_sdk;if(!e->fsr4_tools.empty())fsr4_selection.tools=e->fsr4_tools;if(!e->fsr4_component.empty())fsr4_selection.component=e->fsr4_component;if(!e->fsr4_archives.empty())fsr4_tool_selection.archives=e->fsr4_archives;if(!e->fsr4_support.empty())fsr4_tool_selection.support=e->fsr4_support;if(!e->fsr4_cmake.empty())fsr4_tool_selection.cmake=e->fsr4_cmake;if(!e->fsr4_ninja.empty())fsr4_tool_selection.ninja=e->fsr4_ninja;if(!e->fsr4_compiler.empty())fsr4_tool_selection.compiler=e->fsr4_compiler;if(!e->fsr4_vulkan_prefix.empty())fsr4_tool_selection.vulkan_prefix=e->fsr4_vulkan_prefix;
             if(message==FINISHED){busy=false;if(e->status==L"update-available")update_available=true;else if(e->status==L"up-to-date"||e->status==L"success")update_available=false;controls(true);SendMessageW(bar,PBM_SETMARQUEE,FALSE,0);if(!e->log.empty())append(L"Log: "+e->log);
                 if(bootstrap_fixture){fixture_exit=e->status==L"needs-setup"?0:1;if(fixture_exit)fwprintf(stderr,L"Portable bootstrap fixture: %ls\n",e->message.c_str());DestroyWindow(window);}
                 else{if(!closing.load()&&e->open_settings&&!e->launcher.empty()&&e->status==L"success"){start_settings(e->launcher,e->arguments);PostMessageW(window,WM_CLOSE,0,0);}if(closing.load())DestroyWindow(window);}}
@@ -175,8 +192,8 @@ int WINAPI wWinMain(HINSTANCE instance,HINSTANCE,PWSTR,int show){
     }
     bool fixture=argc==2&&!wcscmp(argv[1],L"--hidden-ui-fixture");bootstrap_fixture=argc==2&&!wcscmp(argv[1],L"--hidden-bootstrap-fixture");LocalFree(argv);
     WNDCLASSW cls{};cls.lpfnWndProc=procedure;cls.hInstance=instance;cls.lpszClassName=L"MonadoIIPortableBuilder";cls.hCursor=LoadCursorW(nullptr,IDC_ARROW);cls.hbrBackground=(HBRUSH)(COLOR_WINDOW+1);RegisterClassW(&cls);
-    HWND h=CreateWindowExW(0,cls.lpszClassName,L"Monado II \u2014 Windows setup",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,CW_USEDEFAULT,CW_USEDEFAULT,760,635,nullptr,nullptr,instance,nullptr);if(!h)return 1;
-    if(fixture){bool ok=false;try{ok=GetDlgItem(h,INPUT_FIELD)&&GetDlgItem(h,DEST)&&GetDlgItem(h,BUILD)&&SendMessageW(prepare,BM_GETCHECK,0,0)==BST_UNCHECKED&&SendMessageW(workers,CB_GETCOUNT,0,0)==6&&protocol_fixture();}catch(...){ok=false;}DestroyWindow(h);if(font)DeleteObject(font);CoUninitialize();return ok?0:1;}
+    HWND h=CreateWindowExW(0,cls.lpszClassName,L"Monado II \u2014 Windows setup",WS_OVERLAPPED|WS_CAPTION|WS_SYSMENU|WS_MINIMIZEBOX,CW_USEDEFAULT,CW_USEDEFAULT,760,670,nullptr,nullptr,instance,nullptr);if(!h)return 1;
+    if(fixture){bool ok=false;try{ok=GetDlgItem(h,INPUT_FIELD)&&GetDlgItem(h,DEST)&&GetDlgItem(h,BUILD)&&GetDlgItem(h,FSR4_PREPARE)&&!IsWindowEnabled(GetDlgItem(h,FSR4_PREPARE))&&GetDlgItem(h,FSR4_TOOLS)&&!IsWindowEnabled(GetDlgItem(h,FSR4_TOOLS))&&SendMessageW(prepare,BM_GETCHECK,0,0)==BST_UNCHECKED&&SendMessageW(workers,CB_GETCOUNT,0,0)==6&&protocol_fixture();}catch(...){ok=false;}DestroyWindow(h);if(font)DeleteObject(font);CoUninitialize();return ok?0:1;}
     ShowWindow(h,bootstrap_fixture?SW_HIDE:show);UpdateWindow(h);launch_action(L"resume",true);MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){if(!IsDialogMessageW(h,&msg)){TranslateMessage(&msg);DispatchMessageW(&msg);}}
     if(worker.joinable())worker.join();if(font)DeleteObject(font);CoUninitialize();return bootstrap_fixture?fixture_exit:0;
 }

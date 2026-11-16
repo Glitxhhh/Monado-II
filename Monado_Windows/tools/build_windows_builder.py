@@ -294,6 +294,10 @@ def build(args):
     output.mkdir(parents=True)
     members = Members()
     reviewed_source(args.source_export.resolve(), args.source_manifest.resolve(), members)
+    reviewed_port = args.source_export.resolve() / "Monado_Windows"
+    for name in ("tools/build_windows_builder.py", "tools/windows-python-runtime.lock.json", "tools/windows-python.lock.txt", "tools/windows-deps.lock.json"):
+        if ordinary(PORT / name) != ordinary(reviewed_port / name):
+            raise ValueError("Packager recipe differs from reviewed source export: " + name)
     archives = python_archives(args.python_archives.resolve(), members)
     try:
         native_dependencies(args.prefix.resolve(), args.native_receipt.resolve(), members)
@@ -304,9 +308,11 @@ def build(args):
     env = os.environ.copy()
     env["ZIG_GLOBAL_CACHE_DIR"] = str(PORT / ".deps/zig-global-cache")
     resource = output / "builder.res"
-    commands = [[sys.executable, "-m", "ziglang", "rc", "/I", str(PORT / "tools/builder"), "/fo", str(resource), str(PORT / "tools/builder/builder.rc")],
+    baseline = document(reviewed_port / "windows-baseline.json")
+    label = baseline["accepted_baseline"] + " · " + baseline["implementation"]
+    commands = [[sys.executable, "-m", "ziglang", "rc", "/I", str(reviewed_port / "tools/builder"), "/fo", str(resource), str(reviewed_port / "tools/builder/builder.rc")],
                 [sys.executable, "-m", "ziglang", "c++", "-std=c++17", "-O1", "-UNDEBUG", "-march=x86_64_v2", "-ffp-contract=off", "-fno-fast-math",
-                 str(PORT / "tools/builder/windows_builder.cpp"), str(resource), "-o", str(output / "builder-base.exe"), "-lbcrypt", "-lcabinet", "-lole32", "-lshell32", "-lcomctl32", "-luuid", "-lgdi32", "-luser32", "-Wl,--subsystem,windows", "-municode"]]
+                 "-DMONADO_WINDOWS_BASELINE_LABEL=" + json.dumps(label), str(reviewed_port / "tools/builder/windows_builder.cpp"), str(resource), "-o", str(output / "builder-base.exe"), "-lbcrypt", "-ladvapi32", "-lcabinet", "-lole32", "-lshell32", "-lcomctl32", "-luuid", "-lgdi32", "-luser32", "-Wl,--subsystem,windows", "-municode"]]
     for index, command in enumerate(commands):
         result = subprocess.run(command, cwd=PORT, env=env, capture_output=True, timeout=600)
         (output / f"native-{index}.out").write_bytes(result.stdout)
@@ -330,7 +336,7 @@ def build(args):
                 "executable": {"bytes": target.stat().st_size, "sha256": digest(ordinary(target, 2 * 1024 * 1024 * 1024))},
                 "payload_sha256": h.hexdigest(), "payload_manifest_sha256": digest(encoded(manifest)),
                 "source_manifest_sha256": digest(ordinary(args.source_manifest)), "commands": commands,
-                "members": len(members), "contains_game_code": False}
+                "members": len(members), "contains_game_code": False, "baseline": baseline}
     (output / "builder-receipt.json").write_bytes(encoded(evidence))
     print(target)
 

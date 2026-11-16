@@ -5,6 +5,7 @@
 #endif
 #include <windows.h>
 #include <bcrypt.h>
+#include <aclapi.h>
 #include <compressapi.h>
 #include <algorithm>
 #include <array>
@@ -13,6 +14,7 @@
 #include <cwctype>
 #include <stdexcept>
 #include <set>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -21,6 +23,8 @@ struct Handle {
     HANDLE value=INVALID_HANDLE_VALUE;
     Handle()=default; explicit Handle(HANDLE h):value(h){}
     Handle(const Handle&)=delete; Handle& operator=(const Handle&)=delete;
+    Handle(Handle&& other)noexcept:value(other.value){other.value=INVALID_HANDLE_VALUE;}
+    Handle& operator=(Handle&& other)noexcept{if(this!=&other){if(value!=INVALID_HANDLE_VALUE&&value)CloseHandle(value);value=other.value;other.value=INVALID_HANDLE_VALUE;}return *this;}
     ~Handle(){if(value!=INVALID_HANDLE_VALUE && value)CloseHandle(value);}
 };
 inline void require(bool ok,const char *message){if(!ok)throw std::runtime_error(message);}
@@ -89,6 +93,53 @@ inline std::array<unsigned char,32> hash_range(HANDLE f,uint64_t offset,uint64_t
     seek(f,offset);Sha256 h;std::vector<unsigned char>b(1<<20);while(bytes){size_t n=(size_t)std::min<uint64_t>(b.size(),bytes);read(f,b.data(),n);h.add(b.data(),n);bytes-=n;}return h.finish();
 }
 inline std::string hex(const std::array<unsigned char,32>&v){const char *d="0123456789abcdef";std::string r;for(auto b:v){r+=d[b>>4];r+=d[b&15];}return r;}
+// Hold authenticated immutable members through Python startup and its owned
+// backend lifetime. Mutable state stays outside these leaf leases.
+class PayloadLease {
+    std::vector<Handle> directories,files;std::map<std::wstring,size_t> held;std::wstring root;
+    static std::wstring folded(std::wstring p){for(auto &c:p)c=(wchar_t)towlower(c);return p;}
+    static bool owned(HANDLE file){
+        PSID owner=nullptr;PSECURITY_DESCRIPTOR descriptor=nullptr;HANDLE token=nullptr;DWORD size=0;bool ok=false;
+        if(GetSecurityInfo(file,SE_FILE_OBJECT,OWNER_SECURITY_INFORMATION,&owner,nullptr,nullptr,nullptr,&descriptor)!=ERROR_SUCCESS)return false;
+        if(OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&token)){
+            GetTokenInformation(token,TokenUser,nullptr,0,&size);std::vector<unsigned char> value(size&&size<=65536?size:0);
+            if(!value.empty()&&GetTokenInformation(token,TokenUser,value.data(),(DWORD)value.size(),&size))ok=owner&&IsValidSid(owner)&&EqualSid(owner,((TOKEN_USER*)value.data())->User.Sid);
+            CloseHandle(token);
+        }LocalFree(descriptor);return ok;
+    }
+    void directory_lease(const std::wstring &p){
+        auto key=folded(p);if(held.count(key))return;bool own=key==root||(key.size()>root.size()&&key.compare(0,root.size(),root)==0&&key[root.size()]==L'\\');
+        Handle file(CreateFileW(native(p).c_str(),FILE_READ_ATTRIBUTES|(own?READ_CONTROL:0),FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+        BY_HANDLE_FILE_INFORMATION info{};require(file.value!=INVALID_HANDLE_VALUE&&GetFileInformationByHandle(file.value,&info)&&
+            (info.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)&&!(info.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)&&(!own||owned(file.value)),"Portable cache directory changed, is linked or has a different owner");
+        held.emplace(std::move(key),directories.size());directories.push_back(std::move(file));
+    }
+public:
+    static bool current_owner(HANDLE file){return owned(file);}
+    void owned_directory(const std::wstring &p){parents(p+L"\\authored-lease-leaf");Handle file(CreateFileW(native(p).c_str(),FILE_READ_ATTRIBUTES|READ_CONTROL,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,FILE_FLAG_BACKUP_SEMANTICS|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));BY_HANDLE_FILE_INFORMATION info{};
+        require(file.value!=INVALID_HANDLE_VALUE&&GetFileInformationByHandle(file.value,&info)&&(info.dwFileAttributes&FILE_ATTRIBUTE_DIRECTORY)&&!(info.dwFileAttributes&FILE_ATTRIBUTE_REPARSE_POINT)&&owned(file.value),"Preparation state directory has a different owner or is linked");directories.push_back(std::move(file));}
+    void begin(const std::wstring &p){require(root.empty(),"Portable cache lease already initialized");root=folded(p);parents(p+L"\\authored-lease-leaf");}
+    void parents(const std::wstring &p){
+        require(!root.empty(),"Portable cache lease is not initialized");size_t start=3;
+        if(p.rfind(L"\\\\",0)==0){auto server=p.find(L'\\',2),share=server==std::wstring::npos?server:p.find(L'\\',server+1);require(share!=std::wstring::npos,"Invalid UNC cache lease");start=share+1;}
+        else require(p.size()>=3&&p[1]==L':'&&p[2]==L'\\',"Absolute cache lease required");
+        for(size_t i=start;i<p.size();++i)if(p[i]==L'\\')directory_lease(p.substr(0,i));
+    }
+    void member(const std::wstring &p,uint64_t bytes,const std::array<unsigned char,32>&sum){
+        parents(p);Handle file(CreateFileW(native(p).c_str(),GENERIC_READ|READ_CONTROL,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
+        BY_HANDLE_FILE_INFORMATION info{};LARGE_INTEGER size{};
+        require(file.value!=INVALID_HANDLE_VALUE&&GetFileInformationByHandle(file.value,&info)&&info.nNumberOfLinks==1&&
+            !(info.dwFileAttributes&(FILE_ATTRIBUTE_DIRECTORY|FILE_ATTRIBUTE_REPARSE_POINT))&&owned(file.value)&&GetFileSizeEx(file.value,&size)&&
+            size.QuadPart>=0&&(uint64_t)size.QuadPart==bytes&&hash_range(file.value,0,bytes)==sum,"Portable cache member changed, is linked or has a different owner");
+        files.push_back(std::move(file));
+    }
+    std::string capture(const std::wstring &p,size_t maximum,const std::array<unsigned char,32>&sum){
+        uint64_t bytes=0;{Handle probe(CreateFileW(native(p).c_str(),FILE_READ_ATTRIBUTES,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));LARGE_INTEGER size{};
+            require(probe.value!=INVALID_HANDLE_VALUE&&GetFileSizeEx(probe.value,&size)&&size.QuadPart>=0&&(uint64_t)size.QuadPart<=maximum,"Preparation record is missing or exceeds its bound");bytes=(uint64_t)size.QuadPart;}
+        member(p,bytes,sum);std::string result((size_t)bytes,0);seek(files.back().value,0);read(files.back().value,result.data(),result.size());return result;
+    }
+    size_t file_count()const{return files.size();}size_t directory_count()const{return directories.size();}
+};
 inline void publish_new(const std::wstring &root,const std::wstring &target,const void *data,size_t bytes){
     std::array<unsigned char,32> nonce{};require(BCryptGenRandom(nullptr,nonce.data(),(ULONG)nonce.size(),BCRYPT_USE_SYSTEM_PREFERRED_RNG)==0,"Cannot name an exclusive setup cache temporary");
     std::wstring temporary=root+L"\\state\\extract-"+wide(hex(nonce))+L".part";
@@ -113,8 +164,8 @@ inline std::wstring relative_name(const std::string &name){
     }
     std::replace(w.begin(),w.end(),L'/',L'\\');return w;
 }
-inline void parents(const std::wstring &root,const std::wstring &relative){
-    size_t pos=0;while((pos=relative.find(L'\\',pos))!=std::wstring::npos){directory(root+L"\\"+relative.substr(0,pos));++pos;}
+inline void parents(const std::wstring &root,const std::wstring &relative,PayloadLease *lease=nullptr){
+    size_t pos=0;while((pos=relative.find(L'\\',pos))!=std::wstring::npos){auto path=root+L"\\"+relative.substr(0,pos);directory(path);if(lease)lease->parents(path+L"\\authored-lease-leaf");++pos;}
 }
 inline void checked_members(const std::wstring &root,const std::wstring &relative,const std::set<std::wstring> &expected){
     WIN32_FIND_DATAW data{};HANDLE find=FindFirstFileW(native(root+L"\\"+relative+L"*").c_str(),&data);require(find!=INVALID_HANDLE_VALUE,"Cannot inspect immutable setup cache");
@@ -141,8 +192,8 @@ inline Payload inspect(HANDLE file){
 }
 // Both first extraction and every reopen validate the whole immutable payload.
 // Mutable build progress/registry lives in state/, outside all payload members.
-inline void materialize(HANDLE file,Payload &p,const std::wstring &base,void(*progress)(uint32_t,uint32_t)=nullptr){
-    directory(base);p.cache=base+L"\\"+wide(hex(p.sha));directory(p.cache);directory(p.cache+L"\\state");
+inline void materialize(HANDLE file,Payload &p,const std::wstring &base,void(*progress)(uint32_t,uint32_t)=nullptr,PayloadLease *lease=nullptr){
+    directory(base);p.cache=base+L"\\"+wide(hex(p.sha));directory(p.cache);if(lease)lease->begin(p.cache);directory(p.cache+L"\\state");
     Handle lock(CreateFileW(native(p.cache+L"\\.lock").c_str(),GENERIC_READ|GENERIC_WRITE,0,nullptr,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL|FILE_FLAG_OPEN_REPARSE_POINT,nullptr));
     require(lock.value!=INVALID_HANDLE_VALUE,"Another setup process is preparing this cache; retry after it finishes");
     FILE_ATTRIBUTE_TAG_INFO info{};require(GetFileInformationByHandleEx(lock.value,FileAttributeTagInfo,&info,sizeof info)&&!(info.FileAttributes&FILE_ATTRIBUTE_REPARSE_POINT),"Unsafe setup cache lock");
@@ -163,11 +214,13 @@ inline void materialize(HANDLE file,Payload &p,const std::wstring &base,void(*pr
             require(relative.rfind(L"state\\",0)!=0&&relative[0]!=L'.',"Payload cannot overwrite mutable setup state");
             std::array<unsigned char,32> expected;std::copy(h+24,h+56,expected.begin());std::wstring path=p.cache+L"\\"+relative;
             if(name=="payload-manifest.json")p.manifest_sha=expected;
-            parents(p.cache,relative);
+            parents(p.cache,relative,lease);
             if(reuse||GetFileAttributesW(native(path).c_str())!=INVALID_FILE_ATTRIBUTES){
+                if(!lease){
                 require(ordinary(path),"The portable cache changed; move its content-addressed folder aside and retry");
                 Handle old(CreateFileW(native(path).c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_FLAG_OPEN_REPARSE_POINT,nullptr));LARGE_INTEGER size{};
                 require(old.value!=INVALID_HANDLE_VALUE&&GetFileSizeEx(old.value,&size)&&(uint64_t)size.QuadPart==raw&&hash_range(old.value,0,raw)==expected,"The portable cache checksum changed; move its content-addressed folder aside and retry");
+                }
             }else{
                 std::vector<unsigned char> packed((size_t)stored),data((size_t)raw);seek(file,cursor);read(file,packed.data(),packed.size());
                 if(flags){SIZE_T result=0;require(Decompress(decompressor,packed.data(),packed.size(),data.data(),data.size(),&result)&&result==raw,"Setup decompression failed");}
@@ -175,6 +228,7 @@ inline void materialize(HANDLE file,Payload &p,const std::wstring &base,void(*pr
                 Sha256 sha;sha.add(data.data(),data.size());require(sha.finish()==expected,"Setup member checksum failed");
                 publish_new(p.cache,path,data.data(),data.size());
             }
+            if(lease)lease->member(path,raw,expected);
             cursor+=stored;total+=raw;require(total<=uint64_t(4)*1024*1024*1024,"Setup content exceeds limits");if(progress&&(index%32==0||index+1==p.count))progress(index+1,p.count);
         }
         require(cursor==p.offset+p.size&&total==p.raw_size,"Unexpected trailing setup data or content size");checked_members(p.cache,L"",expected_members);CloseDecompressor(decompressor);decompressor=nullptr;

@@ -1,0 +1,151 @@
+{
+  "schema": 1,
+  "platform": "windows-amd64",
+  "model_identity": "b09b7dd7cbdfb5977df58fbf02d02ca66f860ec26cfadd855abb8eee35c933b6",
+  "accepted_capture_source_identity": "23800a3f6180a00b9db4fbc50323b3987f0b111e972a5449e6bd0505f4827522",
+  "dependencies": [
+    {
+      "repository": "HansKristian-Work/dxil-spirv",
+      "commit": "7dc52786cdb1f53c54dd5c5c2698dff00ea5f0a3",
+      "path": "dxil-spirv",
+      "url": "https://codeload.github.com/HansKristian-Work/dxil-spirv/tar.gz/7dc52786cdb1f53c54dd5c5c2698dff00ea5f0a3",
+      "archive_sha256": "db61cf48a890ec1b4ece116e4b8a84ecc8c430a9b4f15c52c14472c228b1452a",
+      "archive_bytes": 1648093,
+      "files": 2349
+    },
+    {
+      "repository": "KhronosGroup/SPIRV-Headers",
+      "commit": "c63848ecf2200425511319fd8bf2c17b751e501e",
+      "path": "spirv-headers",
+      "url": "https://codeload.github.com/KhronosGroup/SPIRV-Headers/tar.gz/c63848ecf2200425511319fd8bf2c17b751e501e",
+      "archive_sha256": "e62af3ae847d3dd4b4cf87ee70a3180bd527594c9f18c20f7434224a2ab20139",
+      "archive_bytes": 568626,
+      "files": 119
+    },
+    {
+      "repository": "KhronosGroup/SPIRV-Tools",
+      "commit": "199cb207b911501ddd76dcddf100a6e21c15ef23",
+      "path": "SPIRV-Tools",
+      "url": "https://codeload.github.com/KhronosGroup/SPIRV-Tools/tar.gz/199cb207b911501ddd76dcddf100a6e21c15ef23",
+      "archive_sha256": "08b88c2111d547ec807cef2c2e27e3d0e55e08313b9faf115fbcd980c13816cd",
+      "archive_bytes": 3509096,
+      "files": 1743
+    },
+    {
+      "repository": "KhronosGroup/SPIRV-Cross",
+      "commit": "be71ee8c12cd7dc5ca8fa9581f708c2e8561fe2a",
+      "path": "SPIRV-Cross",
+      "url": "https://codeload.github.com/KhronosGroup/SPIRV-Cross/tar.gz/be71ee8c12cd7dc5ca8fa9581f708c2e8561fe2a",
+      "archive_sha256": "07b24b45d7bf190fda45c4c320479da28d0d11dfad3568340ecf9b6a388a4021",
+      "archive_bytes": 2024240,
+      "files": 4815
+    },
+    {
+      "repository": "doitsujin/dxbc-spirv",
+      "commit": "8dae2d8573af08378c6059aca3d5987da99d20b5",
+      "path": "dxbc-spirv",
+      "url": "https://codeload.github.com/doitsujin/dxbc-spirv/tar.gz/8dae2d8573af08378c6059aca3d5987da99d20b5",
+      "archive_sha256": "9d423accde3fa56b3b56fc3778a2a4308ce13a2343cd9945fc4f41899de8fee4",
+      "archive_bytes": 440072,
+      "files": 163
+    }
+  ],
+  "files": {
+    "third_party/fsr4cap/amdxc64.c": {
+      "bytes": 7126,
+      "sha256": "3753f0026dfbfb6c1edd35f60ec5137efb5d028fa8a4336ca2292dd607c7db2e"
+    },
+    "third_party/fsr4cap/capture.c": {
+      "bytes": 27608,
+      "sha256": "7600b06d43e976af5e0257f717a99d70ff49ec5a97a72a127da07289ed09eda4"
+    },
+    "third_party/fsr4cap/capture.h": {
+      "bytes": 785,
+      "sha256": "0cd5fb99cc3a4acaebc9746ce3076182126eae8661975c1a416244e7b1962a81"
+    },
+    "third_party/fsr4cap/driver_model.py": {
+      "bytes": 4670,
+      "sha256": "f42d61dfada93042f79937828178c7d3ed7ec7e0c8d716ec6c820783a4f3ee59"
+    },
+    "third_party/fsr4cap/dxil-spirv-class-bindings.patch": {
+      "bytes": 2320,
+      "sha256": "774ac603a5e73f97d6fdb88e8271be28d88b6cafef80a3daef62cb95d3722e30"
+    },
+    "third_party/fsr4cap/extract.py": {
+      "bytes": 14541,
+      "sha256": "10ba04e0c7bdc948f2ce65635aca2a640cbe108fa31aafe5d1e4feca6528ea06"
+    },
+    "third_party/fsr4cap/fsr4cap.c": {
+      "bytes": 16363,
+      "sha256": "194512d53748248383eec2f22dc0b60afcfce04aef6ed1636b86d24f2f15bc04"
+    },
+    "third_party/fsr4cap/LICENSE": {
+      "bytes": 17984,
+      "sha256": "edaef632cbb643e4e7a221717a6c441a4c1a7c918e6e4d56debc3d8739b233f6"
+    },
+    "third_party/fsr4cap/postpass_lds.py": {
+      "bytes": 8371,
+      "sha256": "a82f699ec1116a105f3f3d0e99bc375a50f8c9194e02c26d543d2b146e66390c"
+    },
+    "third_party/fsr4cap/README.md": {
+      "bytes": 1304,
+      "sha256": "cb48c35503471b67a129b32661b91a251e69c24673bd548db9b7152683009636"
+    },
+    "third_party/fsr4cap/rootsig.c": {
+      "bytes": 2958,
+      "sha256": "757bcf971a5cb658cdd08d656799e4c6e51e5045b743747dd8a07cca9a31a145"
+    },
+    "third_party/fsr4cap/windows_capture_io.h": {
+      "bytes": 1641,
+      "sha256": "e9cf05c8fd38734ed9b21026f511a28f0afcc769fdbc2ccdb0ca4e483a6ec8a1"
+    },
+    "third_party/fsr4cap/ffx/README.md": {
+      "bytes": 367,
+      "sha256": "dc62177513cfb27fd4b770b8c9486c6ca62f6499bb0188e9d9722c02d28ee214"
+    },
+    "third_party/fsr4cap/ffx/api/include/ffx_api.h": {
+      "bytes": 10726,
+      "sha256": "e1a9d1b559eaf75f4cb401f1c43a66e2f3dc9621abfeb58b9c6fac56443177fd"
+    },
+    "third_party/fsr4cap/ffx/api/include/ffx_api_loader.h": {
+      "bytes": 2977,
+      "sha256": "18d1901dbbc881e8131b91c65ad44bb3b4a1de6c31435d5b75236f16727ba80e"
+    },
+    "third_party/fsr4cap/ffx/api/include/ffx_api_types.h": {
+      "bytes": 13636,
+      "sha256": "cc0adc0ffc804dd7cd03c39c15581b575e416383177ffe95060201d52cc0fc49"
+    },
+    "third_party/fsr4cap/ffx/api/include/dx12/ffx_api_dx12.h": {
+      "bytes": 11323,
+      "sha256": "c9afbc3c4c673723e9e5369a666f0ff54560543b5a93537f8ff453bf1c3bf530"
+    },
+    "third_party/fsr4cap/ffx/upscalers/include/ffx_upscale.h": {
+      "bytes": 19313,
+      "sha256": "65be36d5653eb71c10379e0204f7bb7cd6a8aeec96e6f8cffc5f59ffeb1f89bf"
+    },
+    "tools/setup_windows_fsr4_tools.py": {
+      "bytes": 17076,
+      "sha256": "450baf8fafbd2c8453eb7aaa71d361d988b01516d51f43226fe1ee2e6044655d"
+    },
+    "tools/prepare_windows_fsr4.py": {
+      "bytes": 15676,
+      "sha256": "84a4ff3a2aae9b0c78bdc3d7f31641bf0f1effcb8452333e22155ea8c547a53f"
+    },
+    "tools/fsr4_process_windows.py": {
+      "bytes": 6518,
+      "sha256": "8031921cc3184a9b9454e9ed19e689ddf4753400295e8a1a3944df66dab3c892"
+    },
+    "runtime/platform/windows_save_io.h": {
+      "bytes": 13001,
+      "sha256": "ecb40d8b5d999a9399d57c8ac782f79b054c795b138f105bcf400f1b1d144a1e"
+    },
+    "tools/fsr4/validate_windows.cpp": {
+      "bytes": 29002,
+      "sha256": "e58f599863b7f7cf3dc492653d39b808267a642554feedd5adff61705407b134"
+    },
+    "runtime/platform/windows_optional_library.h": {
+      "bytes": 3775,
+      "sha256": "cd50ade5899e6d7db43557210e3de8324fca112deefb1b32f559f21ebbfcd064"
+    }
+  }
+}

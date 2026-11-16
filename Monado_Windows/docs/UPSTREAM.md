@@ -186,7 +186,24 @@ AMD SDK terms, with narrow Unicode-path and fixed reviewed-postpass adaptations.
 `fsr4-windows.lock.json` records source/model identity. Optional native DLL build,
 local prepared-asset import, immutable model/DLL leases, capabilities and temporal
 dispatch preserve Windows providers/fallback. Component fixtures do not qualify
-real models/GPU/gameplay. Native capture/translation preparation and its graphical
-worker/cancel/retry flow remain missing; see [Windows FSR4](WINDOWS_FSR4.md).
+real models/GPU/gameplay. Native preparation sources now include the accepted
+GPL recorder/trace translator and MIT AMD extension shim, narrow Win32 Unicode/
+module-local I/O adaptations, pinned local native tool builds, owned suspended
+child Jobs, cancellable fixed synthetic capture stages and a portable Vulkan
+readback validator. The separate preparation lock records exact source/tool
+identities. Real SDK/support execution and actual model/GPU/gameplay qualification
+require separate native evidence; see [Windows FSR4](WINDOWS_FSR4.md).
+The native source-only build compiled all211 pinned translator targets and passed
+the exact eight-PE translator-only closure, with the three unavailable local
+capture-support DLLs declared explicitly. Full preparation still requires them.
 Smooth Motion offers an official NVIDIA App help link only; no Linux enable
 request or generated-frame counter is presented as native Windows support.
+
+## Native shader preparation and cache transactions
+
+The accepted checked discovery/metadata/counters/job-joining behavior is adapted
+to native Windows session cancellation, owned child supervision and Unicode
+ordinary-file transactions. Native SPIR-V repair/flush and pipeline/variant cache
+guards retain compatible local work without shipped seeds or permanent crash
+blacklists. Native fixtures use authored containers/GLSL and disposable files;
+game/GPU coverage remains separate. See [shader preparation](WINDOWS_SHADER_PREPARATION.md).

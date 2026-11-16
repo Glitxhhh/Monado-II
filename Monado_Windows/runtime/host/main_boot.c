@@ -13,6 +13,9 @@
 #include "../hle.h"
 #include "../kernel.h"
 #include "../rt.h"
+#ifdef XCDE_GFX
+#include "../nvn/vulkan/precompile_status.h"
+#endif
 
 const char *g_romfs_dir;
 
@@ -64,31 +67,45 @@ __attribute__((constructor(101))) static void reserve_guest_space(void) {
     if (!plat_reserve_guest(GUEST_LO, GUEST_HI)) {
         // [XCDE] T135: something the loader placed at random (ASLR) sits in the guest range in ~1 of 5 starts. A new
         // process gets a new layout: start this one again (same command line, same console), up to 8 times.
-        char n[16] = "0";
-        GetEnvironmentVariableA("XCDE_RELAUNCH", n, sizeof n);
-        int tries = atoi(n);
+        wchar_t n[16] = L"0";
+        DWORD length=GetEnvironmentVariableW(L"XCDE_RELAUNCH",n,16);
+        int tries=0;
+        if(length>=16)tries=8;
+        else for(DWORD i=0;i<length;++i) {
+            if(n[i]<L'0'||n[i]>L'9'||tries>8){tries=8;break;}
+            tries=tries*10+(int)(n[i]-L'0');
+        }
         fprintf(stderr, "[boot] guest address range %llx-%llx is not free (try %d)%s\n", (unsigned long long)GUEST_LO,
                 (unsigned long long)GUEST_HI, tries + 1, tries < 8 ? ": starting again" : "");
         if (tries < 8) {
-            snprintf(n, sizeof n, "%d", tries + 1);
-            SetEnvironmentVariableA("XCDE_RELAUNCH", n);
-            STARTUPINFOA si = {.cb = sizeof si};
-            PROCESS_INFORMATION pi;
-            char exe[MAX_PATH];
-            GetModuleFileNameA(NULL, exe, sizeof exe);
+            swprintf(n,16,L"%d",tries+1);
+            wchar_t exe[32768],command[32768];
+            STARTUPINFOW si={.cb=sizeof si};
+            PROCESS_INFORMATION pi={0};
+            HANDLE job=NULL;
+            DWORD error=0,code=1;
+            const wchar_t *original=GetCommandLineW();
+            if(!SetEnvironmentVariableW(L"XCDE_RELAUNCH",n))goto relaunch_failed;
+            length=GetModuleFileNameW(NULL,exe,32768);
+            if(!length||length>=32768){if(length>=32768)SetLastError(ERROR_FILENAME_EXCED_RANGE);goto relaunch_failed;}
+            if(!original||wcslen(original)>=32768){SetLastError(ERROR_INVALID_PARAMETER);goto relaunch_failed;}
+            memcpy(command,original,(wcslen(original)+1)*sizeof(wchar_t));
             // the new process dies with this one (a test's timeout or a closed console must not leave it running)
-            HANDLE job = CreateJobObjectA(NULL, NULL);
+            job=CreateJobObjectW(NULL,NULL);
             JOBOBJECT_EXTENDED_LIMIT_INFORMATION jl = {0};
             jl.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            if (job) SetInformationJobObject(job, JobObjectExtendedLimitInformation, &jl, sizeof jl);
-            if (CreateProcessA(exe, GetCommandLineA(), NULL, NULL, TRUE, CREATE_SUSPENDED, NULL, NULL, &si, &pi)) {
-                if (job) AssignProcessToJobObject(job, pi.hProcess);
-                ResumeThread(pi.hThread);
-                WaitForSingleObject(pi.hProcess, INFINITE);
-                DWORD code = 1;
-                GetExitCodeProcess(pi.hProcess, &code);
-                ExitProcess(code);
-            }
+            if(!job||!SetInformationJobObject(job,JobObjectExtendedLimitInformation,&jl,sizeof jl))goto relaunch_failed;
+            if(!CreateProcessW(exe,command,NULL,NULL,TRUE,CREATE_SUSPENDED,NULL,NULL,&si,&pi))goto relaunch_failed;
+            if(!AssignProcessToJobObject(job,pi.hProcess)||ResumeThread(pi.hThread)==(DWORD)-1)goto relaunch_failed;
+            CloseHandle(pi.hThread);pi.hThread=NULL;
+            if(WaitForSingleObject(pi.hProcess,INFINITE)!=WAIT_OBJECT_0||!GetExitCodeProcess(pi.hProcess,&code))goto relaunch_failed;
+            CloseHandle(pi.hProcess);CloseHandle(job);ExitProcess(code);
+relaunch_failed:
+            error=GetLastError();
+            if(pi.hProcess){TerminateProcess(pi.hProcess,1);WaitForSingleObject(pi.hProcess,10000);CloseHandle(pi.hProcess);}
+            if(pi.hThread)CloseHandle(pi.hThread);
+            if(job)CloseHandle(job);
+            fprintf(stderr,"[boot] cannot safely relaunch owned process (Windows error %lu)\n",(unsigned long)error);
         }
         fprintf(stderr, "FATAL: guest address range %llx-%llx is not free\n", (unsigned long long)GUEST_LO,
                 (unsigned long long)GUEST_HI);
@@ -120,8 +137,16 @@ int main(int argc, char **argv) {
         extern const char *tmp_fsr4_status(void);
         if(!tmp_fsr4_configure(fsr4_assets,fsr4_component))LOG("[fsr4] %s; existing fallback retained\n",tmp_fsr4_status());
     }
-    if (argc >= argument+2 && !strcmp(argv[argument], "--precompile")) {
+    if (argument<argc && !strcmp(argv[argument], "--precompile")) {
         extern int vk_precompile_main(const char *root);
+        if(argc!=argument+6||!*argv[argument+1]||strcmp(argv[argument+2],"--session")||
+            !precompile_hex(argv[argument+3],32)||strcmp(argv[argument+4],"--identity")||
+            !precompile_hex(argv[argument+5],64)){
+            fprintf(stderr,"usage: xcde.exe --precompile TARGETS --session HEX32 --identity HEX64\n");return 2;
+        }
+        if(_putenv_s(PRECOMPILE_SESSION_ENV,argv[argument+3])||_putenv_s(PRECOMPILE_ID_ENV,argv[argument+5])){
+            fprintf(stderr,"cannot establish checked shader preparation identity\n");return 1;
+        }
         run_diag_begin(true);
         return vk_precompile_main(argv[argument+1]);
     }

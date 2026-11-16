@@ -9,6 +9,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 
 PORT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("windows_builder_packager", PORT / "tools/build_windows_builder.py")
@@ -27,7 +28,7 @@ class NativePortableBuilder(unittest.TestCase):
         env = os.environ.copy()
         env["ZIG_GLOBAL_CACHE_DIR"] = str(PORT / ".deps/zig-global-cache")
         command = [sys.executable, "-m", "ziglang", "c++", "-std=c++17", "-O1", "-UNDEBUG", "-march=x86_64_v2", "-ffp-contract=off", "-fno-fast-math",
-                   str(PORT / "tools/builder/windows_builder.cpp"), "-o", str(cls.exe), "-lbcrypt", "-lcabinet", "-lole32", "-lshell32", "-lcomctl32", "-luuid", "-lgdi32", "-luser32", "-Wl,--subsystem,windows", "-municode"]
+                   str(PORT / "tools/builder/windows_builder.cpp"), "-o", str(cls.exe), "-lbcrypt", "-ladvapi32", "-lcabinet", "-lole32", "-lshell32", "-lcomctl32", "-luuid", "-lgdi32", "-luser32", "-Wl,--subsystem,windows", "-municode"]
         result = subprocess.run(command, env=env, capture_output=True, timeout=300)
         if result.returncode:
             raise RuntimeError(result.stderr.decode("utf-8", "replace"))
@@ -35,14 +36,90 @@ class NativePortableBuilder(unittest.TestCase):
         # without creating or interacting with a visible setup/game session.
         cancel_source = cls.base / "authored-cancel-reader.cpp"
         cancel_source.write_text(r'''
-#include "payload_windows.h"
+#include "../launcher/windows_preparation.h"
+#include "../launcher/windows_precompile.h"
+#include <cstdio>
 using namespace monado_builder;
 static void cancel_after_member(uint32_t, uint32_t) {
     throw std::runtime_error("authored cancellation boundary");
 }
 int wmain(int argc, wchar_t **argv) {
-    if (argc != 3) return 2;
     try {
+        if (argc == 2 && !wcscmp(argv[1], L"--check-fast-preparation-completion")) {
+            monado_preparation::Worker worker;monado_preparation::Selection selection;
+            for(unsigned attempt=0;attempt<2;++attempt){
+                worker.start("authored relative path", "unused", "", selection, true);
+                auto deadline=GetTickCount64()+5000;while(worker.snapshot().busy&&GetTickCount64()<deadline)Sleep(1);
+                monado_preparation::Snapshot result;
+                if(!worker.take_completion(result)||result.busy||result.status!="error"||result.message!="Preparation paths must be absolute")return 38;
+                if(worker.take_completion(result))return 39;
+            }
+            return 0;
+        }
+        if (argc == 2 && !wcscmp(argv[1], L"--check-precompile-protocol")) {
+            using namespace monado_precompile_windows;
+            std::string session(32,'a'),identity(64,'b');
+            std::string record="monado_precompile_work 1\nsession "+session+"\nidentity "+identity+"\nphase done\nstate complete\ngpu_cache_uuid "+std::string(32,'c')+"\n";
+            for(auto key:{"files_total","files_done","shaders","programs","programs_done","seed_total","seed_done","variants_total","variants_done","attempted","built","failed","skipped","unsupported","errors","gpu_vendor","gpu_device","gpu_driver"})record+=std::string(key)+" 0\n";
+            if(!parse(record,session,identity).complete(0)||parse(record,session,identity).complete(1))return 30;
+            if(parse(record,std::string(32,'d'),identity).valid||parse(record,session,std::string(64,'e')).valid)return 31;
+            for(auto key:{"failed","errors","skipped"}){
+                auto negative=record;auto at=negative.find(std::string(key)+" 0\n");negative[at+strlen(key)+1]='1';
+                if(parse(negative,session,identity).complete(0))return 32;
+            }
+            for(auto key:{"files_total","programs","seed_total","variants_total","attempted"}){
+                auto unfinished=record;auto at=unfinished.find(std::string(key)+" 0\n");unfinished[at+strlen(key)+1]='1';
+                if(parse(unfinished,session,identity).complete(0))return 40;
+            }
+            if(parse(record+"state complete\n",session,identity).valid)return 33;
+            auto partial=record;partial.replace(partial.find("state complete"),strlen("state complete"),"state partial");
+            return parse(partial,session,identity).complete(0)?34:0;
+        }
+        if (argc == 4 && !wcscmp(argv[1], L"--check-precompile-session")) {
+            monado_precompile_windows::Session session;session.begin(utf8(argv[2]),utf8(argv[3]));
+            if(session.session.size()!=32||session.identity.size()!=64||session.snapshot().valid)return 35;
+            session.cancel();session.cancel(); // Idempotent, exact session only.
+            monado_precompile_windows::Session other;other.begin(utf8(argv[2]),utf8(argv[3]));
+            auto name=std::wstring(argv[3])+L"\\cache\\precompile_cancel-"+wide(other.session)+L".txt";
+            {Handle unknown(CreateFileW(native(name).c_str(),GENERIC_WRITE,0,nullptr,CREATE_NEW,FILE_ATTRIBUTE_NORMAL,nullptr));require(unknown.value!=INVALID_HANDLE_VALUE,"authored unknown cancel");write(unknown.value,"human",5);}
+            try{other.cancel();return 36;}catch(const std::exception&){}
+            Handle retained(CreateFileW(native(name).c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,0,nullptr));char data[5];read(retained.value,data,5);
+            return memcmp(data,"human",5)?37:0;
+        }
+        if (argc == 4 && !wcscmp(argv[1], L"--check-preparation-context")) {
+            monado_preparation::Context context;
+            context.load(utf8(argv[2]), utf8(argv[3]), [](size_t,size_t){});
+            return 0;
+        }
+        if (argc == 6 && !wcscmp(argv[1], L"--run-preparation-worker")) {
+            monado_preparation::Worker worker;monado_preparation::Selection selection;
+            selection.sdk=argv[5];worker.start(utf8(argv[2]),utf8(argv[3]),utf8(argv[4]),selection);
+            auto start=GetTickCount64();bool requested=false;
+            while(worker.snapshot().busy&&GetTickCount64()-start<15000){
+                if(!wcscmp(argv[5],L"cancel-fixture")&&!requested&&worker.snapshot().message=="authored child ready"){worker.stop();requested=true;}
+                Sleep(20);
+            }
+            auto result=worker.snapshot();
+            if(result.busy)return 20;
+            if(!wcscmp(argv[5],L"cancel-fixture"))return result.status=="cancelled"?0:21;
+            return result.status=="error"&&result.message=="authored worker diagnostic"&&!result.log.empty()?0:22;
+        }
+        if (argc == 4 && !wcscmp(argv[1], L"--hold-payload")) {
+            Handle input(CreateFileW(native(argv[2]).c_str(), GENERIC_READ,
+                FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+            require(input.value != INVALID_HANDLE_VALUE, "held fixture input");
+            auto payload = inspect(input.value); PayloadLease lease;
+            materialize(input.value, payload, argv[3], nullptr, &lease);
+            if (lease.file_count() != 2 || lease.directory_count() < 2) return 7;
+            Handle write_attempt(CreateFileW(native(payload.cache+L"\\python\\authored.txt").c_str(),
+                GENERIC_WRITE, FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,
+                nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr));
+            if (write_attempt.value != INVALID_HANDLE_VALUE || GetLastError() != ERROR_SHARING_VIOLATION) return 8;
+            if (MoveFileExW(native(payload.cache+L"\\python").c_str(),
+                native(payload.cache+L"\\swapped-python").c_str(),0)) return 9;
+            return 0;
+        }
+        if (argc != 3) return 2;
         if (!wcscmp(argv[1], L"--canonical-directory")) {
             auto path = utf8(final_directory(argv[2]));
             write(GetStdHandle(STD_OUTPUT_HANDLE), path.data(), path.size());
@@ -60,14 +137,14 @@ int wmain(int argc, wchar_t **argv) {
             if (std::string(error.what()) != "authored cancellation boundary") return 4;
         }
         return ordinary(payload.cache + L"\\.complete") ? 5 : 0;
-    } catch (...) { return 6; }
+    } catch (const std::exception &error) { fprintf(stderr, "%s\n", error.what()); return 6; }
 }
 ''', encoding="utf-8")
         cls.cancel_exe = cls.base / "authored-cancel-reader.exe"
         result = subprocess.run(
             [sys.executable, "-m", "ziglang", "c++", "-std=c++17", "-O1",
              str(cancel_source), "-I", str(PORT / "tools/builder"),
-             "-o", str(cls.cancel_exe), "-lbcrypt", "-lcabinet", "-municode"],
+             "-o", str(cls.cancel_exe), "-lbcrypt", "-ladvapi32", "-lcabinet", "-lole32", "-lshell32", "-luuid", "-municode"],
             env=env, capture_output=True, timeout=300)
         if result.returncode:
             raise RuntimeError(result.stderr.decode("utf-8", "replace"))
@@ -170,6 +247,88 @@ int wmain(int argc, wchar_t **argv) {
         self.assertEqual(self.check(target), 0)
         self.assertEqual((root / "python/authored.txt").read_bytes(), b"payload fixture\n" * 500)
         self.assertTrue((root / ".complete").is_file())
+
+    def test_actual_native_bootstrap_leases_block_file_and_ancestor_replacement(self):
+        target, sha = self.fixture()
+        result = subprocess.run(
+            [str(self.cancel_exe), "--hold-payload", str(target), str(self.cache)], timeout=30)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual((self.cache / sha / "python/authored.txt").read_bytes(), b"payload fixture\n" * 500)
+        # All handles close when the owned fixture ends; it does not leave
+        # permanent ACL changes, locks, or cleanup authority behind.
+        (self.cache / sha / "python/authored.txt").write_bytes(b"authored post-lease change")
+        self.assertNotEqual(self.check(target), 0)
+
+    def preparation_context(self, *, interpreter=False):
+        root = self.root / "preparation-runtime"
+        root.mkdir()
+        profile = self.root / "preparation-profile"
+        profile.mkdir()
+        files = {}
+        if interpreter:
+            home = root / "python"
+            home.mkdir()
+            archive = PORT / ".deps/python-archives/python-3.14.0-embed-amd64.zip"
+            pin = json.loads((PORT / "tools/windows-python-runtime.lock.json").read_text())
+            self.assertEqual(hashlib.sha256(archive.read_bytes()).hexdigest(), pin["sha256"])
+            with zipfile.ZipFile(archive) as source:
+                for item in source.infolist():
+                    if not item.is_dir():
+                        target = home / (item.filename + (".disabled" if item.filename == "python314._pth" else ""))
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_bytes(source.read(item))
+            python = home / "python.exe"
+            files.update({str(p): {"bytes": p.stat().st_size, "sha256": hashlib.sha256(p.read_bytes()).hexdigest()}
+                          for p in home.rglob("*") if p.is_file()})
+        else:
+            python = root / "authored-python.txt"
+            python.write_text("authored context data: never executed")
+        worker = root / "authored_worker.py"
+        worker.write_text('''import argparse,json,sys,time\nfrom pathlib import Path\np=argparse.ArgumentParser();p.add_argument('--progress');p.add_argument('--cancel-file');p.add_argument('--sdk');a,unused=p.parse_known_args()\nassert sys.flags.isolated and sys.flags.no_site and sys.dont_write_bytecode\nstatus='error';message='authored worker diagnostic'\nstream=Path(a.progress).open('x')\nif a.sdk=='cancel-fixture':\n    stream.write(json.dumps({'status':'running','message':'authored child ready','done':0,'total':1})+'\\n');stream.flush()\n    deadline=time.monotonic()+8\n    while not Path(a.cancel_file).exists() and time.monotonic()<deadline:time.sleep(.02)\n    assert Path(a.cancel_file).exists()\n    status='cancelled'\nstream.write(json.dumps({'status':status,'message':message,'done':1,'total':1})+'\\n');stream.flush();stream.close()\n''', encoding="utf-8")
+        pipeline, guard = root / "authored_pipeline.txt", root / "authored_guard.txt"
+        for path in (pipeline, guard):
+            path.write_text("authored context data: never imported")
+        for path in (python, worker, pipeline, guard):
+            files[str(path)] = {"bytes": path.stat().st_size, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        value = {"schema": 1, "platform": "windows-amd64", "status": "available", "reason": "",
+                 "installation": str(profile), "receipt": str(root / "build-receipt.json"), "source_root": str(root),
+                 "python": str(python), "worker": str(worker), "pipeline": str(pipeline), "guard": str(guard), "files": files}
+        raw = json.dumps(value, ensure_ascii=True).encode()
+        (root / "fsr4-preparation-context.json").write_bytes(raw)
+        return root, profile, hashlib.sha256(raw).hexdigest(), worker
+
+    def test_actual_native_preparation_context_rejects_changed_member_and_binding(self):
+        root, _, identity, worker = self.preparation_context()
+        command = [str(self.cancel_exe), "--check-preparation-context", str(root), identity]
+        self.assertEqual(subprocess.run(command, timeout=30).returncode, 0)
+        worker.write_text("changed authored helper: preserve and refuse")
+        self.assertNotEqual(subprocess.run(command, timeout=30).returncode, 0)
+        command[-1] = "0" * 64
+        self.assertNotEqual(subprocess.run(command, timeout=30).returncode, 0)
+
+    def test_actual_native_preparation_worker_reports_failure_without_game(self):
+        root, profile, identity, _ = self.preparation_context(interpreter=True)
+        self.assertEqual(subprocess.run([str(self.cancel_exe), "--run-preparation-worker", str(root), str(profile), identity, "error-fixture"], timeout=30).returncode, 0)
+
+    def test_actual_native_preparation_worker_cancels_owned_child(self):
+        root, profile, identity, _ = self.preparation_context(interpreter=True)
+        self.assertEqual(subprocess.run([str(self.cancel_exe), "--run-preparation-worker", str(root), str(profile), identity, "cancel-fixture"], timeout=30).returncode, 0)
+
+    def test_actual_native_preparation_completion_before_first_ui_poll(self):
+        self.assertEqual(subprocess.run([str(self.cancel_exe), "--check-fast-preparation-completion"], timeout=30).returncode, 0)
+
+    def test_actual_native_precompile_status_requires_session_identity_and_clean_counters(self):
+        self.assertEqual(subprocess.run([str(self.cancel_exe), "--check-precompile-protocol"], timeout=30).returncode, 0)
+
+    def test_actual_native_precompile_session_cancel_preserves_unknown_file(self):
+        runtime, profile = self.root / "authored-runtime", self.root / "authored-profile"
+        (runtime / "build").mkdir(parents=True)
+        profile.mkdir()
+        (runtime / "build/xcde.exe").write_bytes(b"authored image identity fixture: never executed")
+        self.assertEqual(subprocess.run([str(self.cancel_exe), "--check-precompile-session", str(runtime), str(profile)], timeout=30).returncode, 0)
+        files = list((profile / "cache").glob("precompile_cancel-*.txt"))
+        self.assertEqual(len(files), 2)
+        self.assertIn(b"human", [p.read_bytes() for p in files])
 
     def test_actual_native_cache_paths_beyond_legacy_max_path(self):
         self.cache = self.cache / ("long-authored-component-" * 4)

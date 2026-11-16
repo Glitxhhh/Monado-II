@@ -43,7 +43,7 @@ def main(argv=None):
         if not m['lift']:
             continue
         out = os.path.join(a.out, m['name'])
-        cmd = [sys.executable, '-E', '-s', gen, m['name'], os.path.join(a.exefs, m['name']), m['base'], out,
+        cmd = [sys.executable, '-E', '-s', '-B', gen, m['name'], os.path.join(a.exefs, m['name']), m['base'], out,
                '--simd', a.simd, '--patches', a.patches, '--hle', a.hle]
         log = open(os.path.join(a.out, m['name'] + '.log'), 'w') if os.path.isdir(a.out) else None
         if log is None:

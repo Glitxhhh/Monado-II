@@ -81,12 +81,16 @@
       "sha256": "e14c27b9e62b97e9b8abc80a2d7f40606be9808be9680fba1ad6085e0100d2d8"
     },
     "tools/setup_windows_fsr4.py": {
-      "bytes": 10769,
-      "sha256": "12cb083dd3650799ff33cc037e7e1a9cef8b2ca2494ab43bbdee9ec17931eb73"
+      "bytes": 11628,
+      "sha256": "cec34d756c5cebabe41697e3424af5a27daf4abac3f45e49ad8094666a7ae736"
     },
     "tools/pe_symbols_windows.py": {
       "bytes": 5373,
       "sha256": "faa0f61b91f5abab08a0d1e172e23963d62d1d8484a23d4f0d11a77f18993515"
+    },
+    "tools/fsr4_process_windows.py": {
+      "bytes": 6518,
+      "sha256": "8031921cc3184a9b9454e9ed19e689ddf4753400295e8a1a3944df66dab3c892"
     }
   }
 }

@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT.parent / 'tools'))
 import windows_file_guard as guard
 sys.path.insert(0, str(ROOT / 'tools'))
 from pe_symbols_windows import Image
+from fsr4_process_windows import run, Cancelled
 LOCK = ROOT / 'fsr4-windows.lock.json'
 NAME = 'monado-fsr4.dll'
 FLAGS = ['-std=c++20', '-O1', '-UNDEBUG', '-march=x86_64_v2', '-ffp-contract=off', '-fno-fast-math', '-fno-strict-aliasing']
@@ -57,9 +58,14 @@ def sources():
         yield lock, lock_bytes
 
 @contextlib.contextmanager
-def fresh_output(output, kind):
+def fresh_output(output, kind, *, explicit=False):
     output = Path(guard.canonical_path(output))
     base = ROOT / '.deps/fsr4' / kind
+    if explicit:
+        with guard.locked_directory(output.parent, owner=True) as parent:
+            output.mkdir()
+            with parent.child(output.name, owner=True) as result: yield result
+        return
     if output.parent != base or output.name in ('', '.', '..'):
         raise ValueError('Fresh FSR4 output must be one child of ' + str(base))
     with guard.locked_directory(ROOT / '.deps') as deps:
@@ -71,33 +77,36 @@ def fresh_output(output, kind):
                 yield result
 
 def progress(stage, message):
-    print('MONADO_FSR4_PROGRESS ' + json.dumps({'stage': stage, 'message': message}), flush=True)
+    print('MONADO_FSR4_PROGRESS ' + json.dumps({'stage': stage, 'current':int(stage=='complete'), 'total':int(stage=='complete'), 'message': message}), flush=True)
 
-def build(output):
-    with sources() as (lock, lock_bytes), fresh_output(output, 'build') as out:
+def build(output, *, compiler=None, vulkan_prefix=None, cancel=lambda:None):
+    explicit=compiler is not None or vulkan_prefix is not None
+    if explicit and (compiler is None or vulkan_prefix is None): raise ValueError('Explicit component build requires both compiler and Vulkan prefix')
+    with sources() as (lock, lock_bytes), fresh_output(output, 'build',explicit=explicit) as out, contextlib.ExitStack() as leases:
         receipt = {'schema': 1, 'status': 'running', 'abi': 2, 'format': 'windows-amd64-pe',
                    'output': str(out.path), 'lock_sha256': sha(lock_bytes), 'recipe_sha256': sha(Path(__file__).read_bytes()),
                    'source_identity': lock['files'], 'scope': 'authored native component only; models/capture absent'}
-        prefix_record = document(guard.read_regular(ROOT / '.deps/windows-deps.json', max_bytes=1024*1024))
-        prefix = Path(guard.canonical_path(prefix_record['prefix']))
-        compiler = ROOT / '.venv/Lib/site-packages/ziglang/zig.exe'
-        with guard.open_regular(compiler) as stream:
-            receipt['compiler_sha256'] = hashlib.file_digest(stream, 'sha256').hexdigest()
+        prefix_record = None if vulkan_prefix else document(guard.read_regular(ROOT / '.deps/windows-deps.json', max_bytes=1024*1024))
+        prefix = Path(guard.canonical_path(vulkan_prefix if vulkan_prefix else prefix_record['prefix']))
+        compiler = Path(guard.canonical_path(compiler if compiler else ROOT / '.venv/Lib/site-packages/ziglang/zig.exe'))
+        stream=leases.enter_context(guard.open_regular(compiler,max_bytes=512*1024*1024))
+        receipt['compiler_sha256'] = hashlib.file_digest(stream, 'sha256').hexdigest()
+        Image(compiler)
+        leases.enter_context(guard.locked_directory(prefix/'include'))
+        leases.enter_context(guard.open_regular(prefix/'lib/libvulkan-1.dll.a',max_bytes=64*1024*1024))
         command = [str(compiler), 'c++', *FLAGS, '-I'+str(prefix/'include'), '-I'+str(ROOT/'runtime/nvn/vulkan'),
                    str(ROOT/'third_party/fsr4_native/fsr411.cpp'), str(ROOT/'third_party/fsr4_native/monado_adapter.cpp'),
                    str(prefix/'lib/libvulkan-1.dll.a'), '-shared', '-o', str(out.path/NAME)]
-        environment = os.environ.copy()
-        environment['ZIG_LOCAL_CACHE_DIR'] = str(ROOT/'build/zig-cache')
-        environment['ZIG_GLOBAL_CACHE_DIR'] = str(ROOT/'build/zig-global-cache')
+        environment = {k:v for k,v in os.environ.items() if not k.upper().startswith('PYTHON')}
+        environment.update(PYTHONNOUSERSITE='1',PYTHONDONTWRITEBYTECODE='1',ZIG_LOCAL_CACHE_DIR=str(out.path/'zig-local'),ZIG_GLOBAL_CACHE_DIR=str(out.path/'zig-global'))
         progress('build', 'Compiling the reviewed native Vulkan Lite component; no model data')
-        started = time.monotonic()
-        result = subprocess.run(command, cwd=ROOT, env=environment, stdin=subprocess.DEVNULL,
-                                capture_output=True, timeout=180, creationflags=subprocess.CREATE_NO_WINDOW)
-        out.write_new('build.log', result.stdout + result.stderr)
-        receipt['command'] = {'argv': command, 'exit': result.returncode, 'seconds': time.monotonic()-started}
-        if result.returncode:
+        cancel()
+        result=run(command,cwd=ROOT,log=out.path/'build.log',environment=environment,timeout=300,checkpoint=cancel)
+        receipt['command'] = result
+        if result['exit']:
             receipt['status'] = 'failed';out.write_new('receipt.json', encoded(receipt))
             raise RuntimeError('Native FSR4 build failed; see ' + str(out.path/'build.log'))
+        cancel()
         with out.open_regular(NAME, max_bytes=64*1024*1024, owner=True) as stream:
             data = stream.read(); image = Image(out.path/NAME)
             if image.exports() != ['monado_fsr4_get_api']:

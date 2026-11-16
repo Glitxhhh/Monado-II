@@ -178,6 +178,31 @@ def optional_read(guard,name,*,max_bytes=MAX_JSON):
         if getattr(error,'winerror',None) in (2,3) or error.errno in (2,3): return None
         raise
 
+def shader_status(raw,session,identity):
+    if not raw or len(raw)>4096 or not raw.endswith(b'\n') or b'\x00' in raw:
+        raise BootstrapError('Shader preparation did not publish a bounded current-session result')
+    try:lines=raw.decode('ascii').splitlines()
+    except UnicodeError as error:raise BootstrapError('Invalid shader preparation result encoding') from error
+    if lines.pop(0)!='monado_precompile_work 1':raise BootstrapError('Unknown shader preparation result')
+    fields={}
+    for line in lines:
+        parts=line.split(' ')
+        if len(parts)!=2 or not parts[0] or not parts[1] or parts[0] in fields:raise BootstrapError('Invalid shader preparation result field')
+        fields[parts[0]]=parts[1]
+    counters=('files_total','files_done','shaders','programs','programs_done','seed_total','seed_done','variants_total','variants_done',
+              'attempted','built','failed','skipped','unsupported','errors','gpu_vendor','gpu_device','gpu_driver')
+    if (set(fields)!=set(counters)|{'session','identity','phase','state','gpu_cache_uuid'} or fields['session']!=session or
+        fields['identity']!=identity or not re.fullmatch('[0-9a-f]{32}',session) or not HASH.fullmatch(identity) or
+        not re.fullmatch('[0-9a-f]{32}',fields['gpu_cache_uuid'])):
+        raise BootstrapError('Shader preparation result belongs to another session or runtime')
+    for key in counters:
+        if not re.fullmatch('[0-9]{1,20}',fields[key]) or int(fields[key])>0xffffffffffffffff:raise BootstrapError('Invalid shader preparation counter')
+        fields[key]=int(fields[key])
+    if (fields['phase']!='done' or fields['state']!='complete' or any(fields[key] for key in ('failed','skipped','errors')) or
+        any(fields[done]!=fields[total] for done,total in (('files_done','files_total'),('programs_done','programs'),('seed_done','seed_total'),('variants_done','variants_total')))):
+        raise BootstrapError('Shader preparation is incomplete; prior selected runtime and valid caches are preserved')
+    return fields
+
 
 class Progress:
     def __init__(self, root, path, log):
@@ -310,6 +335,10 @@ class Backend:
         if registered is not None: self.registry=decode(registered)
         if self.registry.get('schema') != SCHEMA or not isinstance(self.registry.get('installations'),dict) or len(self.registry['installations']) > 256:
             raise BootstrapError('Checked-installation registry is invalid')
+        # Frontends start -I -S: make only the fully authenticated ordinary
+        # bundled packages available, without processing executable .pth files.
+        packages=str(self.cache/'python/Lib/site-packages')
+        if packages not in sys.path:sys.path.append(packages)
         self.driver = import_checked(self.cache/'source/Monado_Windows/scripts/build_windows.py','monado_trusted_build_driver')
         self.verified = True
 
@@ -356,7 +385,7 @@ class Backend:
         identity.update(path=str(selected),exefs_path=str(exefs),romfs_path=str(romfs))
         return identity
 
-    def run_child(self, argv, *, cwd, phase, output=None):
+    def run_child(self, argv, *, cwd, phase, output=None,cancel_request=None):
         self.checkpoint()
         self.progress.emit(phase,'Starting checked native '+phase)
         guard = self.driver.OwnedProcesses()
@@ -388,15 +417,28 @@ class Backend:
                 finally:
                     send(None)
             reader = threading.Thread(target=consume,daemon=True); reader.start()
-            ended=False; counts={}; logged=0; build_phase='runtime'
+            ended=False; counts={}; logged=0; build_phase='runtime';cancel_started=None
             while not ended or process.poll() is None:
-                self.checkpoint()
+                if cancel_started is None:
+                    try:self.checkpoint()
+                    except Cancelled:
+                        if cancel_request is None:raise
+                        try:cancel_request()
+                        except OSError as error:raise Cancelled('Could not publish graceful shader cancellation; stopping only the owned worker') from error
+                        cancel_started=time.monotonic();self.progress.emit('shaders','Cancelling the owned shader preparation session')
+                elif time.monotonic()-cancel_started>=10:
+                    raise Cancelled('Shader preparation cancellation deadline reached; stopping only the owned worker')
                 try: line=messages.get(timeout=.1)
                 except queue.Empty: continue
                 if line is None: ended=True; continue
                 if logged < MAX_LOG:
                     chunk=line[:MAX_LOG-logged]; self.log.write(chunk); self.log.flush(); logged+=len(chunk)
                 text=line.decode('utf-8',errors='replace').strip()
+                if text.startswith('MONADO_FSR4_PROGRESS '):
+                    worker=self.fsr4_modules()[0]
+                    row=worker.progress_record(text)
+                    self.progress.emit(row['phase'],row['message'],done=row['done'],total=row['total'])
+                    continue
                 if text.startswith('Split authored host'):
                     build_phase='launcher'
                 if text.startswith('Compiled '):
@@ -407,6 +449,7 @@ class Backend:
                 elif text:
                     self.progress.emit(phase,text)
             code=process.wait(); reader.join(timeout=2)
+            if cancel_started is not None:raise Cancelled('Shader preparation cancelled; previous selected runtime and valid caches are preserved')
             if code:
                 raise ChildFailure('Checked '+phase+' failed (exit '+str(code)+'); see '+str(self.log_path),code)
         finally:
@@ -420,6 +463,18 @@ class Backend:
             if process is not None and process.stdout is not None:
                 process.stdout.close()
 
+    def prepare_shaders(self,runtime,profile):
+        runtime=Path(runtime);profile=Path(profile);session=uuid.uuid4().hex
+        with self.guard_module.locked_directory(runtime,owner=True) as owned_runtime:
+            with owned_runtime.open_regular('build/xcde.exe',max_bytes=512*1024*1024,owner=True) as executable:identity=digest_stream(executable)
+        with self.guard_module.locked_directory(profile,owner=True) as owner,owner.child('cache',create=True,owner=True) as cache:
+            def request():cache.atomic_write_new('precompile_cancel-'+session+'.txt',('monado_precompile_cancel 1\nsession '+session+'\n').encode('ascii'),owner=True)
+            self.run_child([runtime/'build/xcde.exe','--precompile',profile/'targets','--session',session,'--identity',identity],
+                           cwd=profile,phase='shaders',cancel_request=request)
+            status=shader_status(cache.read_regular('precompile_work.txt',max_bytes=4096,owner=True),session,identity)
+            self.progress.emit('shaders','Current-session shader caches committed; remaining unsupported variants compile during play',
+                               done=status['built'],total=status['attempted'])
+
     def selected(self):
         destination = str(Path(self.args.destination).absolute()) if self.args.destination else None
         if destination:
@@ -430,14 +485,15 @@ class Backend:
         key=self.registry.get('last')
         return self.registry['installations'].get(key) if key else None
 
-    def require_idle(self,record):
+    def require_idle(self,record,*,allow_settings=False):
         roots={Path(record['root']),Path(record.get('profile',record['root']))}
         roots.update(Path(p) for p in record.get('runtime_history',[]))
         profile=record.get('profile',record['root'])
         for item in self.registry['installations'].values():
             if Path(item.get('profile',item['root']))==Path(profile):
                 roots.add(Path(item['root']));roots.update(Path(p) for p in item.get('runtime_history',[]))
-        files=[root/'build'/name for root in roots for name in ('xcde.exe','xcde_launcher.exe','lasgame.dll') if (root/'build'/name).is_file()]
+        names=('xcde.exe',) if allow_settings else ('xcde.exe','xcde_launcher.exe','lasgame.dll')
+        files=[root/'build'/name for root in roots for name in names if (root/'build'/name).is_file()]
         if busy_resources(files):
             raise BootstrapError('This installation has an open game or settings session. Close it manually before changing or reopening this profile; nothing was closed.')
 
@@ -448,6 +504,102 @@ class Backend:
         updated['installations'][record['id']]=record
         put_json(self.state_guard,'checked-installations.json',updated)
         self.registry=updated
+
+    def fsr4_modules(self):
+        result=[]
+        for leaf,name in (('fsr4_prepare_worker_windows.py','monado_trusted_fsr4_worker'),
+                          ('setup_windows_fsr4.py','setup_windows_fsr4'),
+                          ('fsr4_process_windows.py','fsr4_process_windows'),
+                          ('setup_windows_fsr4_tools.py','setup_windows_fsr4_tools'),
+                          ('prepare_windows_fsr4.py','monado_trusted_fsr4_pipeline')):
+            relative='source/Monado_Windows/tools/'+leaf
+            if relative not in self.payload:raise BootstrapError('This checked builder lacks the native FSR4 preparation pipeline')
+            module=sys.modules.get(name)
+            if module is None or Path(module.__file__)!=self.cache/relative:
+                module=import_checked(self.cache/relative,name)
+            if name in ('monado_trusted_fsr4_worker','monado_trusted_fsr4_pipeline'):result.append(module)
+        return result
+
+    def launcher_arguments(self,profile):
+        arguments=['--profile-root',str(profile)]
+        with self.guard_module.locked_directory(profile,owner=True) as owner:
+            raw=optional_read(owner,'fsr4-preparation.json',max_bytes=32768)
+        if raw is None:return arguments
+        try:
+            worker,pipeline=self.fsr4_modules()
+            selection=worker.verify_selection(profile,pipeline=pipeline,guard=self.guard_module)
+            if selection:arguments+=['--fsr4-assets',selection['asset_root'],'--fsr4-component',selection['component']]
+        except (OSError,ValueError,RuntimeError,KeyError,TypeError) as error:
+            self.progress.emit('fsr4-unavailable','Prepared FSR4 selection is unavailable; ordinary settings and fallback remain available')
+            self.log.write(('FSR4 selection unavailable: '+str(error)+'\n').encode('utf-8',errors='replace'));self.log.flush()
+        return arguments
+
+    def fsr4_fields(self,profile):
+        with self.guard_module.locked_directory(profile,owner=True) as owner:
+            raw=optional_read(owner,'fsr4-preparation.json',max_bytes=32768)
+            tools_raw=optional_read(owner,'fsr4-tools.json',max_bytes=32768)
+        if raw is None and tools_raw is None:return {}
+        try:
+            worker,_=self.fsr4_modules();fields={}
+            if raw is not None:
+                value=worker.document(raw)
+                if worker.known_selection(value):fields.update(fsr4_sdk=value['sdk'],fsr4_tools=value['tools'],fsr4_component=value['component'])
+            if tools_raw is not None:
+                value=worker.document(tools_raw)
+                if worker.known_tools_selection(value):fields.update({'fsr4_'+key:value[key] for key in ('tools','component','archives','support','cmake','ninja','compiler','vulkan_prefix')})
+            return fields
+        except (OSError,ValueError,RuntimeError,KeyError,TypeError):return {}
+
+    def build_fsr4_tools(self):
+        record=self.selected()
+        if not record:raise BootstrapError('Choose a checked installation before building optional FSR4 tools')
+        for name in ('archives','support','cmake','ninja','compiler'):
+            if not getattr(self.args,name,None):raise BootstrapError('Choose explicit local archives, D3D support, CMake, Ninja and compiler')
+        self.require_idle(record,allow_settings=True);self.checked_build(record['root'],record['receipt_sha256'])
+        profile=Path(record.get('profile',record['root']));self.checked_build(profile,record['profile_receipt_sha256'])
+        worker,pipeline=self.fsr4_modules();self.progress.installation=record['destination']
+        try:
+            worker.build_tools(installation=record['destination'],profile=profile,archives=self.args.archives,support=self.args.support,
+                cmake=self.args.cmake,ninja=self.args.ninja,compiler=self.args.compiler,
+                vulkan_prefix=getattr(self.args,'vulkan_prefix',None) or self.cache/'native/ucrt64',jobs=self.args.jobs,
+                tools_module=pipeline.tools,component_module=pipeline.component,component_verifier=pipeline.verify_component,guard=self.guard_module,
+                progress=lambda phase,message,**extra:self.progress.emit(phase,message,**extra),checkpoint=self.checkpoint,
+                idle=lambda:self.require_idle(record,allow_settings=True),protected=(self.cache,record['input']['exefs_path'],record['input']['romfs_path']),
+                log=lambda text:(self.log.write(text.encode('utf-8',errors='replace')),self.log.flush()))
+        except pipeline.Cancelled as error:raise Cancelled(str(error)) from error
+        self.progress.emit('complete','Native preparation tools verified; current model and upscaler are unchanged',status='success',profile=str(profile),**self.fsr4_fields(profile))
+
+    def prepare_fsr4(self,select=False):
+        record=self.selected()
+        if not record:raise BootstrapError('Choose a checked installation before preparing FSR4')
+        component=getattr(self.args,'component',None)
+        if not component:raise BootstrapError('Choose your explicit local native FSR4 component')
+        self.require_idle(record,allow_settings=True)
+        self.checked_build(record['root'],record['receipt_sha256'])
+        profile=Path(record.get('profile',record['root']))
+        self.checked_build(profile,record['profile_receipt_sha256'])
+        worker,pipeline=self.fsr4_modules();self.progress.installation=record['destination']
+        idle=lambda:self.require_idle(record,allow_settings=True)
+        if select:
+            assets=getattr(self.args,'assets',None)
+            if not assets:raise BootstrapError('Choose an existing prepared FSR4 model folder')
+            selection=worker.activate(profile,assets=assets,component=component,pipeline=pipeline,guard=self.guard_module,
+                            checkpoint=self.checkpoint,idle=idle)
+        else:
+            sdk=getattr(self.args,'sdk',None);tools=getattr(self.args,'tools',None)
+            if not sdk or not tools:raise BootstrapError('Choose your local SDK file and checked native preparation tools')
+            def run_pipeline(argv,**unused):
+                return worker.run_verified(pipeline,argv,emit=lambda **row:self.progress.emit(**row),
+                    log=lambda text:(self.log.write(text.encode('utf-8',errors='replace')),self.log.flush()))
+            try:
+                selection=worker.prepare(installation=record['destination'],profile=profile,sdk=sdk,tools=tools,component=component,
+                    python=self.cache/'python/python.exe',script=self.cache/'source/Monado_Windows/tools/prepare_windows_fsr4.py',
+                    cancel_file=self.cancel,pipeline=pipeline,guard=self.guard_module,run=run_pipeline,
+                    progress=lambda phase,message:self.progress.emit(phase,message),checkpoint=self.checkpoint,idle=idle,
+                    protected=(self.cache,record['input']['exefs_path'],record['input']['romfs_path']))
+            except pipeline.Cancelled as error:raise Cancelled(str(error)) from error
+        message='FSR4 assets verified and selected'+('; native synthetic GPU validation passed' if selection['gpu_qualified'] else '; GPU rendering qualification remains pending')
+        self.progress.emit('complete',message,status='success',profile=str(profile),**self.fsr4_fields(profile))
 
     def checked_build(self, root, receipt_hash=None):
         root=plain(root,directory=True)
@@ -561,7 +713,9 @@ class Backend:
         self.progress.installation=str(destination)
         self.run_child([self.cache/'python/python.exe','-B',port/'scripts/build_windows.py','--stage','all',
                         '--split-game','--input',identity['path'],'--output',output,'--prefix',self.cache/'native/ucrt64',
-                        '--jobs',str(self.args.jobs)],cwd=port,phase='build',output=output)
+                        '--jobs',str(self.args.jobs),'--preparation-python-manifest',self.cache/'payload-manifest.json',
+                        '--preparation-python-manifest-sha256',self.args.manifest_sha256,
+                        '--preparation-installation',destination],cwd=port,phase='build',output=output)
         receipt,receipt_hash=self.checked_build(output)
         self.known_targets(output,receipt,identity)
         if receipt.get('input',{}).get('exefs')!={n:{'sha256':identity['exefs'][n]['sha256'],'bytes':identity['exefs'][n]['bytes']} for n in EXPECTED_NSO}:
@@ -578,7 +732,8 @@ class Backend:
                 'runtime_history':list(dict.fromkeys(previous.get('runtime_history',[])+[previous['root']]))[-128:] if previous else [],
                 'input':identity,'managed':True,'version':self.source_manifest.get('version','0.0.0')}
         if self.args.precompile:
-            self.run_child([output/'build/xcde.exe','--precompile',output/'targets'],cwd=output,phase='shaders')
+            if previous:self.require_idle(previous)
+            self.prepare_shaders(output,Path(profile))
         self.checkpoint(); self.checked_build(output,receipt_hash)
         if previous: self.require_idle(previous)
         self.save_selection(record)
@@ -606,7 +761,7 @@ class Backend:
         self.require_idle(record)
         self.save_selection(record); self.progress.installation=str(root)
         self.progress.emit('complete','Existing native installation checked; settings are ready',status='success',
-                           launcher=str(root/'build/xcde_launcher.exe'),launcher_args=['--profile-root',str(root)],profile=str(root))
+                           launcher=str(root/'build/xcde_launcher.exe'),launcher_args=self.launcher_arguments(root),profile=str(root),**self.fsr4_fields(root))
 
     def known_targets(self,root,receipt,identity,*,missing=False):
         target=root/'targets'; plain(target,directory=True)
@@ -645,7 +800,7 @@ class Backend:
             raise BootstrapError('Original extracted RomFS inventory changed')
         self.save_selection(record)
         self.progress.emit('complete','Checked native settings launcher is ready',status='success',
-                           launcher=str(Path(record['root'])/'build/xcde_launcher.exe'),launcher_args=['--profile-root',str(profile)],profile=str(profile))
+                           launcher=str(Path(record['root'])/'build/xcde_launcher.exe'),launcher_args=self.launcher_arguments(profile),profile=str(profile),**self.fsr4_fields(profile))
 
     def locate(self):
         record=self.selected()
@@ -747,7 +902,9 @@ class Backend:
         output=port/'build'/('native-'+str(time.time_ns())+'-'+uuid.uuid4().hex[:8])
         def compile_update(reuse):
             argv=[self.cache/'python/python.exe','-B',port/'scripts/build_windows.py','--stage','all','--split-game',
-                  '--input',identity['path'],'--output',output,'--prefix',self.cache/'native/ucrt64','--jobs',str(self.args.jobs)]
+                  '--input',identity['path'],'--output',output,'--prefix',self.cache/'native/ucrt64','--jobs',str(self.args.jobs),
+                  '--preparation-python-manifest',self.cache/'payload-manifest.json',
+                  '--preparation-python-manifest-sha256',self.args.manifest_sha256,'--preparation-installation',destination]
             if reuse:argv+=['--reuse-game-library',record['root']]
             self.run_child(argv,cwd=port,phase='update-build',output=output)
         reuse=bool(previous_receipt.get('split_game'))
@@ -765,7 +922,8 @@ class Backend:
         if receipt.get('input',{}).get('exefs')!={n:identity['exefs'][n] for n in EXPECTED_NSO}:
             raise BootstrapError('Completed update input differs from the checked original inventory')
         if self.args.precompile:
-            self.run_child([output/'build/xcde.exe','--precompile',profile/'targets'],cwd=profile,phase='shaders')
+            self.require_idle(record)
+            self.prepare_shaders(output,profile)
         result=dict(record,root=str(output),source_root=str(port),source_id=offer['source_manifest_sha256'],
                     receipt_sha256=receipt_hash,version=offer['version'],
                     runtime_history=list(dict.fromkeys(record.get('runtime_history',[])+[record['root']]))[-128:])
@@ -910,7 +1068,7 @@ def validate_input(exefs,romfs,profile,expected_nso,*,checkpoint=lambda:None,pro
 
 def main(argv=None):
     parser=argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('--action',required=True,choices=('build','resume','adopt','locate-input','check-update','update'))
+    parser.add_argument('--action',required=True,choices=('build','resume','adopt','locate-input','check-update','update','prepare-fsr4','select-fsr4','build-fsr4-tools'))
     parser.add_argument('--cache',required=True,type=Path)
     parser.add_argument('--payload-sha256',required=True)
     parser.add_argument('--manifest-sha256',required=True)
@@ -920,13 +1078,19 @@ def main(argv=None):
     parser.add_argument('--progress',required=True,type=Path)
     parser.add_argument('--cancel-file',required=True,type=Path)
     parser.add_argument('--precompile',action='store_true')
+    parser.add_argument('--sdk',type=Path)
+    parser.add_argument('--tools',type=Path)
+    parser.add_argument('--component',type=Path)
+    parser.add_argument('--assets',type=Path)
+    for name in ('archives','support','cmake','ninja','compiler','vulkan-prefix'):parser.add_argument('--'+name,type=Path)
     args=parser.parse_args(argv)
     backend=None
     try:
         if os.name!='nt': raise BootstrapError('This builder requires native Windows')
         backend=Backend(args); backend.verify(); backend.checkpoint()
         {'build':backend.build,'resume':backend.resume,'adopt':backend.adopt,'locate-input':backend.locate,
-         'check-update':backend.update,'update':lambda:backend.update(True)}[args.action]()
+         'check-update':backend.update,'update':lambda:backend.update(True),
+         'prepare-fsr4':backend.prepare_fsr4,'select-fsr4':lambda:backend.prepare_fsr4(True),'build-fsr4-tools':backend.build_fsr4_tools}[args.action]()
         return 0
     except Cancelled as error:
         if backend: backend.progress.emit('cancel',str(error),status='cancelled')

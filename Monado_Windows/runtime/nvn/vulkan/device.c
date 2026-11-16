@@ -20,6 +20,8 @@ extern float xcde_effective_present_fps(void);
 #include "../../gpu_requirements_vk.h"
 #include "../../ui/menu.h"
 #include "vk.h"
+#include "../../platform/windows_cache_transaction.h"
+#include "present_policy_windows.h"
 #include "dlss.h"
 #include "fsr4_policy.h"
 #include "temporal.h"
@@ -337,7 +339,7 @@ static void create_device(void) {
     g_vk.sampler_anisotropy = b->samplerAnisotropy;
     b->textureCompressionBC = h->textureCompressionBC;
     b->shaderInt64 = h->shaderInt64;
-    b->shaderInt16 = g_vk.fsr4_lite && h->shaderInt16;
+    b->shaderInt16 = h->shaderInt16; // Optional native FidelityFX half/integer permutations; no new baseline requirement.
     b->depthBiasClamp = h->depthBiasClamp;
     b->depthClamp = h->depthClamp;
     b->largePoints = h->largePoints;
@@ -438,13 +440,12 @@ static void create_device(void) {
     // pipeline cache: cache/vk_pipelines.bin (written by vk_pipeline_cache_save)
     size_t sz = 0;
     void *data = NULL;
-    FILE *fp = fopen("cache/vk_pipelines.bin", "rb");
+    FILE *fp = wct_read("cache/vk_pipelines.bin",1024ull*1024*1024);
     if (fp) {
-        fseek(fp, 0, SEEK_END);
-        sz = (size_t)ftell(fp);
-        fseek(fp, 0, SEEK_SET);
-        data = malloc(sz);
-        if (fread(data, 1, sz, fp) != sz) sz = 0;
+        long length=0;
+        if(!fseek(fp,0,SEEK_END)&&(length=ftell(fp))>0&&!fseek(fp,0,SEEK_SET))sz=(size_t)length;
+        data=sz?malloc(sz):NULL;if(!data)sz=0;
+        if(sz&&fread(data,1,sz,fp)!=sz)sz=0;
         fclose(fp);
     }
     VkPipelineCacheCreateInfo pc = {.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO, .initialDataSize = sz,
@@ -472,27 +473,16 @@ void vk_pipeline_cache_save_async(void) {
     pthread_detach(t);
 }
 
+#include "pipeline_cache_io_windows.h"
+static pthread_mutex_t pipeline_save_lock=PTHREAD_MUTEX_INITIALIZER;
+bool vk_pipeline_cache_save_checked(void) {
+    pthread_mutex_lock(&pipeline_save_lock);
+    bool ok=pipeline_cache_save_native(g_vk.dev,g_vk.pcache);
+    pthread_mutex_unlock(&pipeline_save_lock);return ok;
+}
 void vk_pipeline_cache_save(void) {
-    // [XCDE] test runs (hidden window: rtrun.sh / drive_env.sh) read the player's cache but never write it: a test build
-    // translates shaders differently, and the last process to exit replaced the file - the player's next start then
-    // compiled ~730 pipelines while loading (24 s, 1-2 s freezes; party session's diagnosis). XCDE_SAVE_CACHE=1: save anyway.
-    if (getenv("LARECOMP_HIDDEN") && !getenv("XCDE_SAVE_CACHE")) return;
-    size_t sz = 0;
-    if (vkGetPipelineCacheData(g_vk.dev, g_vk.pcache, &sz, NULL) != VK_SUCCESS || !sz) return;
-    void *data = malloc(sz);
-    if (vkGetPipelineCacheData(g_vk.dev, g_vk.pcache, &sz, data) == VK_SUCCESS) {
-        mkdir("cache", 0755);
-        char tmp[64];  // (per process: test runs and the user's game save the same cache)
-        snprintf(tmp, sizeof tmp, "cache/vk_pipelines.bin.%d.tmp", (int)getpid());
-        FILE *f = fopen(tmp, "wb");
-        if (f) {
-            bool ok = fwrite(data, 1, sz, f) == sz;
-            fclose(f);
-            if (ok) { remove("cache/vk_pipelines.bin"); rename(tmp, "cache/vk_pipelines.bin"); }
-            else remove(tmp);
-        }
-    }
-    free(data);
+    if(getenv("LARECOMP_HIDDEN")&&!getenv("XCDE_SAVE_CACHE"))return;
+    if(!vk_pipeline_cache_save_checked())LOG("[vk] pipeline cache was not committed\n");
 }
 
 // ================================================================== swapchain
@@ -511,8 +501,9 @@ static VkPresentModeKHR present_mode(void) {
     // 59.99x Hz monitor some frames were shown twice and others never, at a steady "60 fps" in the counters (the user:
     // feels laggy, frametime flat). FIFO shows each frame once. Above 60 / unlimited: mailbox (FIFO would cap it).
     const char *e = getenv("LARECOMP_VK_PRESENT");
-    bool vs = !e && g_settings.vsync && g_settings.fps > 0 && g_settings.fps <= 60 && !getenv("XCDE_FPS_PERIOD_SCALE") &&
-              (!getenv("LARECOMP_HIDDEN") || getenv("XCDE_VSYNC_TEST")) && !diag_deterministic();  // (test runs: as before)
+    bool vs=windows_present_fifo(e!=NULL,g_settings.vsync,g_settings.fps,tmp_frame_gen_wanted(),
+        getenv("XCDE_FPS_PERIOD_SCALE")!=NULL,getenv("LARECOMP_HIDDEN")!=NULL,
+        getenv("XCDE_VSYNC_TEST")!=NULL,diag_deterministic());
     if (vs) e = "fifo";
     { static int logged; if (!logged++) LOG("[vk] present mode %s%s\n", e ? e : "mailbox", vs ? " (V-Sync option)" : ""); }
     VkPresentModeKHR want = !e || !strcmp(e, "mailbox") ? VK_PRESENT_MODE_MAILBOX_KHR

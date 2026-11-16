@@ -2,9 +2,14 @@
 import argparse
 import importlib.util
 import os
+import json
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 PORT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("windows_build", PORT / "scripts/build_windows.py")
@@ -96,6 +101,57 @@ class NativeBuildBoundary(unittest.TestCase):
 
 
 class RecursiveGuestClosure(unittest.TestCase):
+    def test_actual_nested_generator_disables_bytecode_even_when_environment_is_ignored(self):
+        with tempfile.TemporaryDirectory(dir=PORT / "build") as directory:
+            root = Path(directory)
+            tools = root / "tools"
+            lifter = tools / "lifter"
+            package = lifter / "authored_dependency"
+            package.mkdir(parents=True)
+            (package / "__init__.py").write_text("VALUE = 7\n", encoding="utf-8")
+            generator = lifter / "gen.py"
+            generator.write_text(
+                "import sys\nfrom pathlib import Path\nfrom authored_dependency import VALUE\n"
+                "if not sys.dont_write_bytecode: raise SystemExit(17)\n"
+                "out=Path(sys.argv[4]); out.mkdir(parents=True)\n"
+                "(out/'authored.c').write_text('int fixture = %d;\\n' % VALUE)\n", encoding="utf-8")
+            copied_driver = tools / "gen_all.py"
+            shutil.copyfile(PORT / "tools/gen_all.py", copied_driver)
+            profile = root / "profile.json"
+            profile.write_text(json.dumps({"modules": [{"name": "authored", "base": "0", "lift": True}]}), encoding="utf-8")
+            environment = os.environ.copy()
+            environment["PYTHONDONTWRITEBYTECODE"] = "1"
+            result = subprocess.run([sys.executable, "-B", str(copied_driver), "--profile", str(profile), "--out", str(root / "generated")],
+                                    env=environment, capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue((root / "generated/authored/authored.c").is_file())
+            self.assertFalse(list(root.rglob("__pycache__")))
+            # Negative control proves inherited PYTHONDONTWRITEBYTECODE alone
+            # is ineffective when the actual nested child is launched with -E.
+            result = subprocess.run([sys.executable, "-E", "-s", str(generator), "authored", "unused", "0", str(root / "negative-output")],
+                                    env=environment, capture_output=True, timeout=30)
+            self.assertEqual(result.returncode, 17, result.stdout + result.stderr)
+            self.assertTrue((package / "__pycache__").is_dir())
+
+    def test_source_export_does_not_query_an_enclosing_repository(self):
+        with tempfile.TemporaryDirectory(dir=PORT / "build") as directory:
+            root = Path(directory) / "source/Monado_Windows"
+            root.mkdir(parents=True)
+            with mock.patch.object(build, "ROOT", root), mock.patch.object(build.subprocess, "check_output") as git:
+                self.assertEqual(build.git_identity(), {"git_commit": None, "git_branch": None})
+                git.assert_not_called()
+
+    def test_git_identity_requires_its_own_repository_marker(self):
+        with tempfile.TemporaryDirectory(dir=PORT / "build") as directory:
+            root = Path(directory) / "Monado_Windows"
+            root.mkdir()
+            (root.parent / ".git").mkdir()
+            with mock.patch.object(build, "ROOT", root), mock.patch.object(build.subprocess, "check_output", side_effect=["authored-hash\n", "codex/authored\n"]) as git:
+                self.assertEqual(build.git_identity(), {"git_commit": "authored-hash", "git_branch": "codex/authored"})
+                for call in git.call_args_list:
+                    self.assertEqual(call.kwargs["cwd"], root.parent)
+                    self.assertEqual(call.kwargs["stderr"], build.subprocess.DEVNULL)
+
     def test_nested_and_conditional_guest_headers_are_bound(self):
         original = build.ROOT
         with tempfile.TemporaryDirectory() as directory:

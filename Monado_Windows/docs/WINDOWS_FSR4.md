@@ -54,20 +54,81 @@ and workgroup/storage limits. The tiny107x60 Ultra failure guard is **render lon
 edge >=128**, including valid128x60 input. Lite linear output is encoded before
 HUD/FG composition; native Windows FFX3 fallback retains its gamma contract.
 
-The following Windows preparation work remains **unimplemented/unqualified**:
+Native preparation sources and CLI are implemented in
+`tools/setup_windows_fsr4_tools.py`, `tools/prepare_windows_fsr4.py` and
+`tools/fsr4/validate_windows.cpp`. They use the accepted recorder, Lite graph
+rules and exact five DXIL/SPIR-V source archive pins. The recorder and AMD
+extension shim are native Win32 code with Unicode, ordinary-file operations and
+explicit module-local DLL loading. The portable Vulkan readback fixture uses a
+native checked DLL loader. Source identities are separate from the compatible
+model graph identity in `fsr4-preparation-windows.lock.json`.
 
-- Native graphical capture/translation worker, phase progress, cancellation,
-  retry and selection broker.
-- Reviewed local vkd3d-proton/DXVK capture support, recorder/AMD extension shim,
-  patched pinned dxil-spirv and SPIR-V validation tool builds.
-- Pinned AMD SDK synthetic recorder execution, four real captures, translation
-  and structural validation of all48 shaders, and atomic promotion after native
-  GPU finite/detail/reset/sharpening/readback checks.
-- Actual prepared-model dispatch on NVIDIA/AMD, gameplay, reset/resize/reboot
-  and combined FSR4/frame-generation qualification.
+Build the tools from local verified source archives and explicitly selected
+CMake, Ninja and Zig executables. `--translator-only` builds the recorder, shim,
+patched DXIL translator, SPIR-V tools and native GPU validator without requiring
+vendor/model assets or D3D capture support:
 
-The disabled preparation action explains missing tools. It downloads no model,
-reports no fake preparation, changes no selection and reads no game input.
+```powershell
+python -I -S -B tools/setup_windows_fsr4_tools.py --build --translator-only --archives "C:/Local pinned archives" --cmake "C:/Local CMake/bin/cmake.exe" --ninja "C:/Local Ninja/ninja.exe" --compiler "C:/Local Zig/zig.exe" --vulkan-prefix "C:/Local native dependencies" --output "C:/Owned tools/new-translator-build"
+```
+
+Full capture tool builds omit `--translator-only` and add `--support` pointing
+to a local folder containing ordinary current-user-owned `d3d12.dll`,
+`d3d12core.dll` from vkd3d-proton and `dxgi.dll` from DXVK. System D3D12 is not a
+substitute for the recorder's shared-vtable contract. [Upstream documents its
+Windows DLL path for development/testing](https://github.com/HansKristian-Work/vkd3d-proton#using-vkd3d-proton). `support.json` must identify
+schema1, kind `local-vkd3d-dxvk`, a `provenance` string and exact `files` entries
+for those three names, each with `bytes` and `sha256`. The resulting receipt
+records the supplied provenance and binary hashes. This local receipt is not a
+publisher signature or a claim that arbitrary support binaries were qualified.
+The tools builder downloads and installs nothing, accepts no vendor terms and
+never modifies a driver or host installation. A translator-only receipt cannot
+enable capture preparation.
+
+The native preparation CLI requires that complete tools receipt, an ABI2
+component build receipt and the exact local AMD SDK DLL pinned in the lock:
+
+```powershell
+python -I -S -B tools/prepare_windows_fsr4.py --prepare --sdk "C:/My supplied AMD SDK/amd_fidelityfx_upscaler_dx12.dll" --tools "C:/Owned tools/complete-build" --component "C:/Owned component/monado-fsr4.dll" --output "C:/Owned models/new-preparation"
+```
+
+The pipeline restricts a private SDK copy to Lite, records four fixed synthetic
+cases and checks the twelve-pass dispatch order, group counts, tensor layouts
+and frame constants. It translates all48 shaders with class bindings and
+validates each for Vulkan1.3. The native offscreen validator then exercises all
+four model sets for33 real component frames, checking finite output, detail,
+reset, sharpening and GPU readback. Unsupported capabilities, shader/graph
+mismatch, failed dispatch or failed readback fail preparation. Only actual
+successful validator execution can set `gpu_qualified` and permit completion.
+These authored images establish component behavior; they do not qualify game
+scenes, frame generation, WSI, performance or every driver.
+
+Children start suspended, enter a private kill-on-close Windows Job, then run.
+Only their log/NUL handles are inherited. Bounded live progress, timeouts and an
+optional `--cancel-file` support the asynchronous worker. Cancellation stops only
+owned descendants, retains failed private output and never changes the selected
+upscaler or previous model selection. Retrying uses a new directory. Successful
+output contains exact52 resource hashes/sidecars, its recipe/command receipts and
+`models.id` written last. No game data is read. Private SDK copies, captures,
+translated shaders, logs and models are never source/package resources.
+
+The source-only recorder, shim and GPU validator compile as native Windows
+components. The pinned native translator build has also compiled and linked
+all211 targets and passed its exact eight-PE hash/import closure check: recorder,
+shim, DXIL translator and its authored shared library, three SPIR-V tools and
+GPU validator. Its translator-only receipt explicitly lists the three missing
+capture-support DLLs; full preparation rejects that partial toolset.
+Authored fixtures exercise literal Unicode/spaces/quotes, live
+progress, failure, timeout, cancellation with an unrelated process surviving,
+source locks and exact patch boundaries. Actual pinned translator building and
+full model preparation have separate receipts; a compiled validator does not
+establish GPU qualification. The graphical Build preparation tools action builds
+both these tools and the native ABI2 component from selected local pinned inputs,
+then commits their verified paths together. Prepare models separately uses an
+explicit supplied SDK; progress/cancel/retry preserve the selected upscaler and
+previous preparation on failure. Real SDK/support captures, actual prepared-model
+NVIDIA/AMD output, gameplay, resize/reboot and combined frame generation remain
+unqualified until their corresponding native runs succeed.
 
 # NVIDIA Smooth Motion on Windows
 

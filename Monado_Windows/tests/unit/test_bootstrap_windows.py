@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 import time
+import types
 import unittest
 from unittest.mock import patch
 import uuid
@@ -30,6 +31,13 @@ B=importlib.util.module_from_spec(spec);spec.loader.exec_module(B)
 
 
 def sha(data): return hashlib.sha256(data).hexdigest()
+
+def shader_work(current_session,current_identity,**changes):
+    fields=dict(session=current_session,identity=current_identity,phase='done',state='complete',gpu_cache_uuid='c'*32,
+        files_total=1,files_done=1,shaders=1,programs=1,programs_done=1,seed_total=0,seed_done=0,variants_total=0,variants_done=0,
+        attempted=1,built=1,failed=0,skipped=0,unsupported=0,errors=0,gpu_vendor=1,gpu_device=2,gpu_driver=3)
+    fields.update(changes)
+    return ('monado_precompile_work 1\n'+''.join(str(k)+' '+str(v)+'\n' for k,v in fields.items())).encode('ascii')
 
 
 class PureContracts(unittest.TestCase):
@@ -54,6 +62,15 @@ class PureContracts(unittest.TestCase):
         for other in (base,base/'inside',base.parent):
             with self.assertRaises(B.BootstrapError):B.disjoint(base,other)
         B.disjoint(base,base.with_name('different'))
+
+    def test_shader_status_requires_exact_completed_current_session(self):
+        session='a'*32;identity='b'*64
+        self.assertEqual(B.shader_status(shader_work(session,identity),session,identity)['built'],1)
+        for change in ({'session':'0'*32},{'identity':'0'*64},{'state':'partial'},{'phase':'scan'},{'failed':1},{'skipped':1},{'errors':1},
+                       {'files_done':0},{'programs_done':2},{'seed_done':1},{'variants_done':1},{'built':2**65},{'built':'-1'},{'unknown':1}):
+            with self.subTest(change=change),self.assertRaises(B.BootstrapError):B.shader_status(shader_work(session,identity,**change),session,identity)
+        for raw in (b'','x'.encode()*4097,shader_work(session,identity)+b'state complete\n',shader_work(session,identity)[:-1]):
+            with self.assertRaises(B.BootstrapError):B.shader_status(raw,session,identity)
 
 
 @unittest.skipUnless(os.name=='nt','native Windows authored builder contracts')
@@ -162,6 +179,90 @@ class NativeContracts(unittest.TestCase):
         self.assertEqual(json.loads(lines[-2])['status'],'needs-setup')
         self.assertTrue(all(len(line)<65536 for line in lines))
         self.assertTrue(all(type(json.loads(line)['done']) is int for line in lines))
+
+    def test_isolated_bundled_packages_added_only_after_full_verification(self):
+        state=self.cache/'state';token=uuid.uuid4().hex
+        args=argparse.Namespace(cache=self.cache,payload_sha256=self.cache.name,manifest_sha256=self.manifest_hash,
+            progress=state/('progress-'+token+'.jsonl'),cancel_file=state/('cancel-'+token),action='resume',
+            input=self.input,destination=None,jobs=2,precompile=False)
+        package_path=str(self.cache/'python/Lib/site-packages')
+        self.assertNotIn(package_path,sys.path)
+        self.backend=B.Backend(args)
+        self.assertNotIn(package_path,sys.path)
+        self.backend.verify()
+        self.assertIn(package_path,sys.path)
+
+    def test_fsr4_selection_reopen_and_changed_model_fallback_preserve_state(self):
+        # Only the vendor/model verification boundary is authored here. The
+        # actual guarded activation, durable profile selection and resume run.
+        record=self.build_managed();profile=Path(record['profile'])
+        worker=B.import_checked(PORT/'tools/fsr4_prepare_worker_windows.py','authored_fsr4_backend_worker')
+        assets=self.folder/'authored model validator boundary';assets.mkdir()
+        (assets/'receipt.json').write_bytes(b'authored only; no model assets')
+        component=self.folder/'authored nonexecuted component.dll';component.write_bytes(b'no executable content')
+        def verify(output,component=None):
+            return dict(asset_root=str(output),receipt_path=str(Path(output)/'receipt.json'),receipt_sha256=sha((Path(output)/'receipt.json').read_bytes()),
+                model_identity=worker.IDENTITY,component=str(component),dll_sha256=sha(Path(component).read_bytes()),gpu_qualified=False)
+        pipeline=types.SimpleNamespace(verify_prepared=verify)
+        self.backend.fsr4_modules=lambda:(worker,pipeline)
+        self.backend.args.assets=assets;self.backend.args.component=component
+        registry=self.backend.state_guard.read_regular('checked-installations.json')
+        (profile/'human-save').write_bytes(b'preserve human state')
+        self.backend.prepare_fsr4(True);selection=(profile/worker.SELECTION).read_bytes()
+        self.assertEqual(self.backend.state_guard.read_regular('checked-installations.json'),registry)
+        self.backend.resume();last=json.loads(Path(self.backend.args.progress).read_text().splitlines()[-1])
+        self.assertEqual(last['launcher_args'],['--profile-root',str(profile),'--fsr4-assets',str(assets),'--fsr4-component',str(component)])
+        self.assertEqual(last['fsr4_component'],str(component))
+        component.write_bytes(b'changed authored component')
+        self.backend.resume();last=json.loads(Path(self.backend.args.progress).read_text().splitlines()[-1])
+        self.assertEqual(last['launcher_args'],['--profile-root',str(profile)])
+        self.assertEqual((profile/worker.SELECTION).read_bytes(),selection)
+        self.assertEqual((profile/'human-save').read_bytes(),b'preserve human state')
+
+    def test_build_fsr4_tools_records_sources_without_changing_model_or_runtime(self):
+        record=self.build_managed();profile=Path(record['profile'])
+        worker=B.import_checked(PORT/'tools/fsr4_prepare_worker_windows.py','authored_tools_backend_worker')
+        for key in ('archives','support'):
+            path=self.folder/key;path.mkdir();setattr(self.backend.args,key,path)
+        for key in ('cmake','ninja','compiler'):
+            path=self.folder/(key+'.exe');path.write_bytes(b'authored nonexecuted build boundary');setattr(self.backend.args,key,path)
+        def build(output,*args,**kwargs):
+            Path(output).mkdir();(Path(output)/'receipt.json').write_bytes(b'authored tool verifier boundary, no binaries')
+        def verify(output):
+            return dict(schema=1,status='passed',kind='windows-fsr4-tools',output=str(output),receipt_sha256=sha((Path(output)/'receipt.json').read_bytes()))
+        def component_build(output,**kwargs):
+            Path(output).mkdir();(Path(output)/'monado-fsr4.dll').write_bytes(b'authored nonexecuted component boundary')
+        def component_verify(path):return dict(component=str(path),dll_sha256=sha(Path(path).read_bytes()))
+        self.backend.fsr4_modules=lambda:(worker,types.SimpleNamespace(tools=types.SimpleNamespace(build=build,verify_tools=verify),
+            component=types.SimpleNamespace(build=component_build),verify_component=component_verify))
+        registry=self.backend.state_guard.read_regular('checked-installations.json')
+        self.backend.build_fsr4_tools();last=json.loads(Path(self.backend.args.progress).read_text().splitlines()[-1])
+        self.assertEqual(last['status'],'success');self.assertEqual(last['fsr4_archives'],str(self.backend.args.archives))
+        self.assertTrue(Path(last['fsr4_component']).is_file())
+        self.assertTrue(Path(last['fsr4_tools']).is_dir());self.assertFalse((profile/worker.SELECTION).exists())
+        self.assertEqual(self.backend.state_guard.read_regular('checked-installations.json'),registry)
+        self.backend.resume();last=json.loads(Path(self.backend.args.progress).read_text().splitlines()[-1])
+        self.assertEqual(last['fsr4_tools'],worker.document((profile/worker.TOOLS_SELECTION).read_bytes())['tools'])
+        self.assertEqual(last['launcher_args'],['--profile-root',str(profile)])
+
+    def test_shader_completion_and_cancel_use_current_runtime_session(self):
+        record=self.build_managed();runtime=Path(record['root']);profile=Path(record['profile'])
+        before=self.backend.state_guard.read_regular('checked-installations.json');commands=[]
+        def child(argv,*,cwd,phase,cancel_request=None,**unused):
+            commands.append(argv);self.assertEqual(phase,'shaders');self.assertEqual(Path(cwd),profile)
+            session=argv[argv.index('--session')+1];identity=argv[argv.index('--identity')+1]
+            self.assertEqual(identity,sha((runtime/'build/xcde.exe').read_bytes()))
+            cancel_request();cancel=profile/'cache'/('precompile_cancel-'+session+'.txt')
+            self.assertEqual(cancel.read_bytes(),('monado_precompile_cancel 1\nsession '+session+'\n').encode())
+            (profile/'cache/precompile_work.txt').write_bytes(shader_work(session,identity))
+        self.backend.run_child=child;self.backend.prepare_shaders(runtime,profile);self.backend.prepare_shaders(runtime,profile)
+        self.assertNotEqual(commands[0][4],commands[1][4])
+        self.assertEqual(self.backend.state_guard.read_regular('checked-installations.json'),before)
+        def stale(argv,**unused):
+            (profile/'cache/precompile_work.txt').write_bytes(shader_work('0'*32,argv[argv.index('--identity')+1]))
+        self.backend.run_child=stale
+        with self.assertRaises(B.BootstrapError):self.backend.prepare_shaders(runtime,profile)
+        self.assertEqual(self.backend.state_guard.read_regular('checked-installations.json'),before)
 
     def test_payload_tampering_extra_code_and_wrong_anchor_fail_closed(self):
         backend=self.backend_open();self.close()
@@ -308,6 +409,47 @@ print('checked Python environment')
             with self.assertRaisesRegex(B.BootstrapError,'open game or settings'):backend.require_idle({'root':str(root),'profile':str(root)})
             self.assertIsNone(process.poll())
         finally:process.terminate();process.wait(timeout=10)
+
+    def busy_after_build(self,action):
+        record=self.build_managed();profile=Path(record['profile']);processes=[]
+        before=self.backend.state_guard.read_regular('checked-installations.json');receipt=(profile/'build-receipt.json').read_bytes()
+        (profile/'cache').mkdir();(profile/'cache/human-cache-sentinel').write_bytes(b'keep existing useful cache')
+        manifest={'files':self.backend.source_files};publication=B.encoded(manifest);outer=self
+        class Update:
+            UpdateCancelled=B.Cancelled
+            def discover(self,version):return {'version':'1.0.2','source_manifest_sha256':sha(publication)}
+            def fetch_and_extract(self,offer,candidate,**kwargs):
+                candidate.mkdir();shutil.copytree(outer.cache/'source',candidate/'source')
+                (candidate/'source/publication-manifest.json').write_bytes(publication);return candidate/'source'
+            def verified_source(self,source,offer):return manifest
+        def compile_boundary(argv,*,cwd,phase,output=None,**unused):
+            self.assertNotEqual(phase,'shaders','shader child started after the existing profile became busy')
+            self.fake_build(argv,cwd=cwd,phase=phase,output=output)
+            # Actual native process identity appears after the lengthy compiler
+            # boundary. No game input or human process is used or terminated.
+            binary=str(Path(record['root'])/'build/xcde.exe')
+            native='\\\\?\\UNC\\'+binary[2:] if binary.startswith('\\\\') else '\\\\?\\'+binary
+            processes.append(subprocess.Popen([binary,'sleep'],executable=native))
+            time.sleep(.2);self.assertIsNone(processes[-1].poll())
+        self.backend.run_child=compile_boundary;self.backend.args.precompile=True
+        original=B.import_checked
+        try:
+            with patch.object(B,'import_checked',side_effect=lambda path,name:Update() if name=='monado_trusted_windows_updater' else original(path,name)):
+                with self.assertRaisesRegex(B.BootstrapError,'open game or settings'):
+                    if action=='build':self.backend.build()
+                    else:self.backend.args.destination=None;self.backend.update(True)
+            self.assertEqual(len(processes),1);self.assertIsNone(processes[0].poll())
+            self.assertEqual(self.backend.state_guard.read_regular('checked-installations.json'),before)
+            self.assertEqual((profile/'build-receipt.json').read_bytes(),receipt)
+            self.assertEqual({p.name for p in (profile/'cache').iterdir()},{'human-cache-sentinel'})
+            self.assertEqual((profile/'cache/human-cache-sentinel').read_bytes(),b'keep existing useful cache')
+        finally:
+            for process in processes:
+                if process.poll() is None:process.terminate()
+                process.wait(timeout=10)
+
+    def test_rebuild_rechecks_busy_profile_before_shader_preparation(self):self.busy_after_build('build')
+    def test_update_rechecks_busy_profile_before_shader_preparation(self):self.busy_after_build('update')
 
     def test_update_verifies_before_build_and_activates_registry_only(self):
         record=self.build_managed();profile=Path(record['profile']);(profile/'human-save').write_bytes(b'authored used save')

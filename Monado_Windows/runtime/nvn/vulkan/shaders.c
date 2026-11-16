@@ -1,11 +1,13 @@
 // GLSL -> SPIR-V (shaderc), descriptor layouts from the SPIR-V itself, translated NVN programs, built-in shaders.
 #include <pthread.h>
+#include <errno.h>
 #include <shaderc/shaderc.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
 
 #include "shaders.h"
+#include "../../platform/windows_cache_transaction.h"
 
 void vk_shaders_init(void) {  // (compilers are per thread: check shaderc works at all)
     shaderc_compiler_t c = shaderc_compiler_initialize();
@@ -44,6 +46,31 @@ static uint64_t src_hash(const char *src, int stage) {
 #ifndef O_BINARY
 #define O_BINARY 0
 #endif
+#ifndef O_CLOEXEC
+#define O_CLOEXEC 0
+#endif
+// [XCDE] LINUX-018: cache failure is observable to the precompiler, while a
+// normal draw still receives its successfully compiled shader on storage errors.
+static uint64_t cache_errors;
+static void cache_error(const char *operation) {
+    int error = errno ? errno : EIO;
+    uint64_t count = __atomic_add_fetch(&cache_errors, 1, __ATOMIC_RELAXED);
+    if (count <= 8) LOG("[shader] cache %s failed: %s\n", operation, strerror(error));
+    errno = error;
+}
+uint64_t vk_spirv_cache_errors(void) { return __atomic_load_n(&cache_errors, __ATOMIC_RELAXED); }
+static bool cache_sync_file(int fd, bool data_only) {
+    int result;
+    do {
+#ifdef _WIN32
+        (void)data_only;
+        result = _commit(fd);
+#else
+        result = data_only ? fdatasync(fd) : fsync(fd);
+#endif
+    } while (result < 0 && errno == EINTR);
+    return result == 0;
+}
 typedef struct { uint64_t hash, off; uint32_t bytes, check; } PackEntry;
 static pthread_mutex_t pack_lock = PTHREAD_MUTEX_INITIALIZER;
 static int pack_fd = -1, idx_fd = -1, pack_state;  // (state: 0 not opened, 1 open, -1 off / failed)
@@ -56,6 +83,7 @@ static uint32_t pack_check(const PackEntry *e) { return e->bytes ^ (uint32_t)e->
 #ifdef _WIN32
 static int64_t fd_size(int fd) { return _filelengthi64(fd); }
 static ssize_t io64(int fd, void *buf, size_t n, int64_t off, bool wr) {
+    if(off<0||(uint64_t)n>(uint64_t)INT64_MAX-(uint64_t)off){errno=EOVERFLOW;return -1;}
     HANDLE h = (HANDLE)_get_osfhandle(fd);
     size_t done = 0;
     while (done < n) {
@@ -63,15 +91,30 @@ static ssize_t io64(int fd, void *buf, size_t n, int64_t off, bool wr) {
         uint64_t o = (uint64_t)off + done;
         ov.Offset = (DWORD)o, ov.OffsetHigh = (DWORD)(o >> 32);
         DWORD chunk = n - done > 0x40000000 ? 0x40000000 : (DWORD)(n - done), got = 0;
-        if (!(wr ? WriteFile(h, (const char *)buf + done, chunk, &got, &ov) : ReadFile(h, (char *)buf + done, chunk, &got, &ov)) || !got)
-            break;
+        if (!(wr ? WriteFile(h, (const char *)buf + done, chunk, &got, &ov) : ReadFile(h, (char *)buf + done, chunk, &got, &ov))) {
+            DWORD error=GetLastError();if(!wr&&error==ERROR_HANDLE_EOF)break;
+            ws_error(error);return done?(ssize_t)done:-1;
+        }
+        if(!got)break;
         done += got;
     }
     return (ssize_t)done;
 }
 #else
 static int64_t fd_size(int fd) { struct stat sb; return fstat(fd, &sb) ? -1 : (int64_t)sb.st_size; }
-static ssize_t io64(int fd, void *buf, size_t n, int64_t off, bool wr) { return wr ? pwrite(fd, buf, n, off) : pread(fd, buf, n, off); }
+static ssize_t io64(int fd, void *buf, size_t n, int64_t off, bool wr) {
+    if (off < 0 || (uint64_t)n > (uint64_t)INT64_MAX - (uint64_t)off) { errno = EOVERFLOW; return -1; }
+    size_t done = 0;
+    while (done < n) {
+        ssize_t got = wr ? pwrite(fd, (char *)buf + done, n - done, off + (int64_t)done)
+                         : pread(fd, (char *)buf + done, n - done, off + (int64_t)done);
+        if (got < 0 && errno == EINTR) continue;
+        if (got < 0) return done ? (ssize_t)done : -1;
+        if (!got) break;
+        done += (size_t)got;
+    }
+    return (ssize_t)done;
+}
 #endif
 #define pread64_(fd, b, n, o) io64(fd, b, n, o, false)
 #define pwrite64_(fd, b, n, o) io64(fd, (void *)(b), n, o, true)
@@ -81,7 +124,8 @@ static void pack_insert(const PackEntry *e) {
         size_t oc = pack_cap;
         PackEntry *ot = pack_tab;
         pack_cap = oc ? oc * 2 : 1u << 17;
-        pack_tab = calloc(pack_cap, sizeof *pack_tab);
+        PackEntry *next=calloc(pack_cap,sizeof *pack_tab);
+        if(!next){pack_cap=oc;cache_error("index allocation");return;}pack_tab=next;
         pack_n = 0;
         for (size_t i = 0; i < oc; i++) if (ot[i].hash) pack_insert(&ot[i]);
         free(ot);
@@ -101,35 +145,46 @@ static const PackEntry *pack_find(uint64_t h) {
 // (pack_lock held) take in the index entries other processes (or a crash) left past what we read
 static void pack_refresh(void) {
     int64_t isz = fd_size(idx_fd), psz = fd_size(pack_fd);
-    if (isz < 0 || psz < 0) return;
+    if (isz < 0 || psz < 0) { cache_error("pack extent"); return; }
     isz -= isz % (int64_t)sizeof(PackEntry);
     while (idx_read < isz) {
         PackEntry buf[1024];
         int64_t want = isz - idx_read;
         if (want > (int64_t)sizeof buf) want = sizeof buf;
         ssize_t got = pread64_(idx_fd, buf, (size_t)want, idx_read);
-        if (got <= 0) break;
-        got -= got % (ssize_t)sizeof(PackEntry);
-        for (ssize_t i = 0; i < got / (ssize_t)sizeof(PackEntry); i++)
-            if (buf[i].hash && buf[i].check == pack_check(&buf[i]) && buf[i].off + buf[i].bytes <= (uint64_t)psz)
+        if (got <= 0) { if (got < 0) cache_error("index read"); break; }
+        ssize_t complete = got - got % (ssize_t)sizeof(PackEntry);
+        if (!complete) break; // a concurrently truncated/torn tail must not spin
+        for (ssize_t i = 0; i < complete / (ssize_t)sizeof(PackEntry); i++)
+            if (buf[i].hash && buf[i].check == pack_check(&buf[i]) && buf[i].off <= (uint64_t)psz &&
+                buf[i].bytes <= (uint64_t)psz - buf[i].off)
                 pack_insert(&buf[i]);
-        idx_read += got;
+        idx_read += complete;
+        if (complete < want) break;
     }
 }
 
 // (pack_lock held)
+static WsGuard pack_guard;
+static int cache_open_pack(const char *path) {
+    WsGuard guard;if(wct_guard_open(&guard,path))return -1;
+    HANDLE h=wct_owned_file(guard.path,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,OPEN_ALWAYS);
+    ws_guard_close(&guard);if(h==INVALID_HANDLE_VALUE)return -1;
+    int fd=_open_osfhandle((intptr_t)h,O_RDWR|O_BINARY);if(fd<0)CloseHandle(h);return fd;
+}
 static bool pack_open(void) {
     if (pack_state) return pack_state > 0;
     pack_state = -1;
     const char *e = getenv("XCDE_SPIRV_LOOSE");
     if (e && atoi(e)) return false;
-    mkdir("cache", 0755);
-    pack_fd = open("cache/spirv.pack", O_RDWR | O_CREAT | O_BINARY, 0644);
-    idx_fd = open("cache/spirv.idx", O_RDWR | O_CREAT | O_BINARY, 0644);
+    if(!wct_directory("cache")||wct_guard_open(&pack_guard,"cache/.pack-lease")){cache_error("cache guard");return false;}
+    pack_fd=cache_open_pack("cache/spirv.pack");idx_fd=cache_open_pack("cache/spirv.idx");
     if (pack_fd < 0 || idx_fd < 0) {
+        cache_error("pack open");
         LOG("[shader] spirv pack unavailable: loose files\n");
         if (pack_fd >= 0) close(pack_fd);
         if (idx_fd >= 0) close(idx_fd);
+        pack_fd=idx_fd=-1;ws_guard_close(&pack_guard);
         return false;
     }
     pack_state = 1;
@@ -138,15 +193,52 @@ static bool pack_open(void) {
     return true;
 }
 
-static void file_lock(int fd, bool on) {
+static bool file_lock(int fd, bool on) {
 #ifdef _WIN32
     HANDLE h = (HANDLE)_get_osfhandle(fd);
     OVERLAPPED ov = {0};
-    if (on) LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK, 0, MAXDWORD, MAXDWORD, &ov);
-    else UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &ov);
+    bool ok = on ? LockFileEx(h, LOCKFILE_EXCLUSIVE_LOCK|LOCKFILE_FAIL_IMMEDIATELY, 0, MAXDWORD, MAXDWORD, &ov)
+                 : UnlockFileEx(h, 0, MAXDWORD, MAXDWORD, &ov);
+    if (!ok) { errno = EIO; cache_error(on ? "pack lock" : "pack unlock"); }
+    return ok;
 #else
-    flock(fd, on ? LOCK_EX : LOCK_UN);
+    int result;
+    do { result = flock(fd, on ? LOCK_EX : LOCK_UN); } while (result < 0 && errno == EINTR);
+    if (result < 0) cache_error(on ? "pack lock" : "pack unlock");
+    return result == 0;
 #endif
+}
+
+// Cache bytes are never trusted merely because an index entry exists. These
+// basic structural checks reject torn records before reflection/driver use;
+// they are not a full SPIR-V semantic validator or a payload checksum.
+static bool spirv_structure(const uint32_t *words, size_t n) {
+    if (n < 5 || words[0] != 0x07230203 || words[1] < 0x00010000 || words[1] > 0x00010600 ||
+        (words[1] & 255) || !words[3] || words[3]>0x3fffff || words[4]) return false;
+    for (size_t i = 5; i < n;) {
+        uint32_t count = words[i] >> 16;
+        if (!count || count > n - i) return false;
+        i += count;
+    }
+    return true;
+}
+
+static uint32_t *pack_read(PackEntry c, uint64_t h, size_t *nwords) {
+    if (!c.hash || c.bytes < 20 || c.bytes > 16u*1024*1024 || c.bytes % 4 || c.off < 16 || c.off>INT64_MAX) return NULL;
+    uint32_t hdr[4];
+    uint32_t *d = malloc(c.bytes);
+    if (!d) { cache_error("record allocation"); return NULL; }
+    ssize_t head = pread64_(pack_fd, hdr, 16, (int64_t)c.off - 16);
+    if (head < 0) cache_error("record header read");
+    if (head != 16 || hdr[0] != 0x56505358u || hdr[1] != c.bytes || ((uint64_t)hdr[3] << 32 | hdr[2]) != h) {
+        free(d);
+        return NULL;
+    }
+    ssize_t bytes = pread64_(pack_fd, d, c.bytes, (int64_t)c.off);
+    if (bytes < 0) cache_error("record read");
+    if (bytes != (ssize_t)c.bytes || !spirv_structure(d, c.bytes / 4)) { free(d); return NULL; }
+    *nwords = c.bytes / 4;
+    return d;
 }
 
 static uint32_t *pack_get(uint64_t h, size_t *nwords) {
@@ -156,36 +248,28 @@ static uint32_t *pack_get(uint64_t h, size_t *nwords) {
     if (!e) { pack_refresh(); e = pack_find(h); }
     PackEntry c = e ? *e : (PackEntry){0};
     pthread_mutex_unlock(&pack_lock);
-    if (!c.hash || c.bytes < 20 || c.bytes % 4 || c.off < 16) return NULL;
-    uint32_t hdr[4];
-    uint32_t *d = malloc(c.bytes);
-    if (pread64_(pack_fd, hdr, 16, (int64_t)c.off - 16) != 16 || hdr[0] != 0x56505358u || hdr[1] != c.bytes ||
-        ((uint64_t)hdr[3] << 32 | hdr[2]) != h || pread64_(pack_fd, d, c.bytes, (int64_t)c.off) != (ssize_t)c.bytes ||
-        d[0] != 0x07230203) {
-        free(d);
-        return NULL;
-    }
-    *nwords = c.bytes / 4;
-    return d;
-}
-
-static bool pack_has(uint64_t h) {
-    pthread_mutex_lock(&pack_lock);
-    bool ok = pack_open() && (pack_find(h) || (pack_refresh(), pack_find(h)));
-    pthread_mutex_unlock(&pack_lock);
-    return ok;
+    return pack_read(c, h, nwords);
 }
 
 static bool pack_put(uint64_t h, const uint32_t *spv, size_t nwords) {
     pthread_mutex_lock(&pack_lock);
     if (!pack_open()) { pthread_mutex_unlock(&pack_lock); return false; }
-    file_lock(idx_fd, true);
+    if (!file_lock(idx_fd, true)) { pthread_mutex_unlock(&pack_lock); return false; }
     pack_refresh();  // (another process may have stored it meanwhile)
-    bool ok = pack_find(h) != NULL;
+    const PackEntry *present = pack_find(h);
+    size_t present_words = 0;
+    uint32_t *existing = present ? pack_read(*present, h, &present_words) : NULL;
+    bool ok = existing != NULL;
+    free(existing); // invalid payload/index must be replaced by a new valid record
     int64_t psz = fd_size(pack_fd), isz = fd_size(idx_fd);
+    if (psz < 0 || isz < 0) cache_error("pack extent");
     if (!ok && psz >= 0 && isz >= 0) {
+        if (nwords > UINT32_MAX / 4 || nwords > (SIZE_MAX - 16) / 4) {
+            errno = EOVERFLOW; cache_error("record extent"); file_lock(idx_fd, false); pthread_mutex_unlock(&pack_lock); return false;
+        }
         size_t bytes = nwords * 4;
         uint8_t *rec = malloc(16 + bytes);
+        if (!rec) { cache_error("record allocation"); file_lock(idx_fd, false); pthread_mutex_unlock(&pack_lock); return false; }
         uint32_t hdr[4] = {0x56505358u, (uint32_t)bytes, (uint32_t)h, (uint32_t)(h >> 32)};
         memcpy(rec, hdr, 16);
         memcpy(rec + 16, spv, bytes);
@@ -194,10 +278,11 @@ static bool pack_put(uint64_t h, const uint32_t *spv, size_t nwords) {
         isz -= isz % (int64_t)sizeof e;  // (a torn entry from a crash is overwritten)
         ok = pwrite64_(pack_fd, rec, 16 + bytes, psz) == (ssize_t)(16 + bytes) &&
              pwrite64_(idx_fd, &e, sizeof e, isz) == (ssize_t)sizeof e;
+        if (!ok) cache_error("record write");
         free(rec);
         if (ok) { pack_insert(&e); if (idx_read == isz) idx_read += sizeof e; }
     }
-    file_lock(idx_fd, false);
+    if (!file_lock(idx_fd, false)) ok = false;
     pthread_mutex_unlock(&pack_lock);
     return ok;
 }
@@ -214,31 +299,50 @@ static uint32_t *cache_load(uint64_t h, size_t *nwords) {
 static uint32_t *loose_load(uint64_t h, size_t *nwords) {
     char path[64];
     snprintf(path, sizeof path, "cache/spirv/%016llx.spv", (unsigned long long)h);
-    FILE *f = fopen(path, "rb");
+    FILE *f = wct_read(path,16u*1024*1024);
     if (!f) return NULL;
-    fseek(f, 0, SEEK_END);
+    if (fseek(f, 0, SEEK_END)) { cache_error("loose seek"); fclose(f); return NULL; }
     long n = ftell(f);
-    fseek(f, 0, SEEK_SET);
+    if (n < 0 || fseek(f, 0, SEEK_SET)) { cache_error("loose extent"); fclose(f); return NULL; }
     uint32_t *d = n > 20 && n % 4 == 0 ? malloc((size_t)n) : NULL;
-    if (d && fread(d, 1, (size_t)n, f) != (size_t)n) { free(d); d = NULL; }
-    fclose(f);
-    if (d && d[0] != 0x07230203) { free(d); d = NULL; }
+    if (d && fread(d, 1, (size_t)n, f) != (size_t)n) {
+        if (ferror(f)) cache_error("loose read");
+        free(d); d = NULL;
+    }
+    if (fclose(f)) { cache_error("loose close"); free(d); d = NULL; }
+    if (d && !spirv_structure(d, (size_t)n / 4)) { free(d); d = NULL; }
     if (d) *nwords = (size_t)n / 4;
     return d;
 }
 
-static void cache_store(uint64_t h, const uint32_t *spv, size_t nwords) {
-    if (pack_put(h, spv, nwords)) return;
-    static int made;
-    if (!made) { made = 1; mkdir("cache", 0755); mkdir("cache/spirv", 0755); }
-    char path[64], tmp[80];
-    snprintf(path, sizeof path, "cache/spirv/%016llx.spv", (unsigned long long)h);
-    snprintf(tmp, sizeof tmp, "%s.%llx", path, (unsigned long long)(uintptr_t)&made ^ (unsigned long long)(uintptr_t)spv);
-    FILE *f = fopen(tmp, "wb");
-    if (!f) return;
-    bool ok = fwrite(spv, 4, nwords, f) == nwords;
-    fclose(f);
-    if (!ok || rename(tmp, path) != 0) remove(tmp);  // (another thread may have stored it first)
+static void cache_store(uint64_t h,const uint32_t *spv,size_t nwords) {
+    if(pack_put(h,spv,nwords))return;
+    if(!wct_directory("cache")||!wct_directory("cache/spirv")){cache_error("loose directory");return;}
+    char path[64];snprintf(path,sizeof path,"cache/spirv/%016llx.spv",(unsigned long long)h);
+    if(nwords>16u*1024*1024/4||!wct_write(path,spv,nwords*4,NULL,16u*1024*1024))cache_error("loose commit");
+}
+
+// [XCDE] LINUX-018: called after precompile jobs join. Pack data reaches stable
+// storage before its index; runtime cache failures remain observable, not fatal.
+bool vk_spirv_cache_flush(void) {
+    pthread_mutex_lock(&pack_lock);
+    bool ok = true;
+    if (pack_state > 0) {
+        ok = file_lock(idx_fd, true);
+        if (ok) {
+            if (!cache_sync_file(pack_fd, true) || !cache_sync_file(idx_fd, true)) { cache_error("pack sync"); ok = false; }
+#ifndef _WIN32
+            if (ok) {
+                int directory = open("cache", O_RDONLY | O_DIRECTORY | O_CLOEXEC);
+                if (directory < 0) { cache_error("pack directory open"); ok = false; }
+                else { if (!cache_sync_file(directory, false)) { cache_error("pack directory sync"); ok = false; } close(directory); }
+            }
+#endif
+            if (!file_lock(idx_fd, false)) ok = false;
+        }
+    }
+    pthread_mutex_unlock(&pack_lock);
+    return ok;
 }
 
 // Vertex shaders: every float add/sub/mul/div/fma gets NoContraction, so no compiler fuses or splits them. Depth
@@ -304,11 +408,11 @@ uint64_t vk_spirv_hits, vk_spirv_misses;  // [XCDE] T187
 _Thread_local unsigned vk_spirv_tl_misses;
 // [XCDE] T187: is this source's SPIR-V in the disk cache already (precompilation skips it)
 bool vk_spirv_cached(const char *src, int stage) {
-    char path[64];
-    struct stat sb;
-    if (pack_has(src_hash(src, stage))) return true;
-    snprintf(path, sizeof path, "cache/spirv/%016llx.spv", (unsigned long long)src_hash(src, stage));
-    return stat(path, &sb) == 0 && sb.st_size > 20;
+    size_t words = 0;
+    uint32_t *cached = cache_load(src_hash(src, stage), &words);
+    bool valid = cached != NULL;
+    free(cached);
+    return valid;
 }
 
 uint32_t *vk_glsl_to_spirv(const char *src, int stage, const char *name, size_t *nwords) {

@@ -58,7 +58,11 @@ The optional native Windows FSR4 Lite component retains GPL-2.0-or-later and the
 complete AMD SDK notice in `third_party/fsr4_native`. Its MIT API header does not
 relicense the backend. Combined distribution requires applicable GPL terms and
 corresponding combined source/build scripts; dynamic linking is no exemption.
-No model, vendor SDK DLL, capture or translated shader is included in source.
+The local preparation recorder/translator sources under `third_party/fsr4cap`
+retain GPL-2.0-or-later and their exact upstream notices; AMD API headers and the
+AMD extension shim retain their MIT notices. Native process/I/O adapters and the
+authored Vulkan validator retain MIT attribution. No model, vendor SDK DLL,
+capture or translated shader is included in source.
 See `docs/WINDOWS_FSR4.md` for exact provenance and current preparation limits.
 
 | Component | Use |

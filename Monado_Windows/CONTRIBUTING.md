@@ -9,7 +9,10 @@ entry with the reason.
 1. The repository holds no code, data, assets, keys, firmware, system fonts or binaries of the game, nor anything
    generated from them (lifted C, tables, translated shaders, caches, captures showing assets).
 2. Everything derived lives in `targets/`, `build/`, `generated/`, `cache/`, ignored by git.
-3. The packager MUST fail when it finds a derived file (`tools/package_guard.py`, run by CI and by a unit test).
+3. The packager MUST fail when it finds a derived file. Current Windows source publication uses the repository-root
+   `tools/publication_guard.py` and exact reviewed exports from `tools/export_windows_sources.py`; the original
+   per-port `tools/package_guard.py` delegates to that same strict whole-tree guard. Its old `--git`
+   partial working-tree scan is refused; check a complete reviewed export instead.
 4. Allowed: public SDK API names, addresses, counts and version-check hashes.
 
 ### Article II — Your own dump, no keys

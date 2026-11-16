@@ -20,7 +20,30 @@ Module g_modules[4];
 int g_nmodules;
 static int phase;
 
-bool plat_reserve_guest(uint64_t a, uint64_t b) { (void)a; (void)b; return true; }
+bool plat_reserve_guest(uint64_t a, uint64_t b) {
+    (void)a;(void)b;
+    const wchar_t *force=_wgetenv(L"AUTHORED_RELAUNCH");
+    if(!force)return true;
+    if(!wcscmp(force,L"always"))return false;
+    const wchar_t *attempt=_wgetenv(L"XCDE_RELAUNCH");
+    return attempt&&!wcscmp(attempt,L"1");
+}
+static bool relaunch_fault(const wchar_t *kind) {
+    const wchar_t *fault=_wgetenv(L"AUTHORED_RELAUNCH_FAULT");
+    if(fault&&!wcscmp(fault,kind)){SetLastError(ERROR_ACCESS_DENIED);return true;}
+    return false;
+}
+HANDLE WINAPI authored_CreateJobObjectW(LPSECURITY_ATTRIBUTES attributes,LPCWSTR name) {
+    return relaunch_fault(L"create")?NULL:CreateJobObjectW(attributes,name);
+}
+BOOL WINAPI authored_SetInformationJobObject(HANDLE job,JOBOBJECTINFOCLASS kind,LPVOID data,DWORD size) {
+    return relaunch_fault(L"configure")?FALSE:SetInformationJobObject(job,kind,data,size);
+}
+BOOL WINAPI authored_AssignProcessToJobObject(HANDLE job,HANDLE child) {
+    fprintf(stderr,"AUTHORED relaunch child PID %lu\n",(unsigned long)GetProcessId(child));
+    return relaunch_fault(L"assign")?FALSE:AssignProcessToJobObject(job,child);
+}
+DWORD WINAPI authored_ResumeThread(HANDLE thread) {return relaunch_fault(L"resume")?(DWORD)-1:ResumeThread(thread);}
 void plat_init(void) { phase = 1; }
 void plat_sleep_until_ns(uint64_t n) { (void)n; abort(); }
 uint64_t plat_now_ns(void) { return 0; }
@@ -56,7 +79,9 @@ bool tmp_fsr4_configure(const char *assets,const char *component) {
 }
 const char *tmp_fsr4_status(void) {return "authored local models unavailable";}
 int vk_precompile_main(const char *p) {
-    (void)p; assert(!phase); fputs("AUTHORED precompile boundary\n", stderr); return 23;
+    (void)p; assert(!phase);
+    assert(getenv("XCDE_PRECOMPILE_SESSION")&&getenv("XCDE_PRECOMPILE_ID"));
+    fputs("AUTHORED precompile boundary\n", stderr); return 23;
 }
 bool rt_resource(const char *name, const char *dev, char *out, size_t n) {
     (void)dev; const char *root = getenv("AUTHORED_LIBRARY_ROOT");
@@ -70,6 +95,8 @@ bool plat_exe_path(char *out, size_t n) {
 }
 int main(int argc, char **argv) {
     assert(argc == 3);
+    const wchar_t *expected=_wgetenv(L"AUTHORED_RELAUNCH_EXPECT");
+    if(expected)assert(wcsstr(GetCommandLineW(),expected));
     if (!strcmp(argv[1], "present")) return gamelib_present(NULL) ? 0 : 1;
     char input[8192];
     wchar_t *wide_input = _wgetenv(L"AUTHORED_LIBRARY_ROOT");
@@ -78,6 +105,16 @@ int main(int argc, char **argv) {
         char *configured[]={argv[0],"--fsr4-assets","C:/authored models/雪","--fsr4-component","C:/authored component.dll",input,NULL};
         return authored_boot_main(!strcmp(argv[1],"fsr4")?6:3,configured);
     }
-    char *args[] = {argv[0], !strcmp(argv[1], "precompile") ? "--precompile" : input, input, NULL};
-    return authored_boot_main(!strcmp(argv[1], "precompile") ? 3 : 2, args);
+    if(!strncmp(argv[1],"precompile",10)) {
+        char *prepared[]={argv[0],"--precompile",input,"--session","bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "--identity","aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","--session","bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",NULL};
+        int count=7;
+        if(!strcmp(argv[1],"precompile-missing"))count=3;
+        if(!strcmp(argv[1],"precompile-duplicate"))count=9;
+        if(!strcmp(argv[1],"precompile-extra"))count=8;
+        if(!strcmp(argv[1],"precompile-session"))prepared[4]="gggggggggggggggggggggggggggggggg";
+        if(!strcmp(argv[1],"precompile-identity"))prepared[6]="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        return authored_boot_main(count,prepared);
+    }
+    char *args[]={argv[0],input,input,NULL};return authored_boot_main(2,args);
 }

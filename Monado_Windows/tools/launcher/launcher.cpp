@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <vector>
 #include <map>
+#include <memory>
 #ifdef __linux__
 #include "linux_host.h"
 #include "linux_gpu_probe.h" // [XCDE] LINUX-103: read-only GPU capability query
@@ -35,11 +36,24 @@
 #ifdef _WIN32
 #include "windows_host.h"
 #include "windows_profile.h"
+#include "windows_preparation.h"
+#include "windows_precompile.h"
 #include "windows_report.h"
 #include "windows_gpu_probe.h"
 #include "../../runtime/host/settings_transaction_windows.h"
 #endif
 #include "../../runtime/ui/quality_controls_linux.h" // shared portable quality UI
+#ifdef _WIN32
+#ifndef MONADO_WINDOWS_BASELINE_LABEL
+#define MONADO_WINDOWS_BASELINE_LABEL "Windows development (authored component fixture)"
+#endif
+#ifndef MONADO_WINDOWS_BUILD_IDENTITY
+#define MONADO_WINDOWS_BUILD_IDENTITY "component fixture"
+#endif
+#ifndef MONADO_FSR4_CONTEXT_SHA256
+#define MONADO_FSR4_CONTEXT_SHA256 ""
+#endif
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -495,6 +509,10 @@ static std::string g_root;  // Profile state: settings, targets, saves, caches a
 #ifdef _WIN32
 static std::string g_runtime_root; // Authored executable/dependencies remain adjacent to launcher.
 static std::string g_fsr4_assets,g_fsr4_component;
+static monado_preparation::Worker g_fsr4_worker;
+static monado_preparation::Selection g_fsr4_selection;
+static monado_preparation::ToolSelection g_fsr4_tool_selection;
+static HWND g_native_window=nullptr;
 static std::vector<std::wstring> windows_game_arguments(bool precompile) {
     std::vector<std::wstring> args;
     if(!g_fsr4_assets.empty())args={L"--fsr4-assets",monado_launcher_windows::wide(g_fsr4_assets),L"--fsr4-component",monado_launcher_windows::wide(g_fsr4_component)};
@@ -733,11 +751,12 @@ static void launch() {
 
 // ------------------------------------------------------------------ shader precompilation (T187)
 // "Precompilar shaders" runs `build/xcde.exe --precompile targets` (runtime/nvn/vulkan/precompile.c): it translates every
-// shader in the game's files into cache/spirv, so the first visit to an area doesn't stop to compile. It reports
-// progress in cache/precompile_progress.txt and writes cache/precompile_done.txt at the end. JUGAR runs it first
-// when it was never done (once, a few minutes; "Omitir" skips it).
+// supported shader work into the private cache. Progress and completion belong
+// to this owned session; Play never starts preparation automatically.
 #ifdef _WIN32
 static HANDLE g_pc_proc;
+static std::unique_ptr<monado_precompile_windows::Session> g_pc_session;
+static Uint64 g_pc_cancel_tick;
 #endif
 static bool g_pc_then_play, g_pc_play_now;
 static float g_pc_frac;
@@ -747,26 +766,6 @@ static bool g_pc_quit;
 static void llog(const char *fmt, ...);
 #endif
 
-// [XCDE] T211: done for THIS build - precompile_done.txt names the build/xcde.exe (size, time) it was made with; a new
-// build translates shaders differently, so JUGAR precompiles again (unchanged shaders are cache hits: quick)
-static bool pc_done() {
-#ifdef __linux__
-    // [XCDE] LINUX-018: optional explicit preparation never gates Play. Fresh
-    // completion is checked by owned child/session, not an inherited marker.
-    return false;
-#else
-    FILE *f = monado_launcher_windows::open(path("cache/precompile_done.txt"), "r");
-    if (!f) return false;
-    char line[256];
-    long long sz = -1, mt = -1;
-    while (fgets(line, sizeof line, f)) sscanf(line, "exe %lld %lld", &sz, &mt);
-    fclose(f);
-    struct _stat64 es;
-    auto executable=monado_launcher_windows::wide(monado_launcher_windows::runtime_executable(g_runtime_root));
-    if (_wstat64(executable.c_str(), &es) != 0) return false;
-    return sz == (long long)es.st_size && mt == (long long)es.st_mtime;
-#endif
-}
 static bool pc_running() {
 #ifdef _WIN32
     return g_pc_proc != NULL;
@@ -779,22 +778,26 @@ static bool pc_running() {
 
 static void pc_start(bool then_play) {
     (void)then_play;
-    if(g_pc_proc || g_game_proc)return;
-    CreateDirectoryW(monado_launcher_windows::wide(path("cache")).c_str(),nullptr);
-    DeleteFileW(monado_launcher_windows::wide(path("cache/precompile_progress.txt")).c_str());
-    g_pc_proc=monado_launcher_windows::start(g_runtime_root,g_root,windows_game_arguments(true),"build/last_precompile.log",BELOW_NORMAL_PRIORITY_CLASS);
-    if(!g_pc_proc){g_status="Could not start shader preparation (Windows error "+std::to_string(GetLastError())+").";return;}
-    g_pc_then_play=g_pc_play_now=false;g_pc_frac=0;
-    g_pc_text="Scanning shader files...";g_status="Preparing shaders. The game will not start automatically.";
+    if(g_pc_proc || g_game_proc || g_fsr4_worker.snapshot().busy)return;
+    try {
+        auto session=std::make_unique<monado_precompile_windows::Session>();
+        session->begin(g_runtime_root,g_root);
+        auto args=windows_game_arguments(true);
+        args.insert(args.end(),{L"--session",monado_launcher_windows::wide(session->session),L"--identity",monado_launcher_windows::wide(session->identity)});
+        g_pc_proc=monado_launcher_windows::start(g_runtime_root,g_root,args,"build/last_precompile.log",BELOW_NORMAL_PRIORITY_CLASS);
+        if(!g_pc_proc)throw std::runtime_error("Could not start shader preparation (Windows error "+std::to_string(GetLastError())+").");
+        g_pc_session=std::move(session);g_pc_cancel_tick=0;
+        g_pc_then_play=g_pc_play_now=false;g_pc_frac=0;
+        g_pc_text="Checking current build and input";g_status="Preparing shaders. The game will not start automatically.";
+    } catch(const std::exception &error) {g_status=error.what();}
 }
 
 static void pc_stop() {
 #ifdef _WIN32
-    if (!g_pc_proc) return;
-    TerminateProcess(g_pc_proc, 1);
-    WaitForSingleObject(g_pc_proc, 2000);
-    CloseHandle(g_pc_proc);
-    g_pc_proc = NULL;
+    if(!g_pc_proc || !g_pc_session)return;
+    if(!g_pc_cancel_tick)g_pc_cancel_tick=std::max<Uint64>(1,SDL_GetTicks());
+    try{g_pc_session->cancel();g_status="Stopping shader preparation; waiting for current compiler work...";}
+    catch(const std::exception &error){g_status=error.what();}
 #elif defined(__linux__)
     if (!launcher_linux::cancel_precompile()) { g_status = "Could not request cancellation: " + launcher_linux::error; return; }
     g_status = "Stopping shader preparation; waiting for current compiler work...";
@@ -804,32 +807,30 @@ static void pc_stop() {
 // (every frame while it runs) progress from the file; at the end, the result and JUGAR if it was waiting
 static void pc_poll() {
 #ifdef _WIN32
-    if (!g_pc_proc) return;
-    static Uint64 last;
-    Uint64 now = SDL_GetTicks();
-    if (now - last < 200) return;
-    last = now;
-    FILE *f = monado_launcher_windows::open(path("cache/precompile_progress.txt"), "r");
-    if (f) {
-        char phase[16] = "";
-        unsigned long long fd = 0, ft = 0, found = 0, done = 0;
-        if (fscanf(f, "%15s %llu %llu %llu %llu", phase, &fd, &ft, &found, &done) == 5 && ft) {
-            // reading the files is ~1/5 of the time, building the programs found the rest (it follows the reading)
-            float fs = (float)fd / (float)ft, fc = found ? (float)done / (float)found : 0.0f;
-            g_pc_frac = 0.15f * fs + 0.85f * fs * fc;
-            char t[160];
-            if (!strcmp(phase, "seed")) snprintf(t, sizeof t, "%s", T("Variantes conocidas (semilla)…"));  // [XCDE] T211: the seed pass
-            else snprintf(t, sizeof t, T("Archivos %llu de %llu · programas de shaders listos %llu de %llu"), fd, ft, done, found);
-            g_pc_text = t;
-        }
-        fclose(f);
+    if(!g_pc_proc || !g_pc_session)return;
+    static Uint64 last;Uint64 now=SDL_GetTicks();if(now-last<200)return;last=now;
+    auto snapshot=g_pc_session->snapshot();
+    if(snapshot.valid){
+        const char *phase="Checking build and input",*done="programs_done",*total="programs";
+        if(snapshot.phase=="scan"){phase="Scanning files";done="files_done";total="files_total";}
+        else if(snapshot.phase=="build")phase="Preparing shader programs";
+        else if(snapshot.phase=="seed"){phase="Preparing recorded shader variants";done="seed_done";total="seed_total";}
+        else if(snapshot.phase=="pipelines"){phase="Preparing recorded pipelines";done="variants_done";total="variants_total";}
+        else if(snapshot.phase=="done")phase="Finishing cache commits";
+        g_pc_frac=snapshot.count(total)?std::min(1.f,float(snapshot.count(done))/float(snapshot.count(total))):0;
+        g_pc_text=std::string(phase)+": "+std::to_string(snapshot.count(done))+" / "+std::to_string(snapshot.count(total));
     }
-    if (WaitForSingleObject(g_pc_proc, 0) != WAIT_OBJECT_0) return;
-    DWORD code = 1;
-    GetExitCodeProcess(g_pc_proc, &code);
-    CloseHandle(g_pc_proc);
-    g_pc_proc = NULL;
-    g_status=code==0 && pc_done()?"Shader preparation complete.":"Shader preparation failed or was incomplete. See build/last_precompile.log; retry explicitly.";
+    if(WaitForSingleObject(g_pc_proc,0)!=WAIT_OBJECT_0){
+        if(g_pc_cancel_tick&&now-g_pc_cancel_tick>10000)TerminateProcess(g_pc_proc,ERROR_CANCELLED);
+        return;
+    }
+    DWORD code=1;GetExitCodeProcess(g_pc_proc,&code);CloseHandle(g_pc_proc);g_pc_proc=nullptr;
+    snapshot=g_pc_session->snapshot(); // Drain the final atomic record after observing child exit.
+    bool complete=snapshot.complete(code),cancelled=g_pc_cancel_tick||(snapshot.valid&&snapshot.state=="cancelled");
+    g_pc_session.reset();g_pc_cancel_tick=0;
+    if(complete)g_status="Shader preparation complete; current session and cache commits checked.";
+    else if(cancelled)g_status="Shader preparation cancelled. Completed cache entries and logs are preserved; retry explicitly.";
+    else g_status="Shader preparation failed or was incomplete. See build/last_precompile.log; retry explicitly.";
     g_pc_then_play=g_pc_play_now=false;
 #elif defined(__linux__)
     if (!pc_running()) return;
@@ -945,6 +946,9 @@ static void tab_gpu_configuration() {
 }
 #endif
 static void tab_graphics() {
+#ifdef _WIN32
+    ImGui::TextDisabled("%s",MONADO_WINDOWS_BUILD_IDENTITY);
+#endif
 #if defined(__linux__) || defined(_WIN32)
     Settings quality_before=quality_settings(),quality=quality_before;
     if(monado_quality_controls_linux(&quality,g.ui_lang==1)) {
@@ -1094,10 +1098,29 @@ static void tab_graphics() {
     if(g.upscaler==4) {
         ImGui::TextWrapped("%s",g_fsr4_assets.empty()?"FSR4 Lite is unavailable: no explicit verified local models/component were supplied. Existing FSR3/spatial fallback is retained; your preference is preserved.":"Local FSR4 paths were supplied. Runtime validates all four Lite sets, component identity, GPU features and each dispatch; failures retain the existing fallback.");
     }
-    ImGui::BeginDisabled();ImGui::Button("Prepare FSR4 Lite (optional)");ImGui::EndDisabled();
-    ImGui::TextWrapped("Native capture/translation preparation is not implemented. Build the optional source component and explicitly import previously prepared local models using tools/setup_windows_fsr4.py. No models are downloaded or selected automatically.");
+    auto preparation=g_fsr4_worker.snapshot();
+    if(preparation.busy){
+        ImGui::TextWrapped("%s",preparation.message.c_str());
+        ImGui::ProgressBar(preparation.total?float(preparation.done)/float(preparation.total):-float(ImGui::GetTime()),ImVec2(-1,0),"Preparing optional FSR4 Lite");
+        if(ImGui::Button("Cancel FSR4 preparation"))g_fsr4_worker.stop();
+    }else{
+        ImGui::BeginDisabled(g_game_proc!=nullptr||pc_running());
+        if(ImGui::Button(g_fsr4_assets.empty()?"Prepare FSR4 Lite (optional)":"Prepare FSR4 Lite again")){
+            try{if(monado_preparation::choose(g_native_window,g_fsr4_selection))g_fsr4_worker.start(g_runtime_root,g_root,MONADO_FSR4_CONTEXT_SHA256,g_fsr4_selection);}
+            catch(const std::exception &error){g_status=error.what();}
+        }ImGui::EndDisabled();
+        ImGui::BeginDisabled(g_game_proc!=nullptr||pc_running());
+        if(ImGui::Button("Build FSR4 preparation tools...")){
+            try{if(monado_preparation::choose_tools(g_native_window,g_fsr4_tool_selection))g_fsr4_worker.start_tools(g_runtime_root,g_root,MONADO_FSR4_CONTEXT_SHA256,g_fsr4_tool_selection);}
+            catch(const std::exception &error){g_status=error.what();}
+        }ImGui::EndDisabled();
+        if(!preparation.message.empty())ImGui::TextWrapped("%s",preparation.message.c_str());
+    }
+    ImGui::TextWrapped("Select your local accepted AMD SDK DLL, checked native preparation tools, and source-built component. Preparation does not download models or change your chosen upscaler. Each retry preserves the previous model and logs.");
     if(ImGui::Button("NVIDIA Smooth Motion setup help"))SDL_OpenURL("https://nvidia.custhelp.com/app/answers/detail/a_id/5621");
     ImGui::TextWrapped("Smooth Motion is configured per program in NVIDIA App. This launcher does not change driver settings. Generated/output identities are unavailable from a supported native API; keep integrated generation off when using external generation.");
+    ImGui::TextWrapped("Current game program: %s",monado_launcher_windows::runtime_executable(g_runtime_root).c_str());
+    if(ImGui::Button("Copy game program path"))ImGui::SetClipboardText(monado_launcher_windows::runtime_executable(g_runtime_root).c_str());
 #endif
     launcher_theme::section(T("Calidad"));
     launcher_theme::checkbox(T("Antialiasing SMAA"), &g.smaa);
@@ -1579,6 +1602,8 @@ int main(int argc, char **argv) {
         fprintf(stderr,"%s\n",profile_error.c_str());return 2;
     }
     const char *shot=options.shot.empty()?nullptr:options.shot.c_str();
+    if(*MONADO_FSR4_CONTEXT_SHA256&&(GetFileAttributesW(monado_launcher_windows::wide(g_root+"/fsr4-preparation.json").c_str())!=INVALID_FILE_ATTRIBUTES||GetFileAttributesW(monado_launcher_windows::wide(g_root+"/fsr4-tools.json").c_str())!=INVALID_FILE_ATTRIBUTES))
+        g_fsr4_worker.start(g_runtime_root,g_root,MONADO_FSR4_CONTEXT_SHA256,g_fsr4_selection,true);
     int shot_tab=options.shot_tab,frame_no=0;
     bool shot_pc=options.shot_precompile;
     g_llog = monado_launcher_windows::open_append(path("build/launcher.log"));
@@ -1601,6 +1626,9 @@ int main(int argc, char **argv) {
     const int launcher_w = 1267, launcher_h = 804;
     SDL_Window *win = SDL_CreateWindow("Monado II - Launcher", launcher_w, launcher_h, SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIDDEN);
     if (!win) return fail("Could not create the launcher window.");
+#ifdef _WIN32
+    g_native_window=(HWND)SDL_GetPointerProperty(SDL_GetWindowProperties(win),SDL_PROP_WINDOW_WIN32_HWND_POINTER,nullptr);
+#endif
 #ifdef __linux__
     rt_window_icon(win); // [XCDE] LINUX-016: same adjacent PNG as the game.
 #endif
@@ -1658,6 +1686,18 @@ int main(int argc, char **argv) {
     if (shot_pc) pc_start(false);
     while (run) {
 #ifdef _WIN32
+        monado_preparation::Snapshot preparation_state;
+        if(g_fsr4_worker.take_completion(preparation_state)){g_status=preparation_state.message;if(preparation_state.status=="success"&&!preparation_state.assets.empty()&&!preparation_state.component.empty()){g_fsr4_assets=preparation_state.assets;g_fsr4_component=preparation_state.component;g_fsr4_selection.sdk=monado_launcher_windows::wide(preparation_state.sdk);g_fsr4_selection.tools=monado_launcher_windows::wide(preparation_state.tools);g_fsr4_selection.component=monado_launcher_windows::wide(preparation_state.component);}}
+        if(!preparation_state.busy&&!preparation_state.tools.empty()){
+            g_fsr4_selection.tools=monado_launcher_windows::wide(preparation_state.tools);
+            if(!preparation_state.component.empty())g_fsr4_selection.component=monado_launcher_windows::wide(preparation_state.component);
+            if(!preparation_state.archives.empty())g_fsr4_tool_selection.archives=monado_launcher_windows::wide(preparation_state.archives);
+            if(!preparation_state.support.empty())g_fsr4_tool_selection.support=monado_launcher_windows::wide(preparation_state.support);
+            if(!preparation_state.cmake.empty())g_fsr4_tool_selection.cmake=monado_launcher_windows::wide(preparation_state.cmake);
+            if(!preparation_state.ninja.empty())g_fsr4_tool_selection.ninja=monado_launcher_windows::wide(preparation_state.ninja);
+            if(!preparation_state.compiler.empty())g_fsr4_tool_selection.compiler=monado_launcher_windows::wide(preparation_state.compiler);
+            if(!preparation_state.vulkan_prefix.empty())g_fsr4_tool_selection.vulkan_prefix=monado_launcher_windows::wide(preparation_state.vulkan_prefix);
+        }
         if(g_game_proc && WaitForSingleObject(g_game_proc,0)==WAIT_OBJECT_0) {
             DWORD code=1;GetExitCodeProcess(g_game_proc,&code);CloseHandle(g_game_proc);g_game_proc=nullptr;
             launched=g_launched_ok=false;reload_after_game();
@@ -1713,7 +1753,11 @@ int main(int argc, char **argv) {
         const char *actions[] = {T("JUGAR"), T("Precompilar shaders"), T("Guardar ajustes"), T("Crear reporte"), T("Salir")};
         const auto layout = launcher_theme::layout(vp->WorkPos, vp->WorkSize, scale, actions, pc_running());
         launcher_theme::backdrop(layout);
+#ifdef _WIN32
+        launcher_theme::branding(layout, MONADO_WINDOWS_BASELINE_LABEL);
+#else
         launcher_theme::branding(layout, T("Recompilación nativa para PC · configuración"));
+#endif
 #ifdef __linux__
         ImGui::BeginDisabled(launcher_linux::activity_busy() || g_pc_quit);
 #endif
@@ -1751,9 +1795,7 @@ int main(int argc, char **argv) {
 #else
         if (!have_game) ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", T("Faltan los archivos del juego en targets/ (exefs y romfs de tu copia)."));
         else if (!have_exe) ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", T("Falta build/xcde.exe (compila el juego primero)."));
-        else ImGui::TextDisabled(T("%s"), g_status.empty() ? (pc_done() ? T("Listo. Guardado: save/   Ajustes: xcde.ini")
-                                                                   : "Ready. Shader preparation is optional.")
-                                                       : g_status.c_str());
+        else ImGui::TextDisabled("%s",g_status.empty()?"Ready. Shader preparation is optional.":g_status.c_str());
 #endif
         ImGui::PopTextWrapPos();
         ImGui::EndChild();
@@ -1768,10 +1810,6 @@ int main(int argc, char **argv) {
             ImGui::SameLine();
             if (ImGui::Button(g_pc_then_play ? T("Omitir") : T("Detener"), ImVec2(-1, 0))) {
                 pc_stop();
-#ifndef __linux__
-                g_status = T("Precompilación detenida (se puede seguir otro día: lo ya hecho se conserva)");
-                if (g_pc_then_play) g_pc_play_now = true;
-#endif
             }
         }
         if (g_pc_play_now) {
@@ -1783,7 +1821,7 @@ int main(int argc, char **argv) {
 #ifdef __linux__
         ImGui::BeginDisabled(!have_game || !have_exe || launcher_linux::activity_busy() || g_pc_quit);
 #else
-        ImGui::BeginDisabled(!have_game || !have_exe || g_game_proc || pc_running());
+        ImGui::BeginDisabled(!have_game || !have_exe || g_game_proc || pc_running() || g_fsr4_worker.snapshot().busy);
 #endif
         launcher_theme::footer_button(layout, 0);
         ImGui::PushStyleColor(ImGuiCol_Button, launcher_theme::color(0xC91542));
@@ -1872,7 +1910,12 @@ int main(int argc, char **argv) {
         SDL_RenderPresent(ren);
     }
     if(g_game_proc){CloseHandle(g_game_proc);g_game_proc=nullptr;}
-    if (!launched) pc_stop();  // (closing the launcher stops a precompilation; what it wrote is kept)
+    if (!launched) {
+        pc_stop();
+#ifdef _WIN32
+        while(pc_running()){pc_poll();Sleep(50);}
+#endif
+    }  // Stop only the owned preparation; completed cache entries are preserved.
     ImGui_ImplSDLRenderer3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
