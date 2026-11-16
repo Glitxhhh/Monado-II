@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.26 - November 16, 2026
+
+- Fix updates from existing split-game installations when an older launcher asks
+  to reuse the active game-code library from a previous update folder. The new
+  self-bound payload correctly rejects that foreign build path; the builder now
+  verifies that the request names the exact active game and regenerates locally
+  from the validated game files instead. Native path, input, content and ABI
+  checks remain enforced. Unrelated or tampered selections are still rejected.
+- This fallback can take longer because game code is compiled again. It avoids
+  importing a library outside the candidate payload and keeps existing gameplay,
+  renderer options, input, saves, settings and Quick Step metadata intact.
+- Retain the 0.1.25 cross-distribution dependency and launcher startup corrections.
+  Failed preparation keeps the previous working build selected.
+- Windows remains **Experimental 0.1.0**, with unchanged release assets and known
+  temporal/DLSS flickering and hardware/gameplay qualification limits.
+
 ## 0.1.25 — November 16, 2026
 
 - Fix Fedora/Distrobox portable SDL builds where a host package-tool wrapper

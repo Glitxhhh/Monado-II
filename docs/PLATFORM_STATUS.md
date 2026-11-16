@@ -1,4 +1,4 @@
-# Platform status: Linux 0.1.25 and Windows Experimental 0.1.0
+# Platform status: Linux 0.1.26 and Windows Experimental 0.1.0
 
 Monado II provides native x86-64 SDL/Vulkan implementations. Each player builds
 from their own extracted Definitive Edition2.0.0 input. Downloads contain no game
@@ -6,8 +6,21 @@ input, generated game-code library, game shader cache, saves or keys.
 
 | Platform | Current status |
 | --- | --- |
-| Linux0.1.25 | Maintainer-accepted desktop/NVIDIA dev104R5, with current renderer, frame generation, graphics controls and portable graphical setup. Physical ultrawide and handheld performance testing remains requested. |
+| Linux0.1.26 | Maintainer-accepted desktop/NVIDIA dev104R5, with current renderer, frame generation, graphics controls and portable graphical setup. Physical ultrawide and handheld performance testing remains requested. |
 | WindowsExperimental0.1.0 | Native portable setup, modern launcher and gameplay options. Native builds and title startup were tested on Windows11/RTX4070SUPER/NVIDIA595.97. Purple DLSS/DLAA/temporal flashes and flickering remain reported. |
+
+## Linux existing-installation update hotfix in 0.1.26
+
+An older launcher can request reuse of its active game-code library while creating
+an update payload bound to its own new folder. The builder now recognizes only
+that verified active-game request and regenerates locally from the validated
+input instead. It does not widen the native build path rules or import another
+payload's library. Unrelated or tampered selections still fail closed. Normal
+fresh builds and directly bound reuse retain their existing checks and behavior.
+
+The fallback adds game-code compilation time. Source/archive checks, input and ABI
+validation, atomic activation and preservation of saves/settings remain enforced.
+Windows Experimental0.1.0 release materials are unchanged.
 
 ## Linux portability and startup hotfix in 0.1.25
 

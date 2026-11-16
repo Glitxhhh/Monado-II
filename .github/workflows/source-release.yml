@@ -6,7 +6,7 @@ on:
       version:
         description: Linux source release version; Windows EXE is built and packaged natively
         required: true
-        default: 0.1.25
+        default: 0.1.26
         type: string
 
 permissions:

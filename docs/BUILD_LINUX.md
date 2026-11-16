@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-The recommended download is **`monado-ii-0.1.25-linux-builder-x86_64.AppImage`** from
+The recommended download is **`monado-ii-0.1.26-linux-builder-x86_64.AppImage`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases/latest). It provides
 folder selection, local build progress and the normal settings launcher after
 building. The source/setup archive and terminal route remain available below.
@@ -25,8 +25,8 @@ building. The source/setup archive and terminal route remain available below.
 If FUSE is unavailable, extraction mode works without installing it:
 
 ```sh
-chmod +x monado-ii-0.1.25-linux-builder-x86_64.AppImage
-./monado-ii-0.1.25-linux-builder-x86_64.AppImage --appimage-extract-and-run
+chmod +x monado-ii-0.1.26-linux-builder-x86_64.AppImage
+./monado-ii-0.1.26-linux-builder-x86_64.AppImage --appimage-extract-and-run
 ```
 
 **Use an existing installation** links a checked installation in place, preserving
@@ -581,7 +581,7 @@ or a change to game input, saves or settings.
 
 ### Cross-distribution dependency preparation and launcher startup
 
-Linux 0.1.25 separates host build tools from the pinned target development files.
+Linux 0.1.26 separates host build tools from the pinned target development files.
 This fixes Fedora package-tool wrapper failures that could make SDL report missing
 Wayland support, and prevents unrelated host headers from enabling an unsupported
 optional liburing build. These cases need a corrected build recipe rather than
@@ -611,3 +611,12 @@ FSR3 upscaling and the other improvements. Receipts describe the actual compiled
 features, and unavailable integrated generation stays disabled in the launcher.
 New graphical builds explicitly include modern support. Terminal builders can use
 `--without-dlss --framegen`; this includes support without enabling it in settings.
+
+### Existing-installation game-code reuse during an update
+
+Linux 0.1.26 also handles older launchers requesting their active game-code library
+from the preceding update folder. After verifying the exact active selection,
+the builder regenerates and compiles from your validated game files. This can add
+build time. The native path/content/input/ABI checks remain strict; an unrelated
+or tampered selection is not accepted. A failed preparation keeps the previous
+working version selected. There is no save-format conversion.

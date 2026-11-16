@@ -129,13 +129,50 @@ def managed_framegen_selection(root):
     root = ordinary(root, directory=True)
     if install_layout.installation_root(root / 'Monado_Linux') == root:
         return None  # a fresh/ordinary CLI build uses the modern API default
+    # Pre-frame-generation native receipts legitimately omit this field; the
+    # checked legacy reader contract interprets absence as unsupported/False.
+    return checked_managed_game_features(root).get('framegen_enabled', False)
+
+
+def checked_managed_game_features(root):
+    """Use this candidate's strict read-only current-selection validator."""
     path = ordinary(root / 'tools/update_linux.py')
     spec = importlib.util.spec_from_file_location('_monado_builder_managed_features', path)
     updater = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(updater)
-    # Pre-frame-generation native receipts legitimately omit this field; the
-    # checked legacy reader contract interprets absence as unsupported/False.
-    return updater.inherited_game_features(root).get('framegen_enabled', False)
+    return updater.inherited_game_features(root)
+
+
+def normalize_gamecode_reuse(root, requested, *, game_only, split_game):
+    """Regenerate for one authorized legacy cross-payload optimization request.
+
+    An old updater can request its current library while the new payload must
+    remain self-bound. Do not widen native build ownership or copy old bytes:
+    verify that exact current selection, then use the ordinary fresh generator.
+    """
+    if requested is None:
+        return None
+    requested = ordinary(requested)
+    port = root / 'Monado_Linux'
+    binding = install_layout.binding(port)
+    allowed = tuple(dict.fromkeys((port, binding['game_port'])))
+    if any(requested.is_relative_to(owner / name)
+           for owner in allowed for name in ('build', 'runs', 'accepted')):
+        install_layout.build_port(port, requested)
+        return requested  # the native builder retains all existing reuse checks
+    if (not game_only or not split_game or binding['owner'] == root
+            or binding['game_port'] != port):
+        raise BuildError('game-code reuse must belong to the current or bound game Linux port')
+    features = checked_managed_game_features(root)
+    executable = features.get('executable')
+    if (not isinstance(executable, dict) or executable.get('path') != str(requested)
+            or executable.get('sha256') != digest(ordinary(requested))):
+        raise BuildError('cross-payload game-code request is not the exact verified active game')
+    print('The older updater requested game-code reuse from its active payload. '
+          'Regenerating and compiling game code locally from your game files with normal input validation '
+          'so the new payload keeps its own strict ownership. No old game library is copied.',
+          file=sys.stderr, flush=True)
+    return None
 
 
 def existing_framegen_sdk(port):
@@ -241,6 +278,8 @@ def layout(root, jobs, *, require_input=True, identity=None, dlss=True, reuse_ga
     validate_linux_library_root(root)
     port = ordinary(root / 'Monado_Linux', directory=True)
     install_layout.binding(port)
+    reuse_game_code = normalize_gamecode_reuse(root, reuse_game_code,
+        game_only=game_only, split_game=split_game)
     for name in ('build', 'generated', 'runs', '.deps'):
         ordinary(port / name, directory=True, missing=True)
     for name in ('runs/local-build', '.deps/metadata'):
