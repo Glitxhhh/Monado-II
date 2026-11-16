@@ -3114,7 +3114,9 @@ static void var_load(void) {
     if(!var_out){LOG("[prewarm] local variant cache unavailable or incompatible; original preserved\n");return;}
     Variant v;
     while(fread(&v,sizeof v,1,var_out)==1){
-        if(v.k.prog||v.k.ncolor>8){fclose(var_out);var_out=NULL;ws_guard_close(&variant_guard);return;}
+        if(v.k.prog||v.has_gs>1||!variant_cache_dimensions_native(v.k.ncolor,v.k.samples,v.k.topo_class,v.k.used_streams,v.k.attr_mask,v.k.attr_bind)){
+            fclose(var_out);var_out=NULL;ws_guard_close(&variant_guard);return;
+        }
         if(!var_seen(hash_words(0xcbf29ce484222325ull,&v,sizeof v))&&!var_add(&v)){fclose(var_out);var_out=NULL;ws_guard_close(&variant_guard);return;}
     }
     if(ferror(var_out)||_fseeki64(var_out,0,SEEK_END)){fclose(var_out);var_out=NULL;ws_guard_close(&variant_guard);}
@@ -3395,9 +3397,7 @@ int vk_precompile_variant(const NvnProgram *np, const void *rec, size_t rec_size
     if (rec_size != sizeof(Variant)) return 0;
     Variant v;
     memcpy(&v, rec, sizeof v);
-    if(v.has_gs||v.k.prog||v.k.ncolor>8||v.k.topo_class>2||!v.k.samples||
-        v.k.samples>64||(v.k.samples&(v.k.samples-1)))return 0;
-    for(unsigned i=0;i<32;i++)if((v.k.attr_mask&(1u<<i))&&v.k.attr_bind[i]>=17)return 0;
+    if(v.has_gs||v.k.prog||!variant_cache_dimensions_native(v.k.ncolor,v.k.samples,v.k.topo_class,v.k.used_streams,v.k.attr_mask,v.k.attr_bind))return 0;
     Prog *p = calloc(1, sizeof *p);
     if(!p)return 0;
     memcpy(p->stages, np->stages, sizeof p->stages);

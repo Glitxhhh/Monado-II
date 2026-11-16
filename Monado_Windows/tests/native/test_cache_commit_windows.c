@@ -35,6 +35,14 @@ int wmain(int argc,wchar_t **argv){
     assert(argc==3&&cache_fixture_cwd(argv[2]));char mode[128];assert(WideCharToMultiByte(CP_UTF8,0,argv[1],-1,mode,sizeof mode,NULL,NULL));
     if(!strcmp(mode,"reparse")){assert(!wct_directory("cache"));assert(!wct_read("cache/sentinel",64));return 0;}
     assert(wct_directory("cache"));
+    if(!strcmp(mode,"variant-dimensions")){
+        uint32_t binds[32]={0};assert(variant_cache_dimensions_native(8,1,2,0,UINT32_MAX,binds));
+        binds[31]=16;assert(variant_cache_dimensions_native(8,64,2,0x1ffff,UINT32_MAX,binds));
+        binds[31]=17;assert(!variant_cache_dimensions_native(8,1,2,0,UINT32_MAX,binds));binds[31]=0;
+        assert(!variant_cache_dimensions_native(9,1,2,0,0,binds));assert(!variant_cache_dimensions_native(8,0,2,0,0,binds));
+        assert(!variant_cache_dimensions_native(8,3,2,0,0,binds));assert(!variant_cache_dimensions_native(8,128,2,0,0,binds));
+        assert(!variant_cache_dimensions_native(8,1,3,0,0,binds));assert(!variant_cache_dimensions_native(8,1,2,0x20000,0,binds));return 0;
+    }
     if(!strcmp(mode,"present-policy")){
         int caps[]={0,30,60,90,120,240};for(unsigned i=0;i<6;i++){
             assert(windows_present_fifo(false,true,caps[i],true,false,false,false,false));

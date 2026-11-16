@@ -56,7 +56,7 @@ class NativeShaderPreparation(unittest.TestCase):
             with self.subTest(scenario=scenario):
                 result,_=self.execute('shader_cache',scenario);self.assertEqual(result.returncode,0,result.stdout+result.stderr)
     def test_atomic_pipeline_variant_commit_and_preservation(self):
-        for scenario in ['normal','incomplete','get-failure','get-bound','flush-failure','write-failure','replace-failure','locked','hardlink','variants','variant-malformed','status-parser','pipeline-unknown','present-policy']:
+        for scenario in ['normal','incomplete','get-failure','get-bound','flush-failure','write-failure','replace-failure','locked','hardlink','variants','variant-malformed','status-parser','pipeline-unknown','present-policy','variant-dimensions']:
             with self.subTest(scenario=scenario):
                 result,_=self.execute('cache_commit',scenario);self.assertEqual(result.returncode,0,result.stdout+result.stderr)
     def test_unicode_long_literal_paths_status_cancel_commit(self):

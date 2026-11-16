@@ -3285,8 +3285,8 @@
       "sha256": "bce65ff68c70ca682b80d1a28756e29f5602b9bb5b85ffcf51e8f5c26bde5d7d"
     },
     "Monado_Windows/runtime/nvn/vulkan/exec.c": {
-      "bytes": 440378,
-      "sha256": "e9a90d0d7d350ef33d3689f96ccc79c0fbcf6e3b1c700b09ee3c74fd1a579eea"
+      "bytes": 440443,
+      "sha256": "88170466e5d6ef6287e6c64470fc3243ca69ff753ec5050cd4b594043e34351f"
     },
     "Monado_Windows/runtime/nvn/vulkan/fsr4_api.h": {
       "bytes": 961,
@@ -3357,8 +3357,8 @@
       "sha256": "16105bc812325b36ce1ca48c7475ed645f9ea548ed214c93e8de29bf7e2d6b05"
     },
     "Monado_Windows/runtime/nvn/vulkan/variant_cache_windows.h": {
-      "bytes": 1409,
-      "sha256": "85b1ae489f8e98f31dc7d92ede1fb41a926ad72cf98b8b987947702614737bef"
+      "bytes": 1788,
+      "sha256": "324765455ad78dcb21d03f2f8c962803b6f4da761810e5b5daad3b64686b911f"
     },
     "Monado_Windows/runtime/nvn/vulkan/vk.h": {
       "bytes": 7804,
@@ -3637,8 +3637,8 @@
       "sha256": "955f3ba81efd79b686b34954f6a6d3a6cfce0eae78780a5d7f42287352baaecd"
     },
     "Monado_Windows/tests/native/test_cache_commit_windows.c": {
-      "bytes": 6733,
-      "sha256": "f30358481f3b25412e5ffe6747bb9fecee4fddbbecb9b9bbc8a36789a501120c"
+      "bytes": 7469,
+      "sha256": "5c01ab5a5a7f494b43f0c5040d462d6e9146f69a21f6659abf8434d4b97679ef"
     },
     "Monado_Windows/tests/native/test_cheats_combat_windows.c": {
       "bytes": 5640,
@@ -5765,8 +5765,8 @@
       "sha256": "a8dc45af8d49e2e9187a7ae12f5f6323541deb6546d6117e6b31719cb37476c7"
     },
     "tests/test_windows_shader_preparation.py": {
-      "bytes": 6919,
-      "sha256": "51d14c3f6a8b7e8328e5c1dfd29558dc25e6d5b54c154c37513157065411047b"
+      "bytes": 6940,
+      "sha256": "373633ca39b242c3f535c483bd89bade52e61acfb2db64f1cd143722afc60538"
     },
     "tests/test_windows_source_export.py": {
       "bytes": 4198,
