@@ -485,6 +485,7 @@ static void ui(void) {
 #else
             if (g_settings.upscaler == UPSCALE_DLSS) {
                 ImGui::TextWrapped("Requested: NVIDIA DLSS. %s",dlss_status());
+                ImGui::TextWrapped("Experimental on Windows: purple flashes and flickering remain unresolved.");
                 ImGui::TextWrapped("%s",tmp_provider_status());
             }
             if (g_settings.upscaler == UPSCALE_FSR3 || g_settings.upscaler == UPSCALE_DLSS || g_settings.upscaler==UPSCALE_FSR4_LITE) {

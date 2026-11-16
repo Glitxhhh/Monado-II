@@ -328,7 +328,9 @@ static const char *const k_en[][2] = {
      "The original game renders at 720p. More resolution = a sharper image and more GPU load."},
     {"Bilineal (suave)", "Bilinear (soft)"}, {"AMD FSR 1.0 (nítido)", "AMD FSR 1.0 (sharp)"},
     {"AMD FSR 3.1 (temporal, cualquier GPU)", "AMD FSR 3.1 (temporal, any GPU)"},
-    {"NVIDIA DLSS (temporal, GPU RTX)", "NVIDIA DLSS (temporal, RTX GPU)"}, {"Escalado / antialiasing", "Upscaling / anti-aliasing"},
+    {"NVIDIA DLSS (temporal, GPU RTX)", "NVIDIA DLSS (temporal, RTX GPU)"},
+    {"NVIDIA DLSS (experimental, GPU RTX)", "NVIDIA DLSS (experimental, RTX GPU)"},
+    {"Escalado / antialiasing", "Upscaling / anti-aliasing"},
     {"FSR 1.0: escalado espacial, solo cuando la resolución interna es menor que la ventana.\n"
      "FSR 3.1 y DLSS: reconstrucción temporal - renderizan a menos resolución (según la calidad)\n"
      "y reconstruyen la imagen de la ventana con varios frames: más FPS y bordes sin dientes.\n"
@@ -994,7 +996,7 @@ static void tab_graphics() {
 #endif
     ImGui::TextDisabled("%s", T("El juego original renderiza a 720p. Más resolución = imagen más nítida y más carga para la GPU."));
     const char *ups[] = {"Bilineal (suave)", "AMD FSR 1.0 (nítido)", "AMD FSR 3.1 (temporal, cualquier GPU)",
-                         "NVIDIA DLSS (temporal, GPU RTX)", "AMD FSR4 Lite (local models, experimental)"};
+                         "NVIDIA DLSS (experimental, GPU RTX)", "AMD FSR4 Lite (local models, experimental)"};
     ImGui::SetNextItemWidth(320 * g_scale);
 #ifdef __linux__
     const bool have_dlss = linux_dlss_packaged();
@@ -1080,6 +1082,7 @@ static void tab_graphics() {
         static std::string checked_root,files_status;static Uint64 checked_at=0;
         Uint64 now=SDL_GetTicks();if(checked_root!=g_runtime_root||files_status.empty()||now-checked_at>=1000){checked_root=g_runtime_root;checked_at=now;files_status=monado_provider_status::dlss(g_runtime_root);}
         ImGui::TextWrapped("Requested: NVIDIA DLSS. %s",files_status.c_str());
+        ImGui::TextWrapped("Experimental on Windows: purple flashes and flickering remain unresolved.");
     }
     ImGui::SetItemTooltip("%s", T("FSR 1.0: escalado espacial, solo cuando la resolución interna es menor que la ventana.\n"
                           "FSR 3.1 y DLSS: reconstrucción temporal - renderizan a menos resolución (según la calidad)\n"

@@ -2693,8 +2693,8 @@
       "sha256": "da5da1cf3d944aece78c1043963648015155dd5362bddf050827d04f00ec441b"
     },
     "Monado_Windows/README.md": {
-      "bytes": 340,
-      "sha256": "9cc3902bdc549d09d7a9728b9feac287faa392bad8e3d138e342db38cb8cb0d7"
+      "bytes": 518,
+      "sha256": "bd183c5b737966cc9b2e7b3ec794aaa38274ffedac236e92d8a1c5d8fadbf341"
     },
     "Monado_Windows/docs/UPSTREAM.md": {
       "bytes": 18594,
@@ -2717,8 +2717,8 @@
       "sha256": "368a024d0a92ec6859f32dd2f368c5bf4297a2fd7b1fa1a4e0e6a85a2a767a2c"
     },
     "Monado_Windows/docs/WINDOWS_PROVIDERS.md": {
-      "bytes": 4097,
-      "sha256": "76a3efe39d26f5dc8c76dc5e85b95f5bce2a3649d7c3162c4340dc3fddde23f0"
+      "bytes": 4522,
+      "sha256": "9fa4e65a472c3018ae4c75bf31810931f1501f151269af5b3231e7f05d120e9d"
     },
     "Monado_Windows/docs/WINDOWS_RUN_DIAGNOSTICS.md": {
       "bytes": 3199,
@@ -3581,16 +3581,16 @@
       "sha256": "13fd9dac9cf9f82b1efe7b47b62199c1ed2893faab977dd39af359bb95458f86"
     },
     "Monado_Windows/runtime/ui/graphics_options.h": {
-      "bytes": 945,
-      "sha256": "23215b7cab090c21b6f09d42e63a3a3976284d4f581ea15d3ecfa9afb6f3451d"
+      "bytes": 1011,
+      "sha256": "fb73bfb0858d08f9091f82233fb350190f2725264f85050e01fae73a2585178d"
     },
     "Monado_Windows/runtime/ui/menu.h": {
       "bytes": 2183,
       "sha256": "9b727003bbe2376d08a56f85af0ae2a2586f3d33befdf8bce2cef6193066de2a"
     },
     "Monado_Windows/runtime/ui/menu_vk.cpp": {
-      "bytes": 31986,
-      "sha256": "888214b2040a8b95b458dd6f9e23df90c865c70579f1828d1ba0ea36760eda4f"
+      "bytes": 32099,
+      "sha256": "db29055806a4defcd8b92f89804324a6ff29d8e8a9aeeefd08b410a0a9273ea2"
     },
     "Monado_Windows/runtime/ui/quality_controls_linux.h": {
       "bytes": 4147,
@@ -4909,8 +4909,8 @@
       "sha256": "0981943668ff0be4c583580e5bc3731f07c063a044ceb63c3187c4999d1d3ae3"
     },
     "Monado_Windows/tools/launcher/launcher.cpp": {
-      "bytes": 129134,
-      "sha256": "98e361dbc339951a0745e7d1691101b1d7923343ac30cbca05bd9ca818cec4a0"
+      "bytes": 129331,
+      "sha256": "500d9492d1e549b1688bf2c0cc3264a1d07ab3dd655ccb4cf369a040db78ed20"
     },
     "Monado_Windows/tools/launcher/theme.h": {
       "bytes": 15616,
@@ -5181,8 +5181,8 @@
       "sha256": "26abd117d0307aa954d851883874a709ea07b994abe69f248d71373100451739"
     },
     "docs/PLATFORM_STATUS.md": {
-      "bytes": 11947,
-      "sha256": "3da51e10cd76ecf39374ca97e15dbcf1aadc5f270b1b289ab5d937f6474408b5"
+      "bytes": 12260,
+      "sha256": "edc75eac9708c2cfd35769ad843f21b2a82288461ebf795221c6183282c3b5ff"
     },
     "docs/QUICKSTEP.md": {
       "bytes": 4893,

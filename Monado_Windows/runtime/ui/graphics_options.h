@@ -7,7 +7,11 @@ static const char *const menu_upscale_names[] = {
     "AMD FSR 3.1 (temporal)",
 #endif
 #if !defined(__linux__) || defined(XCDE_LINUX_DLSS)
+#ifdef _WIN32
+    "NVIDIA DLSS (experimental, RTX)",
+#else
     "NVIDIA DLSS (temporal, RTX)",
+#endif
 #endif
 #if defined(_WIN32) || (defined(__linux__) && defined(XCDE_LINUX_FSR4))
     "AMD FSR4 Lite (experimental)",

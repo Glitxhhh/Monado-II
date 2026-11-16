@@ -1,5 +1,12 @@
 # Local Windows graphics SDKs
 
+**Windows DLSS/DLAA is experimental.** The maintainer's latest manual test
+still reports purple flashes and flickering after the temporal camera and SDK
+corrections. This rendering issue remains unresolved. Native builds, shader
+preparation and authored SDK/GPU checks do not establish a gameplay image-quality
+pass. Windows development is paused at the maintainer's request; the accepted
+Linux implementation is unchanged.
+
 The settings launcher shows which optional SDKs were staged with its actual
 runtime. That identifies local files; the game still checks provider entry points,
 GPU capability, temporal inputs and dispatch results before activation. An SDK

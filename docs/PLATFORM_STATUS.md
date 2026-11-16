@@ -10,6 +10,11 @@ Native authored fixtures cover CPU/FP/fibers, startup loader ordering, save
 transactions, service lifecycle, settings, renderer policies and build/setup
 boundaries. This is development evidence, not a full-game or provider pass.
 
+**Windows DLSS/DLAA remains experimental.** The maintainer still reports purple
+flashes and flickering in the latest native candidate after the temporal camera
+and SDK corrections. Windows work is paused at the maintainer's request; this
+issue is unresolved. The accepted Linux implementation remains unchanged.
+
 The native portable setup/update workflow is under final integration. Optional
 prepared FSR4 and external driver methods retain explicit availability boundaries;
 actual assets, provider/GPU behavior, gameplay/save-reload, full DE/FC, other GPUs
