@@ -795,11 +795,12 @@ def main(argv=None):
                                   runtime_dependencies=runtime_check.dependency_plan(ROOT / 'Monado_Linux'),
                                   launches_game=False, launches_gui=False, network='none in plan; explicit build fetches locked dependencies'), indent=2))
         else:
-            # Retain the exact legacy invocation contract for existing updaters
-            # and callers; only the new standalone mode supplies the new flag.
-            build(jobs=args.jobs, identity=args.build_id, dlss=not args.without_dlss, reuse_game=args.reuse_game, framegen=framegen, game_only=args.game_only,
+            # Reusing the checked game does not reuse this workspace's GUI
+            # dependencies. Old updaters invoke this CLI with --reuse-game in a
+            # fresh workspace, so select portable SDL before compiling its GUI.
+            # Preserve the explicit --legacy-runtime opt-out in both CLI paths.
+            build(jobs=args.jobs, identity=args.build_id, dlss=not args.without_dlss, reuse_game=args.reuse_game, framegen=framegen, game_only=args.game_only, portable=not args.legacy_runtime,
                   **({'fsr3': True} if fsr3 else {}), **({'fsr4': True} if fsr4 else {}), **({'split_game': True} if split_game else {}),
-                  **({'portable': True} if not args.legacy_runtime and args.reuse_game is None else {}),
                   **({'runtime_bundle': args.runtime_bundle, 'runtime_sha256': args.runtime_sha256} if args.runtime_bundle else {}),
                   **({'reuse_game_code': args.reuse_game_code} if args.reuse_game_code else {}),
                   **({'no_appimage': True} if args.no_appimage else {}))

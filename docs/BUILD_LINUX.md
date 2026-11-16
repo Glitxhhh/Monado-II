@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-The recommended download is **`monado-ii-0.1.23-linux-builder-x86_64.AppImage`** from
+The recommended download is **`monado-ii-0.1.24-linux-builder-x86_64.AppImage`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases/latest). It provides
 folder selection, local build progress and the normal settings launcher after
 building. The source/setup archive and terminal route remain available below.
@@ -25,8 +25,8 @@ building. The source/setup archive and terminal route remain available below.
 If FUSE is unavailable, extraction mode works without installing it:
 
 ```sh
-chmod +x monado-ii-0.1.23-linux-builder-x86_64.AppImage
-./monado-ii-0.1.23-linux-builder-x86_64.AppImage --appimage-extract-and-run
+chmod +x monado-ii-0.1.24-linux-builder-x86_64.AppImage
+./monado-ii-0.1.24-linux-builder-x86_64.AppImage --appimage-extract-and-run
 ```
 
 **Use an existing installation** links a checked installation in place, preserving
@@ -557,3 +557,17 @@ source/sysroot cache before requesting the offline build inputs. A previous game
 and native launcher compile could succeed before this later packaging step failed.
 The failed update still leaves the prior selection active; retry the new release
 through the launcher. Game input, saves and settings remain in place.
+
+
+### Portable launcher packaging after runtime reuse
+
+Linux 0.1.24 keeps the portable build selection when the updater reuses a verified
+local runtime. Previously that CLI path could build the native launcher against
+a newer host glibc, then fail the AppImage's glibc 2.39 compatibility check. The
+default now uses the portable baseline consistently for fresh builds and reuse;
+the explicit `--legacy-runtime` opt-out is retained.
+
+This release also retains the file-limit and cold-cache prerequisite fixes
+described above. If an update to 0.1.21, 0.1.22 or 0.1.23 failed, retry the new
+release through the launcher. These corrections do not require a system upgrade
+or a change to game input, saves or settings.

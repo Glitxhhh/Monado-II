@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.1.24 — November 16, 2026
+
+- Fix another older-installation update failure during launcher AppImage
+  packaging. The CLI now preserves the default portable build selection when
+  reusing a verified local runtime, so the rebuilt native launcher uses the
+  supported glibc baseline instead of inheriting a newer host requirement.
+  Preserve the explicit `--legacy-runtime` opt-out.
+- Retain both earlier build corrections: temporary worker-only file-descriptor
+  headroom for the full FFmpeg link, and preparation of pinned prerequisite
+  caches before a cold private startup-Python build. No system limit changes
+  or unrelated package installation are needed for these fixes.
+- Keep checked source/runtime reuse, archive verification and the previous
+  selection on failure. Existing saves, settings, game input and Quick Step
+  metadata remain in place. No gameplay or renderer changes are included.
+- Windows remains **Experimental 0.1.0**, with unchanged release materials and
+  the existing temporal/DLSS flickering and qualification limits.
+
 ## 0.1.23 — November 16, 2026
 
 - Fix a second cold-cache Linux update failure during launcher AppImage

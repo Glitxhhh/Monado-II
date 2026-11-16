@@ -1,4 +1,4 @@
-# Platform status: Linux 0.1.23 and Windows Experimental 0.1.0
+# Platform status: Linux 0.1.24 and Windows Experimental 0.1.0
 
 Monado II provides native x86-64 SDL/Vulkan implementations. Each player builds
 from their own extracted Definitive Edition2.0.0 input. Downloads contain no game
@@ -6,10 +6,20 @@ input, generated game-code library, game shader cache, saves or keys.
 
 | Platform | Current status |
 | --- | --- |
-| Linux0.1.23 | Maintainer-accepted desktop/NVIDIA dev104R5, with current renderer, frame generation, graphics controls and portable graphical setup. Physical ultrawide and handheld performance testing remains requested. |
+| Linux0.1.24 | Maintainer-accepted desktop/NVIDIA dev104R5, with current renderer, frame generation, graphics controls and portable graphical setup. Physical ultrawide and handheld performance testing remains requested. |
 | WindowsExperimental0.1.0 | Native portable setup, modern launcher and gameplay options. Native builds and title startup were tested on Windows11/RTX4070SUPER/NVIDIA595.97. Purple DLSS/DLAA/temporal flashes and flickering remain reported. |
 
-## Linux packaging hotfix in 0.1.23
+## Linux update hotfix in 0.1.24
+
+The default CLI build now retains its portable selection while reusing a verified
+local runtime. The rebuilt native launcher therefore keeps the supported glibc
+baseline instead of depending on a newer host glibc and failing AppImage
+packaging. The explicit legacy-runtime opt-out remains available. The earlier
+worker file-limit and cold private-Python prerequisite fixes are retained.
+Source/runtime/archive checks and prior-build selection on failure remain in
+place; gameplay, renderer behavior and native save formats are unchanged.
+
+## Linux packaging hotfix retained from 0.1.23
 
 Fresh update workspaces prepare the private startup Python builder's pinned
 prerequisite source/sysroot cache before requesting its offline build inputs.

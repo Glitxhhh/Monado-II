@@ -1,9 +1,10 @@
 # Monado II
 
-> **Linux 0.1.23 and Windows Experimental 0.1.0 are available.**
-> Linux 0.1.23 fixes desktop file-limit failures and cold-cache launcher packaging.
-> If your 0.1.21 or 0.1.22 update failed, retry through the launcher; your previous build,
-> saves and settings remain selected.
+> **Linux 0.1.24 and Windows Experimental 0.1.0 are available.**
+> Linux 0.1.24 fixes older-installation updates that failed while building
+> dependencies or packaging the launcher. If an update to 0.1.21, 0.1.22 or
+> 0.1.23 failed, retry through the launcher; your previous working build, saves
+> and settings are preserved.
 > Windows now includes the modern launcher and gameplay options, with known
 > temporal/DLSS flickering and incomplete hardware/gameplay qualification.
 
@@ -85,8 +86,8 @@ one graphical builder AppImage. **The game is still built locally from your own 
 
 | Platform | Recommended download | Full instructions |
 |---|---|---|
-| Linux x86-64 | [Graphical builder AppImage](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.23/monado-ii-0.1.23-linux-builder-x86_64.AppImage) | [Linux setup and build guide](docs/BUILD_LINUX.md) |
-| Windows x86-64 | [Windows Experimental 0.1.0 setup EXE](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.23/MonadoII-Windows-Setup.exe) | [Windows build guide](docs/BUILD_WINDOWS.md) |
+| Linux x86-64 | [Graphical builder AppImage](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.24/monado-ii-0.1.24-linux-builder-x86_64.AppImage) | [Linux setup and build guide](docs/BUILD_LINUX.md) |
+| Windows x86-64 | [Windows Experimental 0.1.0 setup EXE](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.24/MonadoII-Windows-Setup.exe) | [Windows build guide](docs/BUILD_WINDOWS.md) |
 
 > **Windows is experimental and independently versioned.** Download and run
 > **MonadoII-Windows-Setup.exe**. It builds locally from your own extracted game
@@ -110,7 +111,7 @@ game. Keep the installed build folder and its input available. If you already
 have Monado II installed, **Use an existing installation** adopts it in place,
 including its settings, saves and current update. See the [graphical setup guide](docs/GRAPHICAL_BUILDER.md).
 
-The [Linux source/setup kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.23/monado-ii-0.1.23-linux-setup.tar.gz)
+The [Linux source/setup kit](https://github.com/brendonbusker/Monado-II/releases/download/v0.1.24/monado-ii-0.1.24-linux-setup.tar.gz)
 remains available for terminal builds and existing updaters. After extracting it
 and arranging its `game_files/exefs` and `game_files/romfs` input, the established
 commands are still:
@@ -178,9 +179,9 @@ launcher. It never presses Play.
   rebuild the game locally.
 - Saves, settings and shared game input stay in the original installation.
   Failed or cancelled preparation keeps the previous version selected.
-- **Updating Linux to 0.1.23 requires a full local game rebuild** for the
-  renderer, timing and new graphics features. The updater keeps your existing saves,
-  settings and game input in place; no save conversion is needed.
+- **Updating Linux to 0.1.24 requires a full local game rebuild.** The updater
+  keeps your existing saves, settings and game input in place; no save conversion
+  is needed.
   Missing prerequisites leave the working version selected and show instructions
   for retrying.
 - Keep the **complete save folder, including hidden files**, when backing up or
@@ -213,7 +214,7 @@ in releases solely for installed-updater compatibility. Both contain source, not
 precompiled playable games. No compiled game binary, private vendor SDK binary,
 game-derived cache or user data is distributed. The graphical AppImage contains
 setup software and reviewed startup dependencies; game/runtime compilation stays local.
-**0.1.23 is a regular Linux release**; optional frame generation and non-original
+**0.1.24 is a regular Linux release**; optional frame generation and non-original
 aspect modes remain experimental. Original 16:9 remains the default. The Windows
 experimental setup has its own versioned update metadata and retains its profile
 through checked updates; a Linux-only version does not advance Windows.

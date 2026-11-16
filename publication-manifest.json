@@ -14,7 +14,7 @@
     },
     ".github/workflows/source-release.yml": {
       "bytes": 3090,
-      "sha256": "32c2bff1afc1cd8c03b2c7b749dd4c692dcdc609a0c17e6286f54ae72d24a311"
+      "sha256": "6a80890c83ef2994073cded163d00cfc1acdff9eb5254998315f2542a7c62e64"
     },
     ".gitignore": {
       "bytes": 1053,
@@ -37,8 +37,8 @@
       "sha256": "fc908ddd148e06cb024ce9ea9f98307c32af7147bcba2504b8b6a726526197cc"
     },
     "CHANGELOG.md": {
-      "bytes": 45245,
-      "sha256": "50a27ef85797cfbbf5e826c1c201a905de00ba37eafabf8ebef233d8d98700d3"
+      "bytes": 46298,
+      "sha256": "6beabc35e8fbcd97f92bb93dc4cd3692097ee2a31e0d69715243471bdd992d97"
     },
     "CONTRIBUTING.md": {
       "bytes": 1798,
@@ -5185,8 +5185,8 @@
       "sha256": "111d3bdcc8b4dd86e9bc0b59a2431dd5439c4de0ba94c9bee96756ad5399a053"
     },
     "README.md": {
-      "bytes": 19517,
-      "sha256": "f80ceaca565a120a26fd673b4d4d14c700db0fbc1048fab6a577c285af38e69c"
+      "bytes": 19514,
+      "sha256": "8e3babd1c9fb992abae5ad71e4960f01cd0c807e4df9b52a3a726a4b469d1b64"
     },
     "Rollback_Monado_II.sh": {
       "bytes": 8873,
@@ -5213,8 +5213,8 @@
       "sha256": "3d962611b3ba82b475006f2bf93af964ba09b880f70289d59edac6d587b2a99e"
     },
     "docs/BUILD_LINUX.md": {
-      "bytes": 31748,
-      "sha256": "371746389c275a6915b424dc0c5723d9bd3f1a74321ce017aafda4337f77d32e"
+      "bytes": 32462,
+      "sha256": "43dcbb5dfbe382b1d08c2961c48738f8f62cc097fae501e31d45e928e2106bb9"
     },
     "docs/BUILD_WINDOWS.md": {
       "bytes": 8083,
@@ -5237,8 +5237,8 @@
       "sha256": "26abd117d0307aa954d851883874a709ea07b994abe69f248d71373100451739"
     },
     "docs/PLATFORM_STATUS.md": {
-      "bytes": 5442,
-      "sha256": "6880ef36b73c454712d0722465287dd249f67ef395529dc4b46f647018169f14"
+      "bytes": 6026,
+      "sha256": "b9a9c2763b5cdbd5d8f4bb86e8f4da14270880a5ff4eaf143e95c88e1a14e4d1"
     },
     "docs/QUICKSTEP.md": {
       "bytes": 4893,
@@ -5249,8 +5249,8 @@
       "sha256": "ce4c8d6a5ffb65a08a25abb6450235929887d2079cb63321c327261b123b1eec"
     },
     "docs/RELEASING.md": {
-      "bytes": 4255,
-      "sha256": "f2f4418c2165a247c354267cffa69b6616b2728ef0c4cb7be75723f0eee1d0de"
+      "bytes": 4533,
+      "sha256": "bcab18f5e9ad020cbf8cd1b07420a6cffdc956439fa214edbdf172e72a327a10"
     },
     "docs/WINDOWS_PARITY_INVENTORY.json": {
       "bytes": 233647,
@@ -5749,8 +5749,8 @@
       "sha256": "6497b8936bdfaef18a1c6c3d2cd3830386308ae6c33d64f2e395d59959ac36f1"
     },
     "tests/test_managed_linux_build.py": {
-      "bytes": 22677,
-      "sha256": "3ac9bf2f7bd036c2a890071c53754ae6e9b0fe654c9a74812150a18d1c8e08e4"
+      "bytes": 25898,
+      "sha256": "b42b7f21be539a5c7b00434645e04d0fcb58792f6af8d02af40fe6d6c63e4167"
     },
     "tests/test_native_renderer_support.py": {
       "bytes": 4755,
@@ -6121,8 +6121,8 @@
       "sha256": "52d4cd757ecdeb757639314e60551aee15f29bd7da9538bee45a1de8cd15ea2a"
     },
     "tools/build_linux_app.py": {
-      "bytes": 47918,
-      "sha256": "fd92d79fa5f36ceb22a58d009ff63fb2287d68931b50e052e381de0469f75bde"
+      "bytes": 48003,
+      "sha256": "8f4117879cdabe55f8498adbd90912b73d5431434576fa14b88e5b6eb0ed8723"
     },
     "tools/builder_appimage/APPIMAGE_RUNTIME_NOTICES.txt": {
       "bytes": 2622,
@@ -6234,7 +6234,7 @@
     },
     "update-version.json": {
       "bytes": 58,
-      "sha256": "b867fd7e7d7f0a002d62db6246021ba895744c2b571824b71f72ad85670964ef"
+      "sha256": "018a52e140fdb3e2482630b95218f74438936b225f6bd91b2dc7f15543cf3f1f"
     }
   },
   "project": "Monado II",

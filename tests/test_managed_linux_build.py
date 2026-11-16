@@ -308,7 +308,59 @@ class ManagedBuild(unittest.TestCase):
     def test_reuse_cli_is_explicitly_forwarded_to_builder(self):
         with mock.patch.object(build, 'build') as operation:
             self.assertEqual(build.main(['--reuse-game', str(self.game), '--without-dlss']), 0)
-            operation.assert_called_once_with(jobs=4, identity=None, dlss=False, reuse_game=self.game, framegen=False, game_only=False)
+            operation.assert_called_once_with(jobs=4, identity=None, dlss=False, reuse_game=self.game, framegen=False, game_only=False, portable=True)
+
+    def reuse_cli_graphics_case(self, *, legacy=False):
+        # This is the actual old updater's CLI shape: --framegen --reuse-game.
+        # Exercise main -> real build -> real layout on a fresh GUI workspace;
+        # only compiler/package execution and Linux namespace construction are
+        # authored fixture boundaries. Source/input/provider receipt checks run.
+        self.receipt['dlss_enabled'] = self.receipt['framegen_enabled'] = True
+        resources = {}
+        for name in ('libmonado-ngx.so', 'libnvidia-ngx-dlss.so.310.9.1',
+                     'NVIDIA-DLSS-LICENSE.txt', 'libmonado-fidelityfx.so', 'FidelityFX-MIT.txt'):
+            path = self.game.parent / name
+            path.write_text('authored never-loaded companion: ' + name)
+            resources[name] = {'path': str(path), 'sha256': sha(path), 'bytes': path.stat().st_size}
+        self.receipt['runtime_resources'] = resources
+        self.save_receipt()
+        self.assertFalse((self.port / '.deps/graphics').exists())
+        before = files(self.game.parent), files(self.state), files(self.input), files(self.sysroot)
+        real_build = build.build
+        results = []
+        def operation(**kwargs):
+            result = real_build(self.workspace, runner=self.runner,
+                locker=lambda port: contextlib.nullcontext(), **kwargs)
+            results.append(result)
+            return result
+        command = ['--framegen', '--reuse-game', str(self.game)]
+        if legacy:
+            command.append('--legacy-runtime')
+        with contextlib.redirect_stdout(io.StringIO()), \
+                mock.patch.object(build, 'ROOT', self.workspace), \
+                mock.patch.object(build, 'build', side_effect=operation) as called, \
+                mock.patch.object(build.run_linux, 'dlss_namespace',
+                                  side_effect=lambda argv, state, **kwargs: (argv, {'kind': 'authored'})):
+            self.assertEqual(build.main(command), 0)
+        self.assertIs(called.call_args.kwargs['portable'], not legacy)
+        graphics = [i for i, command in enumerate(self.commands)
+                    if any(Path(str(value)).name == 'setup_linux_graphics.py' for value in command)]
+        launchers = [i for i, command in enumerate(self.commands)
+                     if any(Path(str(value)).name == 'build_launcher_linux.py' for value in command)]
+        self.assertEqual(len(graphics), 1)
+        self.assertEqual(len(launchers), 1)
+        self.assertLess(graphics[0], launchers[0])
+        self.assertEqual('--portable' in self.commands[graphics[0]], not legacy)
+        self.assertFalse(any(Path(str(value)).name in ('build_linux.py', 'gen_all.py')
+                             for command in self.commands for value in command))
+        self.assertEqual(results[0]['reused_game']['path'], str(self.game))
+        self.assertEqual(before, (files(self.game.parent), files(self.state), files(self.input), files(self.sysroot)))
+
+    def test_old_updater_reuse_cli_prepares_portable_gui_dependencies_first(self):
+        self.reuse_cli_graphics_case()
+
+    def test_reuse_cli_preserves_explicit_legacy_runtime_opt_out(self):
+        self.reuse_cli_graphics_case(legacy=True)
 
     def test_normal_reuse_rejects_older_dlss_game_without_framegen_before_writes(self):
         self.receipt['dlss_enabled'] = True
