@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.23 — November 16, 2026
+
+- Fix a second cold-cache Linux update failure during launcher AppImage
+  packaging. Prepare the pinned prerequisite source/sysroot cache before building
+  the private startup Python in a fresh update workspace; previously this step
+  requested offline prerequisites before that workspace had prepared them.
+- Retain the 0.1.22 portable FFmpeg open-file-limit correction, including
+  process-local soft-limit adjustment, restoration and explicit hard-cap
+  diagnostics. No system limit changes or unrelated package installs are needed.
+- Keep source/archive identity checks, local builds, prior-build selection on
+  failure and existing saves/settings/input. No gameplay or renderer changes.
+- Windows stays **Experimental 0.1.0**, with unchanged release assets and known
+  temporal/DLSS flickering and qualification limits.
+
 ## 0.1.22 — November 16, 2026
 
 - Fix a Linux setup/update failure while linking the portable FFmpeg libraries:

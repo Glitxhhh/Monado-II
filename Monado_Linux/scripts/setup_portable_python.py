@@ -139,7 +139,11 @@ def build(output, jobs=4):
     out=baseline.ordinary(output,directory=True)
     if out.exists() or not out.is_relative_to(ROOT/'.deps/portable/python'):
         raise ValueError('Fresh .deps/portable/python output required')
-    prepared=baseline.prepare(offline=True); archive=download(); development=download_development()
+    # This is the explicit source-build operation, which already downloads the
+    # pinned Python and development archives. A fresh launcher-only workspace
+    # need not have run the separate portable graphics recipe first. Prepare
+    # missing, hash-checked baseline inputs here; verify_existing stays offline.
+    prepared=baseline.prepare(); archive=download(); development=download_development()
     out.mkdir(mode=0o700,parents=True)
     # Autoconf/make command strings cannot safely carry installation paths
     # containing whitespace. Source, build, sysroot and installation all stay

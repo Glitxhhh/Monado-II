@@ -1,11 +1,15 @@
 """Authored path fixtures for the source-built private packaging interpreter."""
 from pathlib import Path
+import contextlib
+import hashlib
+import io
 import importlib.util
 import json
 import os
 import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 import time
 import unittest
@@ -85,6 +89,109 @@ class PortablePythonPaths(unittest.TestCase):
                 if state=='Z': break
                 if time.monotonic()>=deadline: self.fail('owned child survived timeout: '+state)
                 time.sleep(.01)
+
+
+@unittest.skipUnless(sys.platform == 'linux', 'Linux portable source preparation and private build directory')
+class PortablePythonBaselinePreparation(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory(prefix='monado-python-baseline-')
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name) / 'My Games' / 'Monado II'
+        self.root.mkdir(parents=True)
+        self.lock_path = self.root / 'portable-baseline-linux.lock.json'
+        self.lock = {'packages': [], 'sources': []}
+        self.payloads = {}
+        for name, directory, url in (
+                ('SDL3', 'SDL3-3.4.8', 'https://github.com/libsdl-org/SDL/releases/download/authored/sdl.tar.gz'),
+                ('FFmpeg', 'ffmpeg-8.0.1', 'https://ffmpeg.org/releases/authored-ffmpeg.tar.gz')):
+            stream = io.BytesIO()
+            with tarfile.open(fileobj=stream, mode='w:gz') as archive:
+                content = ('authored ' + name + ' source fixture\n').encode()
+                entry = tarfile.TarInfo(directory + '/file.c')
+                entry.size = len(content); entry.mode = 0o644
+                archive.addfile(entry, io.BytesIO(content))
+            data = stream.getvalue()
+            self.payloads[url] = data
+            self.lock['sources'].append({'name': name, 'filename': name + '.tar.gz',
+                'url': url, 'bytes': len(data), 'sha256': hashlib.sha256(data).hexdigest()})
+        self.lock_path.write_text(json.dumps(self.lock))
+        self.requests = []
+
+    def opener(self, url, timeout):
+        self.assertEqual(timeout, 60)
+        self.requests.append(url)
+        # Intercept transport only. The actual baseline downloader, size/hash
+        # guards, atomic publication and source inventory checks all execute.
+        return io.BytesIO(self.payloads[url])
+
+    def build(self, name, opener=None):
+        self.private_build = mock.Mock(side_effect=lambda out, workspace, prepared, *_:
+                                       {'status': 'authored fixture passed', 'prepared': prepared})
+        self.python_download = mock.Mock(return_value=Path('/unused-python-archive'))
+        self.development_download = mock.Mock(return_value=[])
+        with contextlib.ExitStack() as stack:
+            for obj, attr, value in (
+                    (recipe, 'ROOT', self.root), (recipe.baseline, 'ROOT', self.root),
+                    (recipe.baseline, 'LOCK', self.lock_path),
+                    (recipe, 'download', self.python_download),
+                    (recipe, 'download_development', self.development_download),
+                    (recipe, 'build_private', self.private_build),
+                    (recipe.baseline.urllib.request, 'urlopen', opener or self.opener)):
+                stack.enter_context(mock.patch.object(obj, attr, value))
+            return recipe.build(self.root / '.deps/portable/python' / name)
+
+    def test_empty_baseline_cache_is_prepared_before_explicit_python_build(self):
+        self.assertFalse((self.root / '.deps/portable').exists())
+        result = self.build('fresh')
+        self.assertEqual(result['status'], 'authored fixture passed')
+        self.assertCountEqual(self.requests, self.payloads)
+        for row in self.lock['sources']:
+            cached = self.root / '.deps/portable/cache' / row['filename']
+            self.assertEqual(cached.read_bytes(), self.payloads[row['url']])
+        prepared = result['prepared']
+        self.assertTrue((Path(prepared['sysroot']) / '.monado-portable.json').is_file())
+        self.assertTrue((Path(prepared['sources']) / recipe.baseline.SOURCE_MANIFEST).is_file())
+        self.python_download.assert_called_once_with()
+        self.development_download.assert_called_once_with()
+        self.private_build.assert_called_once()
+
+    def test_verified_baseline_cache_is_reused_without_network(self):
+        first = self.build('first')
+        cached = self.root / '.deps/portable/cache'
+        before = {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in cached.iterdir()}
+        blocked = mock.Mock(side_effect=AssertionError('authored offline transport guard'))
+        second = self.build('second', blocked)
+        blocked.assert_not_called()
+        self.assertEqual(first['prepared'], second['prepared'])
+        self.assertEqual(before, {p.name: (p.read_bytes(), p.stat().st_mtime_ns) for p in cached.iterdir()})
+
+    def test_changed_cached_archive_is_preserved_and_stops_before_python_build(self):
+        self.build('first')
+        cached = self.root / '.deps/portable/cache' / self.lock['sources'][0]['filename']
+        cached.write_bytes(b'authored corrupt archive')
+        blocked = mock.Mock(side_effect=AssertionError('corrupt cache must not be downloaded again'))
+        with self.assertRaisesRegex(ValueError, 'cached portable dependency identity differs'):
+            self.build('rejected', blocked)
+        blocked.assert_not_called()
+        self.assertEqual(cached.read_bytes(), b'authored corrupt archive')
+        self.assertFalse((self.root / '.deps/portable/python/rejected').exists())
+        self.python_download.assert_not_called()
+        self.development_download.assert_not_called()
+        self.private_build.assert_not_called()
+
+    def test_changed_verified_source_is_preserved_and_stops_before_python_build(self):
+        first = self.build('first')
+        source = Path(first['prepared']['sources']) / 'SDL3-3.4.8/file.c'
+        source.write_bytes(b'authored changed source')
+        blocked = mock.Mock(side_effect=AssertionError('source cache must not be replaced'))
+        with self.assertRaisesRegex(ValueError, 'portable source cache is incomplete or changed'):
+            self.build('rejected', blocked)
+        blocked.assert_not_called()
+        self.assertEqual(source.read_bytes(), b'authored changed source')
+        self.assertFalse((self.root / '.deps/portable/python/rejected').exists())
+        self.python_download.assert_not_called()
+        self.development_download.assert_not_called()
+        self.private_build.assert_not_called()
 
 
 if __name__ == '__main__':

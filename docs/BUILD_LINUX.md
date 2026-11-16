@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-The recommended download is **`monado-ii-0.1.22-linux-builder-x86_64.AppImage`** from
+The recommended download is **`monado-ii-0.1.23-linux-builder-x86_64.AppImage`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases/latest). It provides
 folder selection, local build progress and the normal settings launcher after
 building. The source/setup archive and terminal route remain available below.
@@ -25,8 +25,8 @@ building. The source/setup archive and terminal route remain available below.
 If FUSE is unavailable, extraction mode works without installing it:
 
 ```sh
-chmod +x monado-ii-0.1.22-linux-builder-x86_64.AppImage
-./monado-ii-0.1.22-linux-builder-x86_64.AppImage --appimage-extract-and-run
+chmod +x monado-ii-0.1.23-linux-builder-x86_64.AppImage
+./monado-ii-0.1.23-linux-builder-x86_64.AppImage --appimage-extract-and-run
 ```
 
 **Use an existing installation** links a checked installation in place, preserving
@@ -547,3 +547,13 @@ values instead of requesting unrelated dependency packages.
 If an earlier update failed at this step, reopen the launcher and retry the new
 update. The failed build leaves the previous installation selected and preserves
 saves, settings and extracted game input.
+
+
+### Fresh update workspace prerequisites
+
+Linux 0.1.23 also fixes a cold-cache failure later in launcher AppImage packaging.
+The private startup Python builder now prepares its pinned prerequisite
+source/sysroot cache before requesting the offline build inputs. A previous game
+and native launcher compile could succeed before this later packaging step failed.
+The failed update still leaves the prior selection active; retry the new release
+through the launcher. Game input, saves and settings remain in place.
