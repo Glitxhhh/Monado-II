@@ -234,11 +234,11 @@ class PortablePythonLicensesAndTrust(unittest.TestCase):
         with mock.patch.object(python, 'SYSTEM_CA_FILES', ('/authored-store-one', '/authored-store-two')), \
                 mock.patch.object(Path, 'is_file', side_effect=[PermissionError('authored inaccessible store'), True]), \
                 mock.patch.object(python.os, 'access', return_value=True):
-            self.assertEqual(python.system_ca_file(), '/authored-store-two')
+            self.assertEqual(python.system_ca_file(), str(Path('/authored-store-two')))
 
     def test_environment_recipe_change_invalidates_python_provider(self):
         with tempfile.TemporaryDirectory() as temporary:
-            root = Path(temporary)
+            root = Path(temporary).resolve()
             output = root / '.deps/portable/python/authored'; (output / 'prefix/bin').mkdir(parents=True)
             executable = output / 'prefix/bin/python3.14'; executable.write_bytes(b'authored identity fixture, not executed')
             environment_recipe = root / 'environment-recipe.py'; environment_recipe.write_text('# authored environment recipe\n')

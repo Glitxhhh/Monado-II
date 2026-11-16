@@ -5781,8 +5781,8 @@
       "sha256": "998ebbca5af80e9f5ae8b1df63bff10d03c269588f62ab0f9b4f8cf79ffa0694"
     },
     "tests/test_portable_dependency_environment.py": {
-      "bytes": 21204,
-      "sha256": "5c5ade3197a76d6512bb0db916fdab191b62c8188bcb39d01cae87480fcab881"
+      "bytes": 21225,
+      "sha256": "74005e94bd325310ac99c065c65bc6beca9418ed02b31e9ebb25d00bed53203e"
     },
     "tests/test_portable_media.py": {
       "bytes": 3277,
