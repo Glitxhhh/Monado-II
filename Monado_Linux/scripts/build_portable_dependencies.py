@@ -30,6 +30,33 @@ ROOT = baseline.ROOT
 # pkgconf through PATH. A target sysroot's executables must never shadow that
 # host helper: their loader/library set belongs to a different distribution.
 HOST_TOOL_PATH = '/usr/bin:/bin'
+READELF = '/usr/bin/readelf'
+ELF_INSPECTION_TIMEOUT = 30
+ELF_INSPECTION_MAX_OUTPUT = 8 * 1024 * 1024
+ELF_INSPECTION_ERROR_LIMIT = 16384
+
+
+def native_tool_environment():
+    """Run host inspection tools against host libraries, not private Python's."""
+    # The AppImage's Python entry point restores its own LD_LIBRARY_PATH even
+    # after the caller has cleaned its environment. Fedora's readelf may link
+    # libcurl, whose newer OpenSSL cannot use Python's bundled libssl.so.3.
+    return {'PATH': HOST_TOOL_PATH, 'LANG': 'C', 'LC_ALL': 'C'}
+
+
+def inspection_excerpt(stream):
+    """Read bounded first/last diagnostic bytes without buffering tool output."""
+    stream.seek(0, os.SEEK_END)
+    size = stream.tell()
+    stream.seek(0)
+    beginning = stream.read(min(size, ELF_INSPECTION_ERROR_LIMIT // 2))
+    if size > len(beginning):
+        stream.seek(max(len(beginning), size - ELF_INSPECTION_ERROR_LIMIT // 2))
+        ending = stream.read(ELF_INSPECTION_ERROR_LIMIT // 2)
+        separator = (b'\n... intermediate output omitted ...\n'
+                     if size > ELF_INSPECTION_ERROR_LIMIT else b'')
+        beginning += separator + ending
+    return size, beginning.decode('utf-8', errors='replace').strip()
 
 
 def build_environment(sysroot):
@@ -47,6 +74,10 @@ def target_cmake_options():
             '-DCMAKE_FIND_ROOT_PATH_MODE_INCLUDE=ONLY',
             '-DCMAKE_FIND_ROOT_PATH_MODE_LIBRARY=ONLY',
             '-DCMAKE_FIND_ROOT_PATH_MODE_PACKAGE=ONLY',
+            # Zig 0.14's embedded linker rejects --dependency-file even when
+            # CMake finds a host linker advertising that optional capability.
+            # Keep ordinary compiler/CMake dependency tracking and linking.
+            '-DCMAKE_LINK_DEPENDS_USE_LINKER=OFF',
             # The pinned baseline intentionally has no liburing development
             # provider. SDL's ordinary threaded async-I/O fallback remains.
             '-DSDL_LIBURING=OFF']
@@ -112,8 +143,31 @@ def verify_existing():
 
 def elf_floor(path):
     import re
-    result = subprocess.run(['/usr/bin/readelf', '-VW', path], capture_output=True, text=True, check=True)
-    versions = {tuple(map(int, value.split('.'))) for value in re.findall(r'Name: GLIBC_([0-9.]+)', result.stdout)}
+    command = [READELF, '-VW', str(path)]
+    # Keep potentially large inspection output off the Python heap; accepting
+    # metadata is bounded independently from the shorter diagnostic excerpts.
+    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
+        try:
+            result = subprocess.run(command, env=native_tool_environment(),
+                stdin=subprocess.DEVNULL, stdout=output, stderr=errors,
+                timeout=ELF_INSPECTION_TIMEOUT, check=False)
+        except (OSError, subprocess.TimeoutExpired) as error:
+            _, stdout = inspection_excerpt(output)
+            _, stderr = inspection_excerpt(errors)
+            raise ValueError('Cannot inspect portable ELF: ' + str(path)
+                + '\nCommand: ' + shlex.join(command) + '\n' + str(error)
+                + '\nSTDOUT:\n' + stdout + '\nSTDERR:\n' + stderr) from error
+        out_size, stdout = inspection_excerpt(output)
+        err_size, stderr = inspection_excerpt(errors)
+        if result.returncode or out_size + err_size > ELF_INSPECTION_MAX_OUTPUT:
+            reason = ('exit ' + str(result.returncode) if result.returncode else
+                'output exceeds ' + str(ELF_INSPECTION_MAX_OUTPUT) + ' bytes')
+            raise ValueError('Cannot inspect portable ELF: ' + str(path)
+                + '\nCommand: ' + shlex.join(command) + '\nreadelf failed (' + reason + ')'
+                + '\nSTDOUT:\n' + stdout + '\nSTDERR:\n' + stderr)
+        output.seek(0)
+        metadata = output.read(ELF_INSPECTION_MAX_OUTPUT).decode('utf-8', errors='replace')
+    versions = {tuple(map(int, value.split('.'))) for value in re.findall(r'Name: GLIBC_([0-9.]+)', metadata)}
     floor = max(versions, default=(0,))
     if floor > (2, 39):
         raise ValueError('portable library exceeds GLIBC_2.39: ' + str(path) + ' ' + str(floor))

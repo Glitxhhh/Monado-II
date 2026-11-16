@@ -872,3 +872,14 @@ Project-local CMake (BSD-3-Clause) and Ninja (Apache-2.0) bootstrap wheels prese
 their included licences. This record is not a blanket public binary redistribution
 approval: exact companions, notices and corresponding source must be reviewed
 for each distributable. Source kits contain authored source and locks only.
+
+[XCDE] LINUX-116 keeps native inspection tools on their host distribution's
+library search path while the standalone builder's Python retains its private
+runtime. Portable ELF-floor checks preserve bounded failure diagnostics and the
+GLIBC2.39 ceiling. Runtime-bundle and FSR export inspection use the same separation;
+compiler/shader-library environments and game behavior remain unchanged. These
+are authored installer corrections, not changes to SDL/FFmpeg or game code.
+The SDL CMake recipe also disables optional linker-produced dependency files:
+host linker capability probes must not add flags unsupported by pinned Zig0.14.1.
+Normal compiler header dependency tracking and the actual shared-library link
+remain enabled and are exercised by the authored regression.

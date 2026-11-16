@@ -29,6 +29,20 @@ EXCLUDED={'lasgame.so','lasgame.so.id'}
 PUBLIC_RESOURCES={'libmonado-fidelityfx.so','FidelityFX-MIT.txt','libmonado-fsr3.so',
                   'AMD-FidelityFX-LICENSE.txt','libmonado-present-observer.so'}
 
+
+def inspect_with_host_tool(argv):
+    # The standalone builder's Python requires private libraries; native host
+    # inspection tools must instead use their own distribution's loader set.
+    result = subprocess.run(argv, capture_output=True, text=True, errors='replace', timeout=30,
+        env={'PATH': '/usr/bin:/bin', 'LANG': 'C', 'LC_ALL': 'C'})
+    if result.returncode:
+        raise ValueError('Runtime inspection command failed (exit ' + str(result.returncode)
+            + '): ' + str(argv[0]) + '\nstdout:\n' + result.stdout[-4096:]
+            + '\nstderr:\n' + result.stderr[-4096:])
+    if len(result.stdout) > 8 * 1024 * 1024:
+        raise ValueError('Runtime inspection output exceeds its bound: ' + str(argv[0]))
+    return result
+
 def digest(path):
     with Path(path).open('rb') as f:return hashlib.file_digest(f,'sha256').hexdigest()
 
@@ -81,10 +95,9 @@ def inspect_runtime(binary,receipt):
         raise ValueError('runtime source closure changed or is absent')
     # Require an inspectable symbol table. A stripped image cannot demonstrate
     # the absence of lifted functions by merely hiding their symbol names.
-    r=subprocess.run(['/usr/bin/readelf','-SW',str(b)],capture_output=True,text=True,timeout=30)
-    if r.returncode or '.symtab' not in r.stdout:raise ValueError('runtime symbol table required for game-code exclusion')
-    r=subprocess.run(['/usr/bin/nm','--defined-only',str(b)],capture_output=True,text=True,timeout=30)
-    if r.returncode:raise ValueError('runtime symbol inspection failed')
+    r=inspect_with_host_tool(['/usr/bin/readelf','-SW',str(b)])
+    if '.symtab' not in r.stdout:raise ValueError('runtime symbol table required for game-code exclusion')
+    r=inspect_with_host_tool(['/usr/bin/nm','--defined-only',str(b)])
     names={line.split()[-1] for line in r.stdout.splitlines() if line.split()}
     if not {'main','_start'}.issubset(names):raise ValueError('runtime executable entry points missing')
     if any(re.fullmatch(r'f_[0-9a-fA-F]{10,}',line.split()[-1]) for line in r.stdout.splitlines() if line.split()):

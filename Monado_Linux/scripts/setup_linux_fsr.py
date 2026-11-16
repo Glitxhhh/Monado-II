@@ -330,12 +330,13 @@ def build(lock,output,jobs):
     out.mkdir(parents=True);(out/'obj').mkdir();(out/'logs').mkdir();(out/'shaders').mkdir();(out/'generated').mkdir()
     sysroot=Path((ROOT/'.deps/graphics/active-sysroot.txt').read_text().strip());lib=sysroot/'usr/lib/x86_64-linux-gnu';cc=ROOT/'.deps/bin/clang-cc';cxx=ROOT/'.deps/bin/clang-cxx'
     env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','LC_ALL':'C.UTF-8','LD_LIBRARY_PATH':str(lib),'TMPDIR':str(out)}
+    host_env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','LC_ALL':'C.UTF-8','TMPDIR':str(out)}
     receipt={'schema':1,'status':'running','scope':lock['scope'],'sdk_commit':lock['commit'],'lock_sha256':digest(LOCK),'setup_sha256':digest(__file__),'output':str(out),'source':str(src),'commands':[],'shader_count':0,'dependencies':{'sysroot':str(sysroot),'sysroot_marker_sha256':digest(sysroot/'.monado-deps.json'),'cc_sha256':digest(cc),'cxx_sha256':digest(cxx),'shaderc_sha256':digest(lib/'libshaderc.so')}}
     receipt_lock=threading.RLock()
     def save():
         with receipt_lock:(out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
-    def run(name,argv):
-        t=time.monotonic();r=subprocess.run(list(map(str,argv)),cwd=ROOT,env=env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=180)
+    def run(name,argv,*,host_tool=False):
+        t=time.monotonic();r=subprocess.run(list(map(str,argv)),cwd=ROOT,env=host_env if host_tool else env,stdin=subprocess.DEVNULL,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=180)
         (out/'logs'/(name+'.stdout.log')).write_bytes(r.stdout);(out/'logs'/(name+'.stderr.log')).write_bytes(r.stderr)
         with receipt_lock:
             receipt['commands'].append({'name':name,'argv':list(map(str,argv)),'cwd':str(ROOT),'exit':r.returncode,'seconds':time.monotonic()-t});save()
@@ -395,7 +396,7 @@ def build(lock,output,jobs):
         run('scratch-layout-test',[out/'layout-test'])
         (out/'exports.map').write_text('{ global: ffxCreateContext; ffxDestroyContext; ffxConfigure; ffxQuery; ffxDispatch; monado_ffx_abi_version; monado_ffx_sdk_commit; local: *; };\n')
         run('link',[cxx,'-shared','-pthread',*objects,'-Wl,--gc-sections','-Wl,-z,defs','-Wl,--version-script,'+str(out/'exports.map'),lib/'libvulkan.so','-o',out/NAME])
-        run('exports',['nm','-D','--defined-only',out/NAME]);run('dynamic',['readelf','-d',out/NAME])
+        run('exports',['/usr/bin/nm','-D','--defined-only',out/NAME],host_tool=True);run('dynamic',['/usr/bin/readelf','-d',out/NAME],host_tool=True)
         exports=(out/'logs/exports.stdout.log').read_text().splitlines()
         symbols={line.split()[-1] for line in exports if line.split()}
         expected={'ffxCreateContext','ffxDestroyContext','ffxConfigure','ffxQuery','ffxDispatch','monado_ffx_abi_version','monado_ffx_sdk_commit'}

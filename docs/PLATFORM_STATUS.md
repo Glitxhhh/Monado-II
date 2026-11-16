@@ -1,4 +1,4 @@
-# Platform status: Linux 0.1.26 and Windows Experimental 0.1.0
+# Platform status: Linux 0.1.27 and Windows Experimental 0.1.0
 
 Monado II provides native x86-64 SDL/Vulkan implementations. Each player builds
 from their own extracted Definitive Edition2.0.0 input. Downloads contain no game
@@ -6,8 +6,22 @@ input, generated game-code library, game shader cache, saves or keys.
 
 | Platform | Current status |
 | --- | --- |
-| Linux0.1.26 | Maintainer-accepted desktop/NVIDIA dev104R5, with current renderer, frame generation, graphics controls and portable graphical setup. Physical ultrawide and handheld performance testing remains requested. |
+| Linux0.1.27 | Maintainer-accepted desktop/NVIDIA dev104R5, with current renderer, frame generation, graphics controls and portable graphical setup. Physical ultrawide and handheld performance testing remains requested. |
 | WindowsExperimental0.1.0 | Native portable setup, modern launcher and gameplay options. Native builds and title startup were tested on Windows11/RTX4070SUPER/NVIDIA595.97. Purple DLSS/DLAA/temporal flashes and flickering remain reported. |
+
+## Linux build compatibility hotfix in 0.1.27
+
+Native ELF inspectors run without the packaged Python runtime's private library
+search path. This fixes a confirmed Fedora OpenSSL symbol-version collision.
+SDL configuration disables optional linker-generated dependency files that the
+pinned Zig linker cannot consume on some hosts. Compiler/header dependency
+tracking and required SDL backends remain enabled.
+
+Full fresh builds passed on Ubuntu through the genuine packaged Python runtime.
+Cold SDL, FFmpeg and Python builds passed in Fedora 45 userspace. The reported
+CMake linker failure was reproduced and fixed with a controlled host-linker
+capability fixture. These checks do not establish full gameplay or installations
+on the reporters' exact Fedora 44/CachyOS hardware; retries remain requested.
 
 ## Linux existing-installation update hotfix in 0.1.26
 

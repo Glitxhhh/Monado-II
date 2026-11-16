@@ -54,6 +54,7 @@ def build(output,jobs=4):
     sysroot=Path((ROOT/'.deps/graphics/active-sysroot.txt').read_text().strip());lib=sysroot/'usr/lib/x86_64-linux-gnu'
     cc=ROOT/'.deps/bin/clang-cc';cxx=ROOT/'.deps/bin/clang-cxx'
     env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','LC_ALL':'C.UTF-8','LD_LIBRARY_PATH':str(lib),'TMPDIR':str(out)}
+    host_env={'PATH':'/usr/bin:/bin','LANG':'C.UTF-8','LC_ALL':'C.UTF-8','TMPDIR':str(out)}
     receipt={'schema':1,'status':'running','scope':'native FSR3.1.4 upscaling only, authored SDK shaders; no game data',
              'sdk_commit':lock['commit'],'lock_sha256':common.digest(common.LOCK),'setup_sha256':common.digest(__file__),
              'common_setup_sha256':common.digest(common.__file__),'source':str(original),'output':str(out),'commands':[],
@@ -61,8 +62,8 @@ def build(output,jobs=4):
     mutex=threading.RLock()
     def save():
         with mutex:(out/'receipt.json').write_text(json.dumps(receipt,indent=2)+'\n')
-    def run(name,args):
-        t=time.monotonic();r=subprocess.run(list(map(str,args)),cwd=ROOT,env=env,stdin=subprocess.DEVNULL,
+    def run(name,args,*,host_tool=False):
+        t=time.monotonic();r=subprocess.run(list(map(str,args)),cwd=ROOT,env=host_env if host_tool else env,stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=180)
         (out/'logs'/(name+'.stdout.log')).write_bytes(r.stdout);(out/'logs'/(name+'.stderr.log')).write_bytes(r.stderr)
         with mutex:
@@ -139,7 +140,7 @@ def build(output,jobs=4):
         expected={'ffxCreateContext','ffxDestroyContext','ffxConfigure','ffxQuery','ffxDispatch','monado_fsr3_abi_version','monado_fsr3_sdk_commit'}
         (out/'exports.map').write_text('{ global: '+'; '.join(sorted(expected))+'; local: *; };\n')
         run('link',[cxx,'-shared','-pthread',*objects,'-Wl,--gc-sections','-Wl,-z,defs','-Wl,--version-script,'+str(out/'exports.map'),lib/'libvulkan.so','-o',out/NAME])
-        run('exports',['nm','-D','--defined-only',out/NAME]);run('dynamic',['readelf','-d',out/NAME])
+        run('exports',['/usr/bin/nm','-D','--defined-only',out/NAME],host_tool=True);run('dynamic',['/usr/bin/readelf','-d',out/NAME],host_tool=True)
         symbols={line.split()[-1] for line in (out/'logs/exports.stdout.log').read_text().splitlines() if line.split()}
         if symbols!=expected:raise ValueError('unexpected FSR3 component exports: '+str(symbols))
         common.verify_source(lock)

@@ -6,7 +6,7 @@ labelled experimental in its identity, download instructions and release notes.
 Do not mark the whole release prerelease merely to label Windows experimental,
 since both current update clients check the ordinary latest release.
 
-## Linux0.1.26
+## Linux0.1.27
 
 Publish the reviewed standalone builder AppImage, Linux source/setup tarball,
 byte-identical legacy `-source.tar.gz` alias, AppImage runtime source/relink
@@ -14,7 +14,7 @@ companion and combinedSHA256SUMS. The internal legacy source-root name is retain
 for existing Linux updater compatibility. Source archives contain no binaries,
 input, generated code, game shaders/caches, saves, keys or vendor SDKs.
 
-The public0.1.26 standalone AppImage contains setup software and its reviewed
+The public0.1.27 standalone AppImage contains setup software and its reviewed
 private startup runtime. Game/runtime compilation remains local. Local migration
 images may also contain a verified authored runtime; that local transport is not
 a public binary redistribution approval. The
@@ -36,7 +36,7 @@ For this build-path hotfix, qualify the complete older-client preparation and
 activation route before publication, including cold dependency/Python caches and
 portable launcher packaging after runtime reuse. A source-discovery pass alone
 does not establish a successful update.
-For 0.1.26, require a genuine 0.1.24 existing split-game update that emits
+The retained 0.1.26 route requires a genuine 0.1.24 existing split-game update that emits
 `--reuse-game-code`. Verify the candidate chooses complete generation, builds
 its own native game/library and launcher, passes artifact checks and activates
 with copied profile contents unchanged. A fresh build or a pre-split-game old
@@ -78,3 +78,9 @@ update identities and package/source guards. Never use inherited broad distribut
 scripts or upload a development workspace. Keep authored/licensed source and
 component attribution; never upload game-derived data, private logs or user state.
 Source CI and packaging checks are separate from gameplay/full-game qualification.
+
+
+For 0.1.27, additionally require the packaged-Python OpenSSL collision
+reproducer and the real pinned CMake/Zig negative/control linker fixture.
+Distinguish Fedora userspace component checks from a full Fedora/CachyOS
+installation. Keep the GLIBC ceiling, source checks and required SDL backends.

@@ -14,7 +14,7 @@
     },
     ".github/workflows/source-release.yml": {
       "bytes": 3090,
-      "sha256": "d06e0669170c491639ac6ed0ac373498f71896cb8fdef694fdd4762865107403"
+      "sha256": "7cc44388570e8228a1654071c13e1f4153710857cdf06db238836694d1d76506"
     },
     ".gitignore": {
       "bytes": 1053,
@@ -37,8 +37,8 @@
       "sha256": "fc908ddd148e06cb024ce9ea9f98307c32af7147bcba2504b8b6a726526197cc"
     },
     "CHANGELOG.md": {
-      "bytes": 49326,
-      "sha256": "31614432627ed97b0d9acd33e9f2a7484047cc1b94fdebf4f33cfa285f9050a4"
+      "bytes": 50045,
+      "sha256": "a67d46f13b715ed98233f274f66651437f70cbea5a80b9b576e2b270812f4765"
     },
     "CONTRIBUTING.md": {
       "bytes": 1798,
@@ -89,8 +89,8 @@
       "sha256": "f15076a14b594f71dad68413b094b74242f0f190c044bdbe03ccc56c39fb21ea"
     },
     "Monado_Linux/docs/UPSTREAM.md": {
-      "bytes": 60080,
-      "sha256": "3c4bc62e91fc612f504a08b3340a445f087fdd40bed80bccaf32f4547e6d3156"
+      "bytes": 60854,
+      "sha256": "7975052cbacfa9f3bdaa15bf239ae7bbda15208ece6ca92dd30be257a045a257"
     },
     "Monado_Linux/docs/adr/0001-base-lasrecomp.md": {
       "bytes": 910,
@@ -993,8 +993,8 @@
       "sha256": "fcfc98e903b60fea82ca245ac40d5dc4d3a1f28632f62ca968a93afc32a88f89"
     },
     "Monado_Linux/scripts/build_portable_dependencies.py": {
-      "bytes": 19921,
-      "sha256": "2503cd42136cd2255d1b60b5e55ac2a899bb57f8bf27af644c0575122dca82f9"
+      "bytes": 22902,
+      "sha256": "45b2edbe4a83ae47a29f5f6b0508e0ee1d0f4738470aa68218cdf89488f926ea"
     },
     "Monado_Linux/scripts/build_rt_gfx.sh": {
       "bytes": 4258,
@@ -1241,16 +1241,16 @@
       "sha256": "e0da2b53ee389e048b9891be29edc96ac6ff09fca42236c642ffc089ae88f724"
     },
     "Monado_Linux/scripts/setup_linux_fsr.py": {
-      "bytes": 33169,
-      "sha256": "3cfc3eaf342548e5c25fcb81707ab30f05605b4bcd0d7bbc48004af141ebeb38"
+      "bytes": 33354,
+      "sha256": "7a7cc9daada13388650b78bae40b7490363332c8cc642086ff6385acdb6499fc"
     },
     "Monado_Linux/scripts/setup_linux_fsr3.py": {
-      "bytes": 14494,
-      "sha256": "f3f2f87a9d690c255becfe225391baed181df75fd4f2b90c70182473c8e163cc"
+      "bytes": 14679,
+      "sha256": "7db5052a084203d1241246f3d70ac0f2cbecebeb7ec4b1e448e5ef9c474e66fd"
     },
     "Monado_Linux/scripts/setup_linux_fsr4.py": {
-      "bytes": 8470,
-      "sha256": "37d424425f67c1dd13343366d0566c72ba20de30922b3f5a15f1a93cbe84b7ca"
+      "bytes": 8684,
+      "sha256": "4af88f451b584ae0b5b388a7f38c57fbb0515648062ec0503b9f3e442000ecd6"
     },
     "Monado_Linux/scripts/setup_linux_fsr4_tools.py": {
       "bytes": 9976,
@@ -5185,8 +5185,8 @@
       "sha256": "111d3bdcc8b4dd86e9bc0b59a2431dd5439c4de0ba94c9bee96756ad5399a053"
     },
     "README.md": {
-      "bytes": 19512,
-      "sha256": "9ccd2af9d089330f6c28229c81395fad43daedf46b6b919985343d4964214b8d"
+      "bytes": 19499,
+      "sha256": "0d8368d271f937fd0510a9b9275679489fba453c7f023a8280e58f7075b62643"
     },
     "Rollback_Monado_II.sh": {
       "bytes": 8873,
@@ -5213,8 +5213,8 @@
       "sha256": "3d962611b3ba82b475006f2bf93af964ba09b880f70289d59edac6d587b2a99e"
     },
     "docs/BUILD_LINUX.md": {
-      "bytes": 35368,
-      "sha256": "07674679466ca3958605cfdeac549db8a96f124079271b0f6ac7401238ca5476"
+      "bytes": 35896,
+      "sha256": "df17a11b025c1bb693bbf65589b8198b6080af1e129c01cc0157d1cfc8b02389"
     },
     "docs/BUILD_WINDOWS.md": {
       "bytes": 8083,
@@ -5237,8 +5237,8 @@
       "sha256": "26abd117d0307aa954d851883874a709ea07b994abe69f248d71373100451739"
     },
     "docs/PLATFORM_STATUS.md": {
-      "bytes": 7995,
-      "sha256": "0b84b7f542a041bf42967592fd4b1a1e0e0a1dd43c13b099cfa45641d228d15f"
+      "bytes": 8800,
+      "sha256": "a75d34d18f6542f9f1c841ed6798b4f407e339481c4cb36fad26a35f95abec77"
     },
     "docs/QUICKSTEP.md": {
       "bytes": 4893,
@@ -5249,8 +5249,8 @@
       "sha256": "ce4c8d6a5ffb65a08a25abb6450235929887d2079cb63321c327261b123b1eec"
     },
     "docs/RELEASING.md": {
-      "bytes": 4987,
-      "sha256": "6a400e947cd659a2fcb964d5fccba309b07754627c76a8eeb17789dd1ced5824"
+      "bytes": 5301,
+      "sha256": "5d1b01158a66e040a9b85666889ae6edde6a7abb4590e53a4b7e2c7011dc3402"
     },
     "docs/WINDOWS_PARITY_INVENTORY.json": {
       "bytes": 233647,
@@ -5660,6 +5660,10 @@
       "bytes": 3703,
       "sha256": "b25bbb4076542809aae5ec53acb5f49f3b5110c97d3bf5c347546e532b21316d"
     },
+    "tests/test_host_tool_loader_isolation.py": {
+      "bytes": 4095,
+      "sha256": "4fe155340c2787fcbb72c70412a9c605abf82cd6baa2419ddf7a6b9f4067b35e"
+    },
     "tests/test_input_camera.py": {
       "bytes": 6411,
       "sha256": "ba8f4d49f6d696d7723c939bd4f96dc8332e7ecda13f1496631da701f110cf0d"
@@ -5784,9 +5788,17 @@
       "bytes": 8870,
       "sha256": "998ebbca5af80e9f5ae8b1df63bff10d03c269588f62ab0f9b4f8cf79ffa0694"
     },
+    "tests/test_portable_cmake_linker.py": {
+      "bytes": 5426,
+      "sha256": "a411ee6f470d3e0d5795a0276f8c241740658a3c4f2731f5e22d09b7ee85f0d8"
+    },
     "tests/test_portable_dependency_environment.py": {
       "bytes": 21225,
       "sha256": "74005e94bd325310ac99c065c65bc6beca9418ed02b31e9ebb25d00bed53203e"
+    },
+    "tests/test_portable_elf_inspection.py": {
+      "bytes": 6425,
+      "sha256": "2cbdff66d10d4d12d6d96eab753d17531d49d4782e66450be0cb5088dba4c0ad"
     },
     "tests/test_portable_media.py": {
       "bytes": 3277,
@@ -6205,8 +6217,8 @@
       "sha256": "2f4bc9d272816e4dcc9bdf2826faefd0041129d2b06fd699e1353709e32cdb57"
     },
     "tools/portable_runtime.py": {
-      "bytes": 12883,
-      "sha256": "05c5014b18148d182ce54ddf54500e7d3038b9ca008da2dff3a662817401f337"
+      "bytes": 13481,
+      "sha256": "58a9219a63f85e7be64486f9e44c6e6ddb42d82db7e7a9200ae3c4aa2a676524"
     },
     "tools/publication_guard.py": {
       "bytes": 15384,
@@ -6250,7 +6262,7 @@
     },
     "update-version.json": {
       "bytes": 58,
-      "sha256": "a903daf48e7d87e25bc6a05fa3c1e4e73dfa3d863140a3bc8c15ef6c7b043d1c"
+      "sha256": "465403bf42f7680021478ea40ccd6240fad701dd442dbf0be9a42ddb4242e33e"
     }
   },
   "project": "Monado II",

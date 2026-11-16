@@ -61,15 +61,17 @@ def build(output):
     cc = ROOT / '.deps/bin/clang-cxx'
     env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
            'TMPDIR': str(out), 'LD_LIBRARY_PATH': str(lib)}
+    host_env = {'PATH': '/usr/bin:/bin', 'LANG': 'C.UTF-8', 'LC_ALL': 'C.UTF-8',
+                'TMPDIR': str(out)}
     receipt = {'schema': 1, 'status': 'running', 'abi_version': ABI,
                'source_commit': lock['source_commit'], 'lock_sha256': digest(LOCK),
                'recipe_sha256': digest(__file__), 'output': str(out), 'commands': [],
                'sysroot': str(sysroot), 'sysroot_marker_sha256': digest(sysroot / '.monado-deps.json')}
     def save():
         (out / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
-    def run(name, args):
+    def run(name, args, *, host_tool=False):
         t = time.monotonic()
-        process=subprocess.Popen(list(map(str,args)),cwd=ROOT,env=env,stdin=subprocess.DEVNULL,
+        process=subprocess.Popen(list(map(str,args)),cwd=ROOT,env=host_env if host_tool else env,stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,stderr=subprocess.PIPE,start_new_session=True)
         try:stdout,stderr=process.communicate(timeout=180)
         finally:
@@ -97,11 +99,11 @@ def build(output):
         (out / 'exports.map').write_text('{ global: monado_fsr4_get_api; local: *; };\n')
         run('link', [cc, '-target','x86_64-linux-gnu.2.39','-shared', *objects, lib / 'libvulkan.so', '-Wl,-z,defs',
                      '-Wl,--version-script,' + str(out / 'exports.map'), '-o', out / NAME])
-        run('exports', ['nm', '-D', '--defined-only', out / NAME])
+        run('exports', ['/usr/bin/nm', '-D', '--defined-only', out / NAME], host_tool=True)
         symbols = {line.split()[-1] for line in (out / 'logs/exports.stdout.log').read_text().splitlines() if line.split()}
         if symbols != {'monado_fsr4_get_api'}:
             raise ValueError('unexpected FSR4 exports: ' + str(symbols))
-        run('dynamic', ['readelf', '-d', out / NAME])
+        run('dynamic', ['/usr/bin/readelf', '-d', out / NAME], host_tool=True)
         licenses = [('FSR4-GPL-2.0-or-later.txt', src / 'LICENSE'),
                     ('FSR4-AMD-SDK-LICENSE.md', src / 'LICENSE-AMD-SDK.md')]
         for name, path in licenses:

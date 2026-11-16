@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.1.27 - November 16, 2026
+
+- Fix Fedora build failures caused by the packaged Python runtime exposing its
+  private OpenSSL libraries to native `readelf` and `nm`. Inspectors now use the
+  host library environment, with bounded, useful diagnostics when they fail.
+- Fix SDL linking on hosts where CMake enables linker-generated dependency files
+  that the pinned Zig linker does not support. Compiler/header dependencies and
+  required desktop/audio backends remain enabled.
+- Retain previous update, gameplay, graphics and save behavior. Failed preparation
+  keeps the previous working build selected. Existing installs can retry normally.
+- Windows remains **Experimental 0.1.0**, with unchanged release assets.
+
 ## 0.1.26 - November 16, 2026
 
 - Fix updates from existing split-game installations when an older launcher asks

@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-The recommended download is **`monado-ii-0.1.26-linux-builder-x86_64.AppImage`** from
+The recommended download is **`monado-ii-0.1.27-linux-builder-x86_64.AppImage`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases/latest). It provides
 folder selection, local build progress and the normal settings launcher after
 building. The source/setup archive and terminal route remain available below.
@@ -25,8 +25,8 @@ building. The source/setup archive and terminal route remain available below.
 If FUSE is unavailable, extraction mode works without installing it:
 
 ```sh
-chmod +x monado-ii-0.1.26-linux-builder-x86_64.AppImage
-./monado-ii-0.1.26-linux-builder-x86_64.AppImage --appimage-extract-and-run
+chmod +x monado-ii-0.1.27-linux-builder-x86_64.AppImage
+./monado-ii-0.1.27-linux-builder-x86_64.AppImage --appimage-extract-and-run
 ```
 
 **Use an existing installation** links a checked installation in place, preserving
@@ -620,3 +620,14 @@ the builder regenerates and compiles from your validated game files. This can ad
 build time. The native path/content/input/ABI checks remain strict; an unrelated
 or tampered selection is not accepted. A failed preparation keeps the previous
 working version selected. There is no save-format conversion.
+
+
+### Native host tools and SDL linker compatibility
+
+Linux 0.1.27 prevents the packaged Python runtime's private libraries from
+shadowing system OpenSSL when native `readelf` or `nm` runs. Inspection failures
+include bounded diagnostic output. SDL builds also disable an optional
+linker-generated dependency-file mode unsupported by the pinned Zig linker.
+Normal compiler/header dependency tracking and required desktop/audio backends
+remain enabled. Retry through the existing launcher; no input or save deletion
+is required.
