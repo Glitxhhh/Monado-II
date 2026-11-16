@@ -88,6 +88,20 @@ class SourceReleaseTests(unittest.TestCase):
     def test_windows_zip_contains_only_windows_and_common_reviewed_sources(self):
         self.assert_contents(self.package('windows'), 'windows')
 
+    def test_platform_policy_drops_foreign_media_and_rebinds_its_exact_bytes(self):
+        policy_name = 'publication-policy.json'
+        foreign = 'Monado_Windows/tools/launcher/assets/gaur_plain.png'
+        original = release.encoded(dict(schema=1, licensed_media={foreign: 'a' * 64}))
+        (self.source / policy_name).write_bytes(original)
+        self.manifest['files'][policy_name] = dict(bytes=len(original), sha256=hashlib.sha256(original).hexdigest())
+        self.save_manifest()
+        receipt = self.package()
+        content = self.archive_contents(receipt)
+        self.assertEqual(json.loads(content[policy_name])['licensed_media'], {})
+        identity = json.loads(content[release.MANIFEST])['files'][policy_name]
+        self.assertEqual(identity, dict(bytes=len(content[policy_name]), sha256=hashlib.sha256(content[policy_name]).hexdigest()))
+        self.assertEqual((self.source / policy_name).read_bytes(), original)
+
     def test_linux_setup_and_old_updater_alias_are_identical_with_original_root(self):
         receipt = self.package(version='0.1.5')
         self.assertEqual(receipt['archive'], 'monado-ii-0.1.5-linux-setup.tar.gz')

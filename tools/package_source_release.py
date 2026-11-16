@@ -306,6 +306,18 @@ def package(source: Path, platform: str, version: str, output: Path) -> dict:
         stage.mkdir()
         for name, metadata in sorted(selected.items()):
             _copy_checked(source / name, stage / name, metadata)
+        # Platform kits carry only their own media declarations. In particular,
+        # old Linux updater guards cannot accept the newer Windows artwork path
+        # even when that file itself was correctly omitted from the archive.
+        # Rebind the policy bytes in the trimmed manifest, leaving the reviewed
+        # dual-platform source policy untouched.
+        policy_name = 'publication-policy.json'
+        policy = json.loads((stage / policy_name).read_text(encoding='utf-8'))
+        policy['licensed_media'] = {name: identity for name, identity in
+            policy.get('licensed_media', {}).items() if name in selected}
+        policy_bytes = encoded(policy)
+        (stage / policy_name).write_bytes(policy_bytes)
+        selected[policy_name] = dict(sha256=hashlib.sha256(policy_bytes).hexdigest(), bytes=len(policy_bytes))
         release_readme = (
             heading +
             'This is a source-only release, not a prebuilt playable game. Generate and\n'

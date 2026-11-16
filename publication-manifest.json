@@ -5913,8 +5913,8 @@
       "sha256": "1942d80c611fe73ce4e227f067febff94755d3f36424350fd264fa884c5f07ba"
     },
     "tests/test_source_releases.py": {
-      "bytes": 17617,
-      "sha256": "ae188fe60a8484864d5f737314beb154cb0638afffa1f478480aa7e051fc7eec"
+      "bytes": 18563,
+      "sha256": "5c10ca7e842efe1034a07f8c9d7e6170693dc2abd5d829286bd60a47bfad3d3c"
     },
     "tests/test_standalone_appimage_adapter.py": {
       "bytes": 14601,
@@ -6185,8 +6185,8 @@
       "sha256": "afc0a6c76c637a31a0f278c0a8f8bc65f3257dcb5ba5bed49d50576252c12e9d"
     },
     "tools/package_source_release.py": {
-      "bytes": 20164,
-      "sha256": "40751a2cf7e7d3d07cda87ee5850862758600a041c1f6c7d79976820407cfe64"
+      "bytes": 21010,
+      "sha256": "2f4bc9d272816e4dcc9bdf2826faefd0041129d2b06fd699e1353709e32cdb57"
     },
     "tools/portable_runtime.py": {
       "bytes": 12883,
