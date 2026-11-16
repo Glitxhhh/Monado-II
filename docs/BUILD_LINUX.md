@@ -1,6 +1,6 @@
 # Build and play on Linux
 
-The recommended download is **`monado-ii-0.1.21-linux-builder-x86_64.AppImage`** from
+The recommended download is **`monado-ii-0.1.22-linux-builder-x86_64.AppImage`** from
 [Releases](https://github.com/brendonbusker/Monado-II/releases/latest). It provides
 folder selection, local build progress and the normal settings launcher after
 building. The source/setup archive and terminal route remain available below.
@@ -25,8 +25,8 @@ building. The source/setup archive and terminal route remain available below.
 If FUSE is unavailable, extraction mode works without installing it:
 
 ```sh
-chmod +x monado-ii-0.1.21-linux-builder-x86_64.AppImage
-./monado-ii-0.1.21-linux-builder-x86_64.AppImage --appimage-extract-and-run
+chmod +x monado-ii-0.1.22-linux-builder-x86_64.AppImage
+./monado-ii-0.1.22-linux-builder-x86_64.AppImage --appimage-extract-and-run
 ```
 
 **Use an existing installation** links a checked installation in place, preserving
@@ -532,3 +532,18 @@ checks decide reuse. A verified incompatibility falls back to source compilation
 corrupt content stops with a clear error. `--source-build` on the standalone
 AppImage explicitly uses its full source workflow. Existing saves and input
 locations remain in place. The source archive remains a supported fallback.
+
+
+### Desktop build file limits
+
+Linux 0.1.22 fixes `ProcessFdQuotaExceeded` while linking the portable FFmpeg
+libraries during setup or updating. Desktop sessions can start applications with
+a lower soft open-file limit than terminals. The portable dependency worker now
+raises only its own soft limit within the inherited hard limit and restores it
+afterward. It does not change the desktop session, system configuration or game
+process limits. If the hard limit is insufficient, the build reports the actual
+values instead of requesting unrelated dependency packages.
+
+If an earlier update failed at this step, reopen the launcher and retry the new
+update. The failed build leaves the previous installation selected and preserves
+saves, settings and extracted game input.

@@ -1,4 +1,4 @@
-# Platform status: Linux 0.1.21 and Windows Experimental 0.1.0
+# Platform status: Linux 0.1.22 and Windows Experimental 0.1.0
 
 Monado II provides native x86-64 SDL/Vulkan implementations. Each player builds
 from their own extracted Definitive Edition2.0.0 input. Downloads contain no game
@@ -6,10 +6,18 @@ input, generated game-code library, game shader cache, saves or keys.
 
 | Platform | Current status |
 | --- | --- |
-| Linux0.1.21 | Maintainer-accepted desktop/NVIDIA dev104R5, with current renderer, frame generation, graphics controls and portable graphical setup. Physical ultrawide and handheld performance testing remains requested. |
+| Linux0.1.22 | Maintainer-accepted desktop/NVIDIA dev104R5, with current renderer, frame generation, graphics controls and portable graphical setup. Physical ultrawide and handheld performance testing remains requested. |
 | WindowsExperimental0.1.0 | Native portable setup, modern launcher and gameplay options. Native builds and title startup were tested on Windows11/RTX4070SUPER/NVIDIA595.97. Purple DLSS/DLAA/temporal flashes and flickering remain reported. |
 
-## Linux changes in0.1.21
+## Linux build hotfix in 0.1.22
+
+Desktop-launched setup and updates no longer rely on the terminal's open-file
+limit for the portable FFmpeg link. The dependency worker raises its own soft
+limit within the existing hard cap, records the values and restores the soft
+limit afterward. An insufficient hard cap produces a specific diagnostic.
+System settings, launcher/game limits and gameplay behavior are unchanged.
+
+## Linux changes retained from 0.1.21
 
 - Native FSR3 temporal upscaling and optional experimental FSR4Lite preparation,
   while retaining NVIDIA DLSS/DLAA and saved quality choices.

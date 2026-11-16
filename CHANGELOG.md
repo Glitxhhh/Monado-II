@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.22 — November 16, 2026
+
+- Fix a Linux setup/update failure while linking the portable FFmpeg libraries:
+  `ProcessFdQuotaExceeded`. Desktop-launched builds can inherit a 1,024-file soft
+  limit even when the same account permits a much higher limit in a terminal.
+- Give only the portable dependency build worker enough file descriptors within
+  its existing hard limit, record the limits in its receipt, and restore the soft
+  limit afterward. No sudo or system configuration changes are required when the
+  inherited hard limit is sufficient. Report an insufficient hard limit clearly.
+- Keep the previous working installation selected if a build fails. Existing game
+  input, saves, settings and Quick Step metadata are preserved; retry the update
+  from the launcher. No gameplay or renderer behavior changes are included.
+- Retain all 0.1.21 features. Windows remains **Experimental 0.1.0**, with its
+  unchanged setup/update/source materials and existing qualification limits.
+
 ## 0.1.21 — November 15, 2026
 
 - Add native temporal FSR3 upscaling on Linux, with compatible inputs for the
