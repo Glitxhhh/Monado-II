@@ -215,7 +215,7 @@ removing the feature. To explicitly build without this provider and its
 DLSS-specific prerequisites:
 
 ```sh
-./Build_Monado_II.sh --without-dlss
+./Build_Monado_II.sh --without-dlss --framegen
 ```
 
 Selecting DLSS in the Linux launcher now defaults to **DLAA / Native (100%)**.
@@ -317,8 +317,14 @@ Normal Linux builds include native frame-generation support without an extra fla
 ```
 
 This uses compatible temporal input from DLSS/DLAA, native FSR3 or prepared
-FSR4 Lite. `--without-dlss` retains FSR3 and integrated generation; omitting both
-DLSS and FSR3 rejects an explicit `--framegen` request. The old `--framegen`
+FSR4 Lite. Use `--without-dlss --framegen` to include FSR3 and integrated
+frame-generation support without NVIDIA DLSS. An explicit `--framegen` request
+requires DLSS or FSR3. A managed update with no explicit selection preserves
+its verified currently selected game's compiled support. This keeps older
+updaters compatible and retains support in newer FSR-only installations. Fresh
+source builds retain the modern default, and the graphical builder requests
+support explicitly; the runtime option remains
+off by default. The `--framegen`
 argument remains accepted for compatibility but is unnecessary.
 The pinned FidelityFX source is built locally when missing. A verified local SDK
 is reused; an altered SDK stops the build for inspection. No SDK binaries are
@@ -594,3 +600,14 @@ Launcher startup reuses checks only within a protected operation and for exact
 verified bytes. Source/runtime checks, changed-file rejection, installation leases
 and existing save formats remain in place. Retry through the existing launcher;
 failed preparation keeps the previous working build selected.
+
+
+### Older non-DLSS updater compatibility
+
+Launchers from before the native FSR3 update cannot accept an FSR-only
+frame-generation capability in the rebuilt game's receipt. The compatibility
+build keeps their original capability contract during that update, while retaining
+FSR3 upscaling and the other improvements. Receipts describe the actual compiled
+features, and unavailable integrated generation stays disabled in the launcher.
+New graphical builds explicitly include modern support. Terminal builders can use
+`--without-dlss --framegen`; this includes support without enabling it in settings.

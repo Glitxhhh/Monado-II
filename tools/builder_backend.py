@@ -448,7 +448,10 @@ class Broker:
         canonical(logs, directory=True)
         logfile = logs / (identity + '.log')
         self.update(log=str(logfile))
-        command = [sys.executable, '-I', '-B', output / 'tools/build_linux_app.py', '--no-appimage', '--jobs', str(jobs), '--build-id', identity]
+        # Modern graphical builds include native FSR3 even without DLSS. Keep
+        # that capability explicit so legacy no-DLSS CLI updater contracts can
+        # retain their original honest framegen=False receipt shape.
+        command = [sys.executable, '-I', '-B', output / 'tools/build_linux_app.py', '--no-appimage', '--framegen', '--jobs', str(jobs), '--build-id', identity]
         if not dlss:
             command.append('--without-dlss')
         runtime = self.runtime_choice(dlss, request.get('source_build', False))

@@ -30,6 +30,12 @@ int main(int argc,char **argv){
  put("frame_gen = 1 #comment\nframe_gen_smooth_motion = 1\n");load();expect(1,0,0,0);
  put("frame_gen_smooth_motion = 1\n");load();expect(0,1,0,0);launcher_linux::smooth_motion_layer_available=false;linux_graphics_normalize();expect(0,0,0,0);
  put("frame_gen_smooth_motion = 1\n");load();launcher_linux::smooth_motion_layer_available=true;linux_graphics_normalize();expect(0,1,0,0);
+ // SR availability is distinct from compiled FG: an honest legacy no-DLSS
+ // payload may include FSR3 SR but omit the frame-generation companions.
+ launcher_linux::game=std::string(argv[1])+"/xcde-linux";g_fsr3_available=true;
+ CHECK(!linux_framegen_packaged());
+ put("upscaler = fsr3\nframe_gen = 1\ncutscenes = 30fg\n");load();linux_graphics_normalize();
+ CHECK(g.upscaler==2&&g_fsr3_available);expect(0,0,0,0);
  remove(path("xcde.ini").c_str());load();expect(0,0,0,0);
  CHECK(!SDL_WasInit(0));puts("Frame generation launcher settings: defaults/legacy/exclusivity/component availability/extras/roundtrip PASS");
 }

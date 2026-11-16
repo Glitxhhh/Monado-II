@@ -136,7 +136,7 @@ The NVIDIA SDK is prepared locally; its binaries/models are excluded from source
 kits and launcher images. To omit the NVIDIA SDK while retaining FSR3, use:
 
 ```sh
-./Build_Monado_II.sh --without-dlss
+./Build_Monado_II.sh --without-dlss --framegen
 ```
 
 **Frame generation is experimental and disabled by default.** The launcher offers

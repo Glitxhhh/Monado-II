@@ -182,7 +182,7 @@ class BrokerFixture(unittest.TestCase):
         with mock.patch.object(self.broker, 'run_command', side_effect=run):
             with self.assertRaisesRegex(backend.BuilderError, 'authored compiler failure'):
                 self.broker.build(self.request(action='build'))
-        self.assertTrue(any('--no-appimage' in c and '--without-dlss' in c and '--jobs' in c for c in commands))
+        self.assertTrue(any('--no-appimage' in c and '--without-dlss' in c and '--framegen' in c and '--jobs' in c for c in commands))
         self.assertTrue((self.output / backend.MARKER).exists())
         self.assertFalse((self.state / backend.REGISTRY).exists())
         self.assertEqual(before, self.inventory(self.input))

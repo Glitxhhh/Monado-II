@@ -109,12 +109,33 @@ def validate_features(*, dlss, framegen, fsr3=False, fsr4=False):
     if type(dlss) is not bool or type(fsr3) is not bool or type(fsr4) is not bool or (framegen is not None and type(framegen) is not bool):
         raise BuildError('build feature selections must be booleans (or an unspecified frame-generation selection)')
     # Normal builds include the experimental provider; the user's runtime
-    # checkbox remains off by default. None preserves the explicit DLSS optout.
+    # checkbox remains off by default. Managed legacy CLI builds resolve their
+    # existing receipted capability before entering this modern API default.
     if framegen is None:
         framegen = dlss or fsr3
     if framegen and not (dlss or fsr3):
         raise BuildError('--framegen cannot be combined with omitting both native DLSS and FSR3 providers')
     return framegen
+
+
+def managed_framegen_selection(root):
+    """Read an updater-managed installation's actual current game capability.
+
+    Historical no-DLSS updaters cannot consume a newly added FSR-only FG flag.
+    Conversely, newer immutable updaters also omit the flag on full builds.
+    Preserve their actual selected game capability instead of guessing from the
+    original owner's version, a folder name or a caller-provided boolean.
+    """
+    root = ordinary(root, directory=True)
+    if install_layout.installation_root(root / 'Monado_Linux') == root:
+        return None  # a fresh/ordinary CLI build uses the modern API default
+    path = ordinary(root / 'tools/update_linux.py')
+    spec = importlib.util.spec_from_file_location('_monado_builder_managed_features', path)
+    updater = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(updater)
+    # Pre-frame-generation native receipts legitimately omit this field; the
+    # checked legacy reader contract interprets absence as unsupported/False.
+    return updater.inherited_game_features(root).get('framegen_enabled', False)
 
 
 def existing_framegen_sdk(port):
@@ -778,7 +799,17 @@ def main(argv=None):
         fsr4 = not args.without_fsr4 and (not args.reuse_game or reused.get('fsr4_enabled', False))
         fsr3 = not args.without_fsr3 and (not args.reuse_game or reused.get('fsr3_enabled', False))
         split_game = not args.static_game and (not args.reuse_game or reused.get('split_game', False))
-        framegen = validate_features(dlss=not args.without_dlss, framegen=args.framegen, fsr3=fsr3)
+        framegen = args.framegen
+        if args.reuse_game is not None and framegen is None:
+            # Rebuilding only the GUI cannot add a provider to an already
+            # compiled game. In particular, old no-DLSS update clients omit
+            # --framegen when their honest new payload records False.
+            framegen = reused.get('framegen_enabled')
+            if type(framegen) is not bool:
+                raise BuildError('reused game has no explicit boolean frame-generation capability')
+        elif framegen is None and args.without_dlss:
+            framegen = managed_framegen_selection(ROOT)
+        framegen = validate_features(dlss=not args.without_dlss, framegen=framegen, fsr3=fsr3)
         if args.plan:
             paths, commands = layout(ROOT, args.jobs, require_input=False, identity=args.build_id, dlss=not args.without_dlss, reuse_game=args.reuse_game, framegen=framegen,
                 fsr3=fsr3, fsr4=fsr4, split_game=split_game, portable=not args.legacy_runtime, runtime_bundle=args.runtime_bundle, runtime_sha256=args.runtime_sha256,

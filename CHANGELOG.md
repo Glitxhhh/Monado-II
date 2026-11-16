@@ -12,6 +12,11 @@
 - Keep target header/library discovery inside the pinned sysroot and disable the
   unsupported optional SDL liburing backend. This prevents a host-only header
   from enabling code the isolated compiler cannot build; normal fallback remains.
+- Keep older non-DLSS updater feature receipts compatible when introducing FSR3.
+  Managed builds inherit verified selected-game capabilities when the caller
+  provides no explicit frame-generation selection. Preserve newer FSR-only
+  installations, modern fresh-build defaults and actual features during reuse;
+  never mislabel a binary's compiled support.
 - Preserve required X11/Wayland/audio support, pinned source/ABI checks and the
   earlier file-limit, cold-cache and portable launcher packaging corrections.
 - Show dependency-build phases, elapsed progress and bounded nested failure

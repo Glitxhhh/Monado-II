@@ -37,8 +37,8 @@
       "sha256": "fc908ddd148e06cb024ce9ea9f98307c32af7147bcba2504b8b6a726526197cc"
     },
     "CHANGELOG.md": {
-      "bytes": 47924,
-      "sha256": "1915494e7d04f148d8541f4e7934ccb9fdcd82f348bf6dbbf24de29903d36b64"
+      "bytes": 48282,
+      "sha256": "dfd4a1844ba10ccc260cd05f62b10f6aa96c40a7c6f73b4086121918d5d1e881"
     },
     "CONTRIBUTING.md": {
       "bytes": 1798,
@@ -5185,8 +5185,8 @@
       "sha256": "111d3bdcc8b4dd86e9bc0b59a2431dd5439c4de0ba94c9bee96756ad5399a053"
     },
     "README.md": {
-      "bytes": 19492,
-      "sha256": "03d722f78c1122e768028fed2e8539666c8ad7acc991ef304eb95f93049e938b"
+      "bytes": 19503,
+      "sha256": "3b90354ba5f52dcf03c0ba95561646b6fe3ac42fa324695af7064c5a91686a2c"
     },
     "Rollback_Monado_II.sh": {
       "bytes": 8873,
@@ -5213,8 +5213,8 @@
       "sha256": "3d962611b3ba82b475006f2bf93af964ba09b880f70289d59edac6d587b2a99e"
     },
     "docs/BUILD_LINUX.md": {
-      "bytes": 33848,
-      "sha256": "de39608a7b73960b380ea1bca493653266a515310d37532f0ce71e4544cb805a"
+      "bytes": 34841,
+      "sha256": "f7abf4aaa3660299582311154db6431bab5b7a99fc674307a81e866f226bd876"
     },
     "docs/BUILD_WINDOWS.md": {
       "bytes": 8083,
@@ -5349,8 +5349,8 @@
       "sha256": "e01c9a65055fa1e140bb239efb55b275b315d9b436bd350a12d5db33767b822b"
     },
     "tests/native/test_framegen_launcher.cpp": {
-      "bytes": 2821,
-      "sha256": "a658e239898445605e3a661291ad4884536cf891a42a1e1894b7fa870455772f"
+      "bytes": 3237,
+      "sha256": "cfcc97bd30d812960ab81f6e20ffc3c94acbd8b9cfb5a2c7d24fff5d13fc33d3"
     },
     "tests/native/test_framegen_refresh_policy.c": {
       "bytes": 1464,
@@ -5497,8 +5497,8 @@
       "sha256": "0597e345327ee515bd6c92e7011bf640e9bcb44b7f635e0c7e3eb4c86f99e61f"
     },
     "tests/test_builder_backend.py": {
-      "bytes": 31370,
-      "sha256": "ef7f74c8fa61792818aa158ccd8ac9abff4214cd09312afcf5719d95e89927d8"
+      "bytes": 31392,
+      "sha256": "a4c1cec9967b3c527ddb8039a8a0532776cbd47ae1e359545e62221dceb7f346"
     },
     "tests/test_builder_bytecode.py": {
       "bytes": 4135,
@@ -5707,6 +5707,10 @@
     "tests/test_launcher_updates.py": {
       "bytes": 15209,
       "sha256": "91025cb245e54b1631641b47691e89b01d24ba1da0b70027a5070c9b3f7c7297"
+    },
+    "tests/test_legacy_framegen_bridge.py": {
+      "bytes": 4577,
+      "sha256": "c7abf80b6bdf85dcffbb4850c3f5c301acaa8c8d037556c207e7992e8a063028"
     },
     "tests/test_linux_build_app.py": {
       "bytes": 42633,
@@ -5945,8 +5949,8 @@
       "sha256": "07d6a9d169cf8dff9d20e97600356973f06fab75ec59b11dae50dccaac69765e"
     },
     "tests/test_update_linux.py": {
-      "bytes": 47135,
-      "sha256": "5c9d4d55ea91d0a36a108af58db4efc28e567497f098bc1a2f3b8c3dde546c59"
+      "bytes": 53311,
+      "sha256": "a145a29369311fe048ac802280101c82fe0b8f2730416b50a919c5a53c9e7fff"
     },
     "tests/test_update_release.py": {
       "bytes": 26088,
@@ -6129,8 +6133,8 @@
       "sha256": "52d4cd757ecdeb757639314e60551aee15f29bd7da9538bee45a1de8cd15ea2a"
     },
     "tools/build_linux_app.py": {
-      "bytes": 48003,
-      "sha256": "8f4117879cdabe55f8498adbd90912b73d5431434576fa14b88e5b6eb0ed8723"
+      "bytes": 49790,
+      "sha256": "d96389c8576eda7b1d8d50bcc3f29d084ceaff2196ac06392ea543abb15e1af4"
     },
     "tools/builder_appimage/APPIMAGE_RUNTIME_NOTICES.txt": {
       "bytes": 2622,
@@ -6161,8 +6165,8 @@
       "sha256": "cfa50bde50cf1812157ebd681d09c33468676d4b120c0520d79eceec833d50ff"
     },
     "tools/builder_backend.py": {
-      "bytes": 45435,
-      "sha256": "d3e673797491feb9c78a95839c442cf6a656fda0faf1c2e1d51063ff6072668b"
+      "bytes": 45675,
+      "sha256": "87de4ef6b15f95da1fa40e0bf95482eafdd5621a2599e9f080a081fbc68395ff"
     },
     "tools/builder_bootstrap.py": {
       "bytes": 24374,
@@ -6209,8 +6213,8 @@
       "sha256": "ab40a19e5b8fb3b63091d7f40f5e67b781273f26aeaae8f1edd4ff807d4783ed"
     },
     "tools/update_linux.py": {
-      "bytes": 58607,
-      "sha256": "77091a13cb36e1641c76bcfe29e48d72545145882a4865989728414631dfcc43"
+      "bytes": 66025,
+      "sha256": "d9e5b90bda9314bdbee4ea63766e12e2b56cb032fb017f3b705cb81dd294390e"
     },
     "tools/update_release.py": {
       "bytes": 20597,

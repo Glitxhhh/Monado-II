@@ -73,7 +73,9 @@ class Transactions(unittest.TestCase):
             game.parent.mkdir(parents=True)
             data=bytearray(64);data[:6]=b'\x7fELF\x02\x01';data[18:20]=(62).to_bytes(2,'little')
             game.write_bytes(data);game.chmod(0o700)
-            flags={'dlss_enabled':'--without-dlss' not in command,'framegen_enabled':'--without-dlss' not in command}
+            flags={'dlss_enabled':'--without-dlss' not in command,
+                'framegen_enabled':'--without-dlss' not in command or '--framegen' in command,
+                'fsr3_enabled':'--without-fsr3' not in command, 'fsr4_enabled':'--without-fsr4' not in command}
             native_receipt=dict(status='passed',executable={'path':str(game),'sha256':u._file_digest(game)},
                 input={'path':str((workspace/'game_files').resolve(strict=True))},**flags)
             (game.parent/'receipt.json').write_text(json.dumps(native_receipt))
@@ -315,12 +317,103 @@ class Transactions(unittest.TestCase):
         path=self.game.parent/'receipt.json';path.write_text('{"dlss_enabled":false}')
         for rebuild in (False,True):
             command=u.build_command(self.candidate,self.game,rebuild)
-            self.assertIn('--without-dlss',command);self.assertNotIn('--framegen',command)
+            self.assertIn('--without-dlss',command)
+            self.assertEqual('--framegen' in command,rebuild)
         path.write_text('{"dlss_enabled":true,"framegen_enabled":true}')
         full=u.build_command(self.candidate,self.game,True)
-        self.assertEqual(full,[str(self.candidate/'Build_Monado_II.sh')])
+        self.assertEqual(full,[str(self.candidate/'Build_Monado_II.sh'),'--framegen'])
         self.assertIn('--reuse-game',u.build_command(self.candidate,self.game,False))
         self.assertIn('--framegen',u.build_command(self.candidate,self.game,False))
+
+    def inheritance_workspace(self, framegen=False):
+        managed=self.port/'updates/payload-feature-fixture/workspace'
+        (managed/'Monado_Linux').mkdir(parents=True)
+        (managed/'installation.json').write_text(json.dumps(dict(schema=1,owner=str(self.owner),
+            workspace=str(managed),game_port=str(managed/'Monado_Linux'))))
+        image(self.owner)
+        path=self.owner/(u.IMAGE+'.receipt.json');receipt=json.loads(path.read_text())
+        receipt.update(game=self.game.relative_to(self.owner).as_posix(),game_sha256=u._file_digest(self.game))
+        path.write_text(json.dumps(receipt))
+        (self.game.parent/'receipt.json').write_text(json.dumps(dict(status='passed',dlss_enabled=False,
+            fsr3_enabled=True,framegen_enabled=framegen,
+            executable=dict(path=str(self.game),sha256=u._file_digest(self.game)),
+            input={'path':'/authored/previous/location/now/moved'})))
+        return managed
+
+    def test_managed_implicit_framegen_reads_checked_existing_false_and_true_without_runtime(self):
+        for framegen in (False,True):
+            with self.subTest(framegen=framegen):
+                managed=self.inheritance_workspace(framegen)
+                with mock.patch.object(u,'verify_runtime_selection',side_effect=AssertionError('old runtime need not work')):
+                    self.assertEqual(u.inherited_game_features(managed)['framegen_enabled'],framegen)
+                shutil.rmtree(managed.parent)
+
+    def test_inherited_framegen_uses_active_game_not_original_owner_game(self):
+        # The original owner can be018 while the actual selected updater is024.
+        self.files['update-version.json']=b'{"schema":1,"protocol":1,"version":"0.1.18"}'
+        self.new['update-version.json']=b'{"schema":1,"protocol":1,"version":"0.1.24"}'
+        manifest(self.owner,self.files);manifest(self.candidate,self.new)
+        first=self.session(discover=lambda _:dict(version='0.1.24',tag='v0.1.24'))
+        prepared=self.prepare(first);first.activate(prepared)
+        selected=self.owner/prepared['record']['workspace']
+        pair=u.json_read(selected/(u.IMAGE+'.receipt.json'));binding=u.json_read(selected/'installation.json')
+        game=Path(binding['game_port']).parent/pair['game']
+        receipt=u.json_read(game.parent/'receipt.json');receipt.update(dlss_enabled=False,fsr3_enabled=True,framegen_enabled=True)
+        (game.parent/'receipt.json').write_text(json.dumps(receipt))
+        pair['game_sha256']=u._file_digest(game)
+        (selected/(u.IMAGE+'.receipt.json')).write_text(json.dumps(pair))
+        active=u.json_read(self.port/'updates/active.json');active['receipt_sha256']=u.digest(selected/(u.IMAGE+'.receipt.json'))
+        u.durable_replace(self.port/'updates/active.json',active)
+        managed=self.port/'updates/payload-next-fixture/workspace';(managed/'Monado_Linux').mkdir(parents=True)
+        (managed/'installation.json').write_text(json.dumps(dict(schema=1,owner=str(self.owner),workspace=str(managed),game_port=str(managed/'Monado_Linux'))))
+        self.assertTrue(u.inherited_game_features(managed)['framegen_enabled'])
+
+    def test_inherited_framegen_rejects_changed_binary_and_receipt(self):
+        managed=self.inheritance_workspace(False)
+        original=u.game_features
+        with mock.patch.object(u,'game_features',wraps=u.game_features) as read:
+            def tamper(game):
+                value=original(game)
+                path=game.parent/'receipt.json'
+                path.write_text(path.read_text()+' ')
+                return value
+            read.side_effect=tamper
+            with self.assertRaisesRegex(ValueError,'changed during feature inheritance'):
+                u.inherited_game_features(managed)
+        self.game.write_bytes(self.game.read_bytes()+b'authored corruption')
+        with self.assertRaisesRegex(ValueError,'native game identity differs'):
+            u.inherited_game_features(managed)
+
+    def graphical_inheritance(self, framegen=True):
+        managed=self.inheritance_workspace(framegen)
+        (self.owner/u.IMAGE).unlink();(self.owner/(u.IMAGE+'.receipt.json')).unlink()
+        game=dict(path=str(self.game),sha256=u._file_digest(self.game),
+            receipt_sha256=u.digest(self.game.parent/'receipt.json'),build_port=str(self.port))
+        build=self.port/'runs/local-build/gui-origin/receipt.json';build.parent.mkdir(parents=True,exist_ok=True)
+        build.write_text(json.dumps(dict(schema=1,status='passed',game=game,framegen_enabled=framegen,
+            paths=dict(game=str(self.game),launcher=str(self.gui),state=str(self.state)))))
+        marker=self.port/'.deps/metadata/gui-build.json';marker.parent.mkdir(parents=True,exist_ok=True)
+        marker.write_text(json.dumps(dict(schema=1,status='passed',artifact_kind='local-gui-build',
+            build_id='gui-origin',game=game,launcher=str(self.gui),state=str(self.state),
+            build_receipt_sha256=u.digest(build))))
+        return managed,build
+
+    def test_gui_origin_feature_inheritance_needs_no_workspace_appimage(self):
+        for framegen in (False,True):
+            with self.subTest(framegen=framegen):
+                managed,_=self.graphical_inheritance(framegen)
+                self.assertFalse((self.owner/u.IMAGE).exists())
+                self.assertEqual(u.inherited_game_features(managed)['framegen_enabled'],framegen)
+                shutil.rmtree(managed.parent)
+
+    def test_gui_origin_changed_build_receipt_stops_feature_inheritance(self):
+        managed,build=self.graphical_inheritance(True)
+        original=u.game_features
+        def tamper(game):
+            result=original(game);build.write_text(build.read_text()+' ');return result
+        with mock.patch.object(u,'game_features',side_effect=tamper), \
+                self.assertRaisesRegex(ValueError,'changed during feature inheritance'):
+            u.inherited_game_features(managed)
 
     def test_direct_reuse_cannot_silently_drop_standard_framegen_capability(self):
         path=self.game.parent/'receipt.json'
@@ -333,7 +426,8 @@ class Transactions(unittest.TestCase):
         (self.game.parent/'receipt.json').write_text('{"dlss_enabled":false,"framegen_enabled":false}')
         s=self.session();p=self.prepare(s)
         self.assertTrue(p['rebuild']);self.assertIn('--game-only',self.commands[0]);self.assertIn('--reuse-game',self.commands[1])
-        self.assertIn('--without-dlss',self.commands[0]);self.assertIn('--without-dlss',self.commands[1]);self.assertNotIn('--framegen',self.commands[1])
+        self.assertIn('--without-dlss',self.commands[0]);self.assertIn('--without-dlss',self.commands[1])
+        self.assertIn('--framegen',self.commands[0]);self.assertIn('--framegen',self.commands[1])
         self.assertProtected()
 
     def test_invalid_framegen_receipt_is_not_silently_reused(self):

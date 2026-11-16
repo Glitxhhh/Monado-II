@@ -612,6 +612,122 @@ def input_path_changed(receipt, current):
     return recorded['path'] != str(current)
 
 
+def inherited_game_features(workspace):
+    """Read the current checked game for an implicit legacy managed build.
+
+    This is a read-only capability bridge while the parent updater owns its
+    installation lock. Never acquire a nested lease or execute an old reader.
+    Recheck all selection/binary/receipt bindings before returning its truthful
+    compiled features; original bootstrap source age is not the active version.
+    """
+    workspace = ordinary(workspace)
+    layout = layout_module(ROOT)
+    owner = layout.installation_root(workspace / 'Monado_Linux')
+    if owner == workspace:
+        raise ValueError('feature inheritance requires an updater-managed workspace')
+    binding_path = workspace / 'installation.json'
+    def stamp(path):
+        info = ordinary(path).stat()
+        return (info.st_dev, info.st_ino, info.st_mode, info.st_nlink,
+                info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+    binding_stamp = stamp(binding_path)
+    binding_identity = digest(binding_path)
+    active_path = owner / 'Monado_Linux/updates/active.json'
+    active_identity = digest(active_path) if active_path.exists() or active_path.is_symlink() else None
+    active_stamp = stamp(active_path) if active_identity is not None else None
+    selected_record = _current_selection(owner)
+    selected = owner if selected_record is None else active_record(owner, selected_record)
+    installed_sources(selected)
+    watched = {}
+    def remember(path, *, large=False):
+        path = ordinary(path)
+        before = stamp(path)
+        identity = _file_digest(path) if large else digest(path)
+        if stamp(path) != before:
+            raise ValueError('selection changed while reading feature inheritance metadata')
+        watched[path] = (before, identity, large)
+    metadata_path = selected / 'Monado_Linux/.deps/metadata/gui-build.json'
+    port = layout.game_port(selected / 'Monado_Linux')
+    expected_receipt = None
+    if metadata_path.exists() or metadata_path.is_symlink():
+        # Graphical first installs deliberately have no workspace AppImage.
+        # Follow the same checked local-gui-build selection as Broker.open.
+        remember(metadata_path)
+        metadata = json_read(metadata_path, 16384)
+        identity = metadata.get('build_id')
+        if (metadata.get('schema') != 1 or metadata.get('status') != 'passed'
+                or metadata.get('artifact_kind') != 'local-gui-build'
+                or not isinstance(identity, str) or not IDENTITY.fullmatch(identity)):
+            raise ValueError('invalid GUI build metadata for feature inheritance')
+        build_path = selected / 'Monado_Linux/runs/local-build' / identity / 'receipt.json'
+        remember(build_path)
+        built = json_read(build_path, MAX_GAME_RECEIPT)
+        game_info = metadata.get('game')
+        if (built.get('schema') != 1 or built.get('status') != 'passed'
+                or digest(build_path) != metadata.get('build_receipt_sha256')
+                or not isinstance(game_info, dict) or set(game_info) !=
+                   {'path', 'sha256', 'receipt_sha256', 'build_port'}
+                or not all(isinstance(value, str) for value in game_info.values())
+                or not isinstance(built.get('paths'), dict)
+                or not isinstance(built['paths'].get('launcher'), str)
+                or built.get('game') != game_info):
+            raise ValueError('GUI build receipt differs during feature inheritance')
+        game = ordinary(game_info['path'])
+        launcher = ordinary(built.get('paths', {}).get('launcher', ''))
+        if (game_info.get('build_port') != str(port)
+                or not any(game.is_relative_to(port / name) for name in ('build', 'runs', 'accepted'))
+                or built.get('paths', {}).get('game') != str(game)
+                or metadata.get('launcher') != str(launcher)
+                or not launcher.is_relative_to(selected / 'Monado_Linux')
+                or metadata.get('state') != str(owner / 'Monado_Linux/play/launcher')
+                or built.get('paths', {}).get('state') != metadata['state']):
+            raise ValueError('GUI build selection escaped its checked installation')
+        expected, expected_receipt = game_info.get('sha256'), game_info.get('receipt_sha256')
+        if not isinstance(expected_receipt, str) or not HASH.fullmatch(expected_receipt):
+            raise ValueError('GUI game receipt has no exact feature inheritance identity')
+    else:
+        image_path = selected / IMAGE
+        remember(image_path, large=True)
+        remember(Path(str(image_path) + '.receipt.json'))
+        image = pair(image_path)
+        name = image.get('game')
+        if not isinstance(name, str):
+            raise ValueError('current AppImage has no game selection for feature inheritance')
+        relative = Path(name)
+        if (relative.is_absolute() or '..' in relative.parts or len(relative.parts) < 4
+                or relative.parts[0] != 'Monado_Linux'
+                or relative.parts[1] not in ('build', 'runs', 'accepted')):
+            raise ValueError('current game has no valid AppImage selection for feature inheritance')
+        game = ordinary(port.parent / relative)
+        expected = image.get('game_sha256')
+    game_receipt = game.parent / 'receipt.json'
+    game_stamp, game_receipt_stamp = stamp(game), stamp(game_receipt)
+    game_receipt_identity = digest(game_receipt)
+    features = game_features(game)
+    if (not isinstance(expected, str) or not HASH.fullmatch(expected)
+            or features.get('status') != 'passed'
+            or features.get('executable', {}).get('path') != str(game)
+            or features.get('executable', {}).get('sha256') != expected
+            or _file_digest(game) != expected
+            or (expected_receipt is not None and game_receipt_identity != expected_receipt)):
+        raise ValueError('current native game identity differs during feature inheritance')
+    # A full rebuild can be repairing old providers or a relocated input path.
+    # Capability inheritance needs truthful compiled metadata, not a runnable
+    # old dependency/input graph. The newly built payload is checked normally.
+    after_active = digest(active_path) if active_path.exists() or active_path.is_symlink() else None
+    if (after_active != active_identity or _current_selection(owner) != selected_record
+            or (stamp(active_path) if after_active is not None else None) != active_stamp
+            or stamp(binding_path) != binding_stamp
+            or stamp(game) != game_stamp or stamp(game_receipt) != game_receipt_stamp
+            or layout.game_port(selected / 'Monado_Linux') != port
+            or digest(binding_path) != binding_identity
+            or any(stamp(path) != before or (_file_digest(path) if large else digest(path)) != identity
+                   for path, (before, identity, large) in watched.items())
+            or digest(game_receipt) != game_receipt_identity or _file_digest(game) != expected):
+        raise ValueError('current installation changed during feature inheritance; retry from its launcher')
+    return features
+
+
 
 def verify_runtime_selection(workspace, state):
     """Recheck real game/GUI loading before selecting an update; no state writes."""
@@ -677,6 +793,11 @@ def build_command(workspace, game, rebuild):
     framegen = receipt.get('framegen_enabled', False)
     if not receipt['dlss_enabled']:
         command.append('--without-dlss')
+    if rebuild:
+        # This modern updater understands the FSR3-only provider receipt. Old
+        # updaters omit this flag and keep their original no-DLSS contract.
+        # Full current builds include FSR3 by default; runtime use remains off.
+        command.append('--framegen')
     if not rebuild:
         if not receipt.get('fsr4_enabled', False):
             command.append('--without-fsr4')
